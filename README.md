@@ -11,6 +11,7 @@ A Fabric 1.21.1 Minecraft mod that replaces the vanilla chat screen with a phone
 - Click an avatar to insert `@玩家 `; double-click to trigger a QQ-style poke shake animation.
 - Right-click a message to copy or quote it.
 - Built-in emoji panel.
+- Send image URLs directly (auto-wrapped into CICode) and render inline images via CICode.
 - JSON config file at `config/atomchat.json`.
 
 ## Roadmap / not yet implemented

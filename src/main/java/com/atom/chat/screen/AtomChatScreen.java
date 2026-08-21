@@ -3,6 +3,7 @@ package com.atom.chat.screen;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
+import com.atom.chat.image.ImageLoader;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
@@ -10,6 +11,7 @@ import com.atom.chat.render.SkiaGraphics;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
@@ -153,6 +155,10 @@ public class AtomChatScreen extends Screen {
         Font font = FontManager.font(15.0F);
         float bubbleMaxWidth = maxWidth - 80;
         String raw = msg.getRawText();
+        String imageUrl = extractImageUrl(raw);
+        if (imageUrl != null) {
+            return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index);
+        }
         float textWidth = SkiaFontRenderer.getStringWidth(font, raw);
         float bubbleWidth = Math.min(bubbleMaxWidth, Math.max(60, textWidth + 24));
         float lineHeight = SkiaFontRenderer.getHeight(font);
@@ -191,6 +197,34 @@ public class AtomChatScreen extends Screen {
 
         float bottom = y + 18 + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, bubbleX, bubbleWidth, bottom);
+    }
+
+    private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
+        String name = msg.isOwn() ? "我" : "玩家";
+        float nameX = msg.isOwn() ? x + maxWidth - 80 : x + 34;
+        SkiaFontRenderer.drawText(canvas, FontManager.font(12.0F), name, nameX, y + 10, textSecondary());
+
+        float avatarSize = 26;
+        float avatarX = msg.isOwn() ? x + maxWidth - avatarSize : x;
+        float avatarY = y + 6;
+        SkiaDraw.drawRoundedRect(canvas, avatarX, avatarY, avatarSize, avatarSize, avatarSize / 2.0F, Color.makeARGB(255, 120, 130, 145));
+
+        float imageW = Math.min(220, maxWidth - 70);
+        float imageH = 140;
+        float bubbleX = msg.isOwn() ? x + maxWidth - imageW - 34 : x + 34;
+        SkiaDraw.drawRoundedRect(canvas, bubbleX, y + 18, imageW, imageH, 12, otherBubble());
+
+        Image image = ImageLoader.get().get(imageUrl);
+        if (image != null) {
+            float aspect = (float) image.getWidth() / Math.max(1, image.getHeight());
+            float drawH = Math.min(imageH, imageW / aspect);
+            SkiaDraw.drawRoundedImage(canvas, image, bubbleX, y + 18 + (imageH - drawH) / 2.0F, imageW, drawH, 12);
+        } else {
+            SkiaFontRenderer.drawText(canvas, FontManager.font(13.0F), "图片加载中…", bubbleX + 12, y + 18 + 18, textSecondary());
+        }
+
+        float bottom = y + 18 + imageH;
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, bubbleX, imageW, bottom);
     }
 
     private void recomputeMaxScroll(List<ChatMessage> messages, float top, float height) {
@@ -394,12 +428,34 @@ public class AtomChatScreen extends Screen {
             if (normalized.startsWith("/")) {
                 this.client.player.networkHandler.sendChatCommand(normalized.substring(1));
             } else {
+                if ((normalized.startsWith("http://") || normalized.startsWith("https://")) && !normalized.contains("CICode")) {
+                    normalized = "[[CICode,url=" + normalized + ",name=图片]]";
+                }
                 this.client.player.networkHandler.sendChatMessage(normalized);
             }
             ChatStore.get().add(new ChatMessage(Text.literal(normalized), true));
             inputText = "";
             replyTarget = null;
         }
+    }
+
+    private static String extractImageUrl(String text) {
+        int start = text.indexOf("[[CICode,url=");
+        if (start < 0) {
+            start = text.indexOf("[CICode,url=");
+        }
+        if (start < 0) {
+            return null;
+        }
+        int urlStart = text.indexOf("url=", start) + 4;
+        int end = text.indexOf(',', urlStart);
+        if (end < 0) {
+            end = text.indexOf(']', urlStart);
+        }
+        if (end < 0 || end <= urlStart) {
+            return null;
+        }
+        return text.substring(urlStart, end);
     }
 
     private static String abbreviate(String text, int maxChars) {
