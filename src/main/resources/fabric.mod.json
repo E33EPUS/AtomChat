@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "atomchat",
+  "version": "${version}",
+  "name": "AtomChat",
+  "description": "A phone-app style chat UI for Minecraft, powered by Skija.",
+  "authors": [
+    "AtomChat"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.atom.chat.AtomChat"
+    ],
+    "client": [
+      "com.atom.chat.AtomChatClient"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "atomchat.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
