@@ -25,7 +25,7 @@ Build a high-quality, highly customizable phone-app-style chat UI for Minecraft,
 
 ## UI layout
 
-- Centered phone panel (default 420×780), rounded corners, dark translucent background.
+- Centered phone panel (default 420×780), rounded corners, dark translucent background with Skia ImageFilter blur.
 - Header: world channel name + time.
 - Scrollable message list with bubbles/avatars.
 - Input bar: image / emoji buttons, two-line text area, send button.

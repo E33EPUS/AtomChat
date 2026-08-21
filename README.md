@@ -18,8 +18,6 @@ A Fabric 1.21.1 Minecraft mod that replaces the vanilla chat screen with a phone
 ## Roadmap / not yet implemented
 
 - Real player-name parsing and server-side avatar upload/sync.
-- uguu image upload + CICode image send/preview.
-- Background blur shader.
 - More animations and theme presets.
 
 ## Building

@@ -76,6 +76,12 @@ public class AtomChatScreen extends Screen {
             canvas.drawRect(Rect.makeXYWH(0, 0, this.width, this.height), dim);
         }
 
+        if (AtomChatConfig.get().blurEnabled) {
+            try (Image snapshot = graphics.requireSurface().makeImageSnapshot()) {
+                SkiaDraw.drawBlurredBackground(canvas, snapshot, x, y, panelWidth(), panelHeight(), PANEL_RADIUS, 18.0F);
+            }
+        }
+
         try (Paint panel = new Paint().setColor(panelBg())) {
             canvas.drawRRect(RRect.makeXYWH(x, y, panelWidth(), panelHeight(), PANEL_RADIUS), panel);
         }

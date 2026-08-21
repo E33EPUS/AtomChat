@@ -4,7 +4,9 @@ import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ClipMode;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.FilterBlurMode;
+import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Image;
+import io.github.humbleui.skija.ImageFilter;
 import io.github.humbleui.skija.MaskFilter;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
@@ -39,6 +41,24 @@ public final class SkiaDraw {
             Rect dst = Rect.makeXYWH(x, y, width, height);
             try (Paint paint = new Paint().setAntiAlias(true)) {
                 canvas.drawImageRect(image, src, dst, SamplingMode.LINEAR, paint, false);
+            }
+        } finally {
+            canvas.restore();
+        }
+    }
+
+    public static void drawBlurredBackground(Canvas canvas, Image snapshot, float x, float y, float width, float height, float radius, float blur) {
+        if (snapshot == null) {
+            return;
+        }
+        canvas.save();
+        try {
+            clip(canvas, x, y, width, height, radius);
+            Rect src = Rect.makeXYWH(0, 0, snapshot.getWidth(), snapshot.getHeight());
+            Rect dst = Rect.makeXYWH(x, y, width, height);
+            try (Paint paint = new Paint().setAntiAlias(true)
+                    .setImageFilter(ImageFilter.makeBlur(blur, blur, FilterTileMode.CLAMP))) {
+                canvas.drawImageRect(snapshot, src, dst, SamplingMode.LINEAR, paint, false);
             }
         } finally {
             canvas.restore();
