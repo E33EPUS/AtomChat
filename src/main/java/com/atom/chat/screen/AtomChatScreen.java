@@ -1,13 +1,16 @@
 package com.atom.chat.screen;
+import com.atom.chat.AtomChat;
 
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageLoader;
+import com.atom.chat.image.ImageUploader;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
 import com.atom.chat.render.SkiaGraphics;
+import com.atom.chat.util.FilePicker;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Font;
@@ -19,6 +22,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
+import java.nio.file.Path;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +34,7 @@ public class AtomChatScreen extends Screen {
 
     private final String originalChatText;
     private final SkiaGraphics graphics = new SkiaGraphics();
+    private final ImageUploader imageUploader = new ImageUploader();
     private final List<MessageHit> hits = new ArrayList<>();
 
     private String inputText;
@@ -347,7 +352,7 @@ public class AtomChatScreen extends Screen {
         float inputY = panelY + panelHeight() - INPUT_HEIGHT - 8;
         if (button == 0 && mouseY >= inputY + 8 && mouseY <= inputY + 34) {
             if (mouseX >= inputX + 10 && mouseX <= inputX + 56) {
-                // Image button: TODO uguu upload
+                pickAndUploadImage();
                 return true;
             }
             if (mouseX >= inputX + 62 && mouseX <= inputX + 108) {
@@ -417,6 +422,23 @@ public class AtomChatScreen extends Screen {
             inputText += chr;
         }
         return true;
+    }
+
+    private void pickAndUploadImage() {
+        Thread worker = new Thread(() -> {
+            Path file = FilePicker.pickImage();
+            if (file == null) {
+                return;
+            }
+            imageUploader.upload(file, url -> {
+                String code = "[[CICode,url=" + url + ",name=" + file.getFileName().toString() + "]]";
+                inputText = inputText.isEmpty() ? code : inputText + " " + code;
+            }, error -> {
+                AtomChat.LOGGER.warn("Image upload failed: {}", error);
+            });
+        }, "AtomChat-ImagePicker");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void sendMessage(String text) {

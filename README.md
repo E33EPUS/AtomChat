@@ -12,6 +12,7 @@ A Fabric 1.21.1 Minecraft mod that replaces the vanilla chat screen with a phone
 - Right-click a message to copy or quote it.
 - Built-in emoji panel.
 - Send image URLs directly (auto-wrapped into CICode) and render inline images via CICode.
+- Click the image button to pick a local file and upload to uguu.se.
 - JSON config file at `config/atomchat.json`.
 
 ## Roadmap / not yet implemented
