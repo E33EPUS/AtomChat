@@ -1,5 +1,6 @@
 package com.atom.chat.render;
 
+import com.atom.chat.AtomChat;
 import com.mojang.blaze3d.systems.RenderSystem;
 import io.github.humbleui.skija.BackendRenderTarget;
 import io.github.humbleui.skija.Canvas;
@@ -65,12 +66,11 @@ public class SkiaGraphics {
 
     public void draw(Consumer<Canvas> renderer) {
         RenderSystem.assertOnRenderThread();
-        if (context == null && surface == null) {
-            return;
+        if (context == null || surface == null || canvas == null) {
+            createSurface();
         }
         if (canvas == null) {
-            createSurface();
-            System.out.println("[AtomChat] Warning: Skia canvas is null");
+            AtomChat.LOGGER.warn("Skia canvas is null after createSurface, skipping frame");
             return;
         }
 
@@ -80,8 +80,9 @@ public class SkiaGraphics {
         RenderSystem.enableBlend();
 
         canvas.save();
-        float scale = (float) MinecraftClient.getInstance().getWindow().getScaleFactor();
-        canvas.scale(scale, scale);
+        // Decouple from vanilla GUI scale: design density anchored at 1080p.
+        float density = Math.max(1.0F, MinecraftClient.getInstance().getFramebuffer().textureHeight / 1080.0F);
+        canvas.scale(density, density);
         renderer.accept(canvas);
         canvas.restore();
 

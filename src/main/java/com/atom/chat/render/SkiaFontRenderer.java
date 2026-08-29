@@ -37,6 +37,31 @@ public final class SkiaFontRenderer {
         return (metrics.getDescent() - metrics.getAscent() + metrics.getLeading()) / 2.0F;
     }
 
+    public static float textHeight(Font font) {
+        var metrics = font.getMetrics();
+        return metrics.getDescent() - metrics.getAscent();
+    }
+
+    /**
+     * Baseline y so that the text visual box is vertically centered at centerY.
+     */
+    public static float baselineY(Font font, float centerY) {
+        var metrics = font.getMetrics();
+        return centerY - (metrics.getAscent() + metrics.getDescent()) / 2.0F;
+    }
+
+    public static void drawTextCentered(Canvas canvas, Font font, String text, float centerX, float centerY, int color) {
+        try (Paint paint = new Paint().setColor(color)) {
+            canvas.drawString(text, centerX - font.measureTextWidth(text) / 2.0F, baselineY(font, centerY), font, paint);
+        }
+    }
+
+    public static void drawTextRight(Canvas canvas, Font font, String text, float rightX, float centerY, int color) {
+        try (Paint paint = new Paint().setColor(color)) {
+            canvas.drawString(text, rightX - font.measureTextWidth(text), baselineY(font, centerY), font, paint);
+        }
+    }
+
     public static void drawText(Canvas canvas, Font font, String text, float x, float y, int color) {
         canvas.save();
         try (Paint paint = new Paint().setColor(color)) {

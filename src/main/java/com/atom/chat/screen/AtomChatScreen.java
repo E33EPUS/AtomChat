@@ -17,10 +17,12 @@ import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.types.RRect;
-import io.github.humbleui.types.Rect;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
+import net.minecraft.util.StringHelper;
+import net.minecraft.util.math.MathHelper;
+import org.apache.commons.lang3.StringUtils;
 
 import java.nio.file.Path;
 import java.time.LocalTime;
@@ -38,6 +40,7 @@ public class AtomChatScreen extends Screen {
     private final List<MessageHit> hits = new ArrayList<>();
 
     private String inputText;
+    private boolean inputFocused;
     private float scrollY;
     private float maxScroll;
     private ChatMessage replyTarget;
@@ -45,6 +48,9 @@ public class AtomChatScreen extends Screen {
     private ChatMessage contextMessage;
     private float contextX;
     private float contextY;
+
+    private int messageHistoryIndex = -1;
+    private String chatLastMessage = "";
 
     private long lastAvatarClickTime;
     private int lastAvatarClickIndex = -1;
@@ -68,19 +74,19 @@ public class AtomChatScreen extends Screen {
         graphics.draw(canvas -> drawPhone(canvas, mouseX, mouseY, delta));
     }
 
+    @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        // World stays fully visible, same as vanilla chat; the panel provides its own background.
+    }
+
+    @Override
+    protected void init() {
+        messageHistoryIndex = this.client.inGameHud.getChatHud().getMessageHistory().size();
+    }
+
     private void drawPhone(Canvas canvas, int mouseX, int mouseY, float delta) {
-        float x = (this.width - panelWidth()) / 2.0F;
-        float y = (this.height - panelHeight()) / 2.0F;
-
-        try (Paint dim = new Paint().setColor(Color.makeARGB(120, 0, 0, 0))) {
-            canvas.drawRect(Rect.makeXYWH(0, 0, this.width, this.height), dim);
-        }
-
-        if (AtomChatConfig.get().blurEnabled) {
-            try (Image snapshot = graphics.requireSurface().makeImageSnapshot()) {
-                SkiaDraw.drawBlurredBackground(canvas, snapshot, x, y, panelWidth(), panelHeight(), PANEL_RADIUS, 18.0F);
-            }
-        }
+        float x = panelX();
+        float y = panelY();
 
         try (Paint panel = new Paint().setColor(panelBg())) {
             canvas.drawRRect(RRect.makeXYWH(x, y, panelWidth(), panelHeight(), PANEL_RADIUS), panel);
@@ -90,10 +96,12 @@ public class AtomChatScreen extends Screen {
         try (Paint header = new Paint().setColor(Color.makeARGB(70, 255, 255, 255))) {
             canvas.drawRRect(RRect.makeXYWH(x, y, panelWidth(), HEADER_HEIGHT, PANEL_RADIUS), header);
         }
-        SkiaFontRenderer.drawText(canvas, FontManager.font(20.0F), "世界频道", x + 20, y + 24, textPrimary());
+        Font titleFont = FontManager.font(20.0F);
+        SkiaFontRenderer.drawText(canvas, titleFont, "世界频道", x + 20, SkiaFontRenderer.baselineY(titleFont, y + HEADER_HEIGHT / 2.0F), textPrimary());
         LocalTime now = LocalTime.now();
         String time = String.format("%02d:%02d", now.getHour(), now.getMinute());
-        SkiaFontRenderer.drawText(canvas, FontManager.font(13.0F), time, x + panelWidth() - 70, y + 25, textSecondary());
+        Font timeFont = FontManager.font(13.0F);
+        SkiaFontRenderer.drawTextRight(canvas, timeFont, time, x + panelWidth() - 20.0F, y + HEADER_HEIGHT / 2.0F, textSecondary());
 
         float listX = x + 12;
         float listY = y + HEADER_HEIGHT + 8;
@@ -105,7 +113,8 @@ public class AtomChatScreen extends Screen {
         if (replyTarget != null) {
             float replyY = y + panelHeight() - INPUT_HEIGHT - 34;
             SkiaDraw.drawRoundedRect(canvas, listX, replyY, listW, 26, 8, Color.makeARGB(90, 74, 144, 226));
-            SkiaFontRenderer.drawText(canvas, FontManager.font(12.0F), "回复: " + abbreviate(replyTarget.getRawText(), 26), listX + 8, replyY + 16, textPrimary());
+            Font replyFont = FontManager.font(12.0F);
+            SkiaFontRenderer.drawText(canvas, replyFont, "回复: " + abbreviate(replyTarget.getRawText(), 26), listX + 8, SkiaFontRenderer.baselineY(replyFont, replyY + 13.0F), textPrimary());
         }
 
         // Input bar
@@ -116,23 +125,32 @@ public class AtomChatScreen extends Screen {
 
         // 图片 / 表情 buttons
         float buttonY = inputY + 8;
+        Font buttonFont = FontManager.font(13.0F);
         SkiaDraw.drawRoundedRect(canvas, inputX + 10, buttonY, 46, 26, 8, Color.makeARGB(50, 255, 255, 255));
-        SkiaFontRenderer.drawText(canvas, FontManager.font(13.0F), "图片", inputX + 19, buttonY + 17, textSecondary());
+        SkiaFontRenderer.drawTextCentered(canvas, buttonFont, "图片", inputX + 33, buttonY + 13, textSecondary());
         SkiaDraw.drawRoundedRect(canvas, inputX + 62, buttonY, 46, 26, 8, Color.makeARGB(50, 255, 255, 255));
-        SkiaFontRenderer.drawText(canvas, FontManager.font(13.0F), "表情", inputX + 71, buttonY + 17, textSecondary());
+        SkiaFontRenderer.drawTextCentered(canvas, buttonFont, "表情", inputX + 85, buttonY + 13, textSecondary());
 
+        // Input text / placeholder / cursor
         Font inputFont = FontManager.font(15.0F);
-        String display = inputText.isEmpty() ? "输入点什么，可以直接粘贴文件或图片哦~" : inputText;
-        int inputColor = inputText.isEmpty() ? textSecondary() : textPrimary();
-        SkiaFontRenderer.drawText(canvas, inputFont, display, inputX + 14, inputY + 48, inputColor);
+        float inputCenterY = inputY + 55.0F;
+        if (inputText.isEmpty() && !inputFocused) {
+            SkiaFontRenderer.drawText(canvas, inputFont, "输入点什么，可以直接粘贴文件或图片哦~", inputX + 14, SkiaFontRenderer.baselineY(inputFont, inputCenterY), textSecondary());
+        } else if (!inputText.isEmpty()) {
+            SkiaFontRenderer.drawText(canvas, inputFont, inputText, inputX + 14, SkiaFontRenderer.baselineY(inputFont, inputCenterY), textPrimary());
+        }
+        if (inputFocused && (System.currentTimeMillis() / 500L) % 2L == 0L) {
+            float cursorX = inputX + 14 + SkiaFontRenderer.getStringWidth(inputFont, inputText) + 2.0F;
+            float cursorH = SkiaFontRenderer.textHeight(inputFont);
+            SkiaDraw.drawRoundedRect(canvas, cursorX, inputCenterY - cursorH / 2.0F, 2.0F, cursorH, 1.0F, textPrimary());
+        }
 
         float sendW = 64;
         float sendX = x + panelWidth() - sendW - 16;
         float sendY = inputY + 10;
         SkiaDraw.drawRoundedRect(canvas, sendX, sendY, sendW, INPUT_HEIGHT - 20, 12, accent());
         Font sendFont = FontManager.font(16.0F);
-        float sendTextX = sendX + (sendW - SkiaFontRenderer.getStringWidth(sendFont, "发送")) / 2.0F;
-        SkiaFontRenderer.drawText(canvas, sendFont, "发送", sendTextX, sendY + 20, textPrimary());
+        SkiaFontRenderer.drawTextCentered(canvas, sendFont, "发送", sendX + sendW / 2.0F, sendY + (INPUT_HEIGHT - 20) / 2.0F, textPrimary());
 
         drawEmojiPanel(canvas);
         drawContextMenu(canvas);
@@ -179,7 +197,8 @@ public class AtomChatScreen extends Screen {
 
         String name = msg.isOwn() ? "我" : "玩家";
         float nameX = msg.isOwn() ? x + maxWidth - 80 : x + 34;
-        SkiaFontRenderer.drawText(canvas, FontManager.font(12.0F), name, nameX, y + 10, textSecondary());
+        Font nameFont = FontManager.font(12.0F);
+        SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.baselineY(nameFont, y + 9.0F), textSecondary());
 
         float avatarSize = 26;
         float avatarX = msg.isOwn() ? x + maxWidth - avatarSize : x;
@@ -204,7 +223,7 @@ public class AtomChatScreen extends Screen {
             bubbleX = x + 34;
         }
         SkiaDraw.drawRoundedRect(canvas, bubbleX, y + 18, bubbleWidth, bubbleHeight, 12, msg.isOwn() ? ownBubble() : otherBubble());
-        SkiaFontRenderer.drawText(canvas, font, raw, bubbleX + 10, y + 18 + 13, textPrimary());
+        SkiaFontRenderer.drawText(canvas, font, raw, bubbleX + 10, SkiaFontRenderer.baselineY(font, y + 18 + bubbleHeight / 2.0F), textPrimary());
 
         float bottom = y + 18 + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, bubbleX, bubbleWidth, bottom);
@@ -213,7 +232,8 @@ public class AtomChatScreen extends Screen {
     private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
         String name = msg.isOwn() ? "我" : "玩家";
         float nameX = msg.isOwn() ? x + maxWidth - 80 : x + 34;
-        SkiaFontRenderer.drawText(canvas, FontManager.font(12.0F), name, nameX, y + 10, textSecondary());
+        Font nameFont = FontManager.font(12.0F);
+        SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.baselineY(nameFont, y + 9.0F), textSecondary());
 
         float avatarSize = 26;
         float avatarX = msg.isOwn() ? x + maxWidth - avatarSize : x;
@@ -231,7 +251,8 @@ public class AtomChatScreen extends Screen {
             float drawH = Math.min(imageH, imageW / aspect);
             SkiaDraw.drawRoundedImage(canvas, image, bubbleX, y + 18 + (imageH - drawH) / 2.0F, imageW, drawH, 12);
         } else {
-            SkiaFontRenderer.drawText(canvas, FontManager.font(13.0F), "图片加载中…", bubbleX + 12, y + 18 + 18, textSecondary());
+            Font loadingFont = FontManager.font(13.0F);
+            SkiaFontRenderer.drawText(canvas, loadingFont, "图片加载中…", bubbleX + 12, SkiaFontRenderer.baselineY(loadingFont, y + 18 + imageH / 2.0F), textSecondary());
         }
 
         float bottom = y + 18 + imageH;
@@ -258,8 +279,8 @@ public class AtomChatScreen extends Screen {
         if (!emojiOpen) {
             return;
         }
-        float x = (this.width - panelWidth()) / 2.0F;
-        float y = (this.height - panelHeight()) / 2.0F;
+        float x = panelX();
+        float y = panelY();
         float panelW = 260;
         float panelH = 120;
         float panelX = x + 12;
@@ -275,7 +296,7 @@ public class AtomChatScreen extends Screen {
             int row = i / cols;
             float ex = panelX + 12 + col * 38;
             float ey = panelY + 16 + row * 38;
-            SkiaFontRenderer.drawText(canvas, emojiFont, emojis[i], ex, ey + 20, textPrimary());
+            SkiaFontRenderer.drawText(canvas, emojiFont, emojis[i], ex, SkiaFontRenderer.baselineY(emojiFont, ey + 19.0F), textPrimary());
         }
     }
 
@@ -285,23 +306,24 @@ public class AtomChatScreen extends Screen {
         }
         float menuW = 110;
         float menuH = 64;
-        float menuX = Math.min(contextX, (this.width - panelWidth()) / 2.0F + panelWidth() - menuW - 8);
-        float menuY = Math.min(contextY, (this.height - panelHeight()) / 2.0F + panelHeight() - menuH - 8);
+        float menuX = Math.min(contextX, panelX() + panelWidth() - menuW - 8);
+        float menuY = Math.min(contextY, panelY() + panelHeight() - menuH - 8);
         SkiaDraw.drawRoundedRect(canvas, menuX, menuY, menuW, menuH, 10, Color.makeARGB(245, 35, 39, 47));
         SkiaDraw.drawRoundedShadow(canvas, menuX, menuY, menuW, menuH, 10, 8, Color.makeARGB(100, 0, 0, 0));
-        SkiaFontRenderer.drawText(canvas, FontManager.font(14.0F), "复制", menuX + 12, menuY + 22, textPrimary());
-        SkiaFontRenderer.drawText(canvas, FontManager.font(14.0F), "引用", menuX + 12, menuY + 48, textPrimary());
+        Font menuFont = FontManager.font(14.0F);
+        SkiaFontRenderer.drawText(canvas, menuFont, "复制", menuX + 12, SkiaFontRenderer.baselineY(menuFont, menuY + 16.0F), textPrimary());
+        SkiaFontRenderer.drawText(canvas, menuFont, "引用", menuX + 12, SkiaFontRenderer.baselineY(menuFont, menuY + 48.0F), textPrimary());
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        float panelX = (this.width - panelWidth()) / 2.0F;
-        float panelY = (this.height - panelHeight()) / 2.0F;
-        float listX = panelX + 12;
-        float listY = panelY + HEADER_HEIGHT + 8;
+        float mx = toVirtualX(mouseX);
+        float my = toVirtualY(mouseY);
+        float listX = panelX() + 12;
+        float listY = panelY() + HEADER_HEIGHT + 8;
         float listW = panelWidth() - 24;
         float listH = panelHeight() - HEADER_HEIGHT - INPUT_HEIGHT - 16;
-        if (mouseX >= listX && mouseX <= listX + listW && mouseY >= listY && mouseY <= listY + listH) {
+        if (mx >= listX && mx <= listX + listW && my >= listY && my <= listY + listH) {
             scrollY -= verticalAmount * 20.0F;
             scrollY = Math.max(0, Math.min(scrollY, maxScroll));
             return true;
@@ -311,8 +333,10 @@ public class AtomChatScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        float panelX = (this.width - panelWidth()) / 2.0F;
-        float panelY = (this.height - panelHeight()) / 2.0F;
+        float mx = toVirtualX(mouseX);
+        float my = toVirtualY(mouseY);
+        float panelX = panelX();
+        float panelY = panelY();
 
         // Emoji panel click
         if (emojiOpen) {
@@ -320,11 +344,11 @@ public class AtomChatScreen extends Screen {
             float panelH = 120;
             float panelX2 = panelX + 12;
             float panelY2 = panelY + panelHeight() - INPUT_HEIGHT - 8 - panelH - 6;
-            if (mouseX >= panelX2 && mouseX <= panelX2 + panelW && mouseY >= panelY2 && mouseY <= panelY2 + panelH) {
+            if (mx >= panelX2 && mx <= panelX2 + panelW && my >= panelY2 && my <= panelY2 + panelH) {
                 String[] emojis = {"👍", "😂", "❤️", "🎉", "🔥", "😮", "😢", "👀", "✨", "💯", "🙏", "🤔"};
                 int cols = 6;
-                int col = (int) ((mouseX - panelX2 - 12) / 38);
-                int row = (int) ((mouseY - panelY2 - 16) / 38);
+                int col = (int) ((mx - panelX2 - 12) / 38);
+                int row = (int) ((my - panelY2 - 16) / 38);
                 int idx = row * cols + col;
                 if (idx >= 0 && idx < emojis.length) {
                     inputText += emojis[idx];
@@ -341,8 +365,8 @@ public class AtomChatScreen extends Screen {
             float menuH = 64;
             float menuX = Math.min(contextX, panelX + panelWidth() - menuW - 8);
             float menuY = Math.min(contextY, panelY + panelHeight() - menuH - 8);
-            if (mouseX >= menuX && mouseX <= menuX + menuW && mouseY >= menuY && mouseY <= menuY + menuH) {
-                if (mouseY < menuY + 32) {
+            if (mx >= menuX && mx <= menuX + menuW && my >= menuY && my <= menuY + menuH) {
+                if (my < menuY + 32) {
                     this.client.keyboard.setClipboard(contextMessage.getRawText());
                 } else {
                     replyTarget = contextMessage;
@@ -356,12 +380,12 @@ public class AtomChatScreen extends Screen {
         // Emoji / image buttons
         float inputX = panelX + 12;
         float inputY = panelY + panelHeight() - INPUT_HEIGHT - 8;
-        if (button == 0 && mouseY >= inputY + 8 && mouseY <= inputY + 34) {
-            if (mouseX >= inputX + 10 && mouseX <= inputX + 56) {
+        if (button == 0 && my >= inputY + 8 && my <= inputY + 34) {
+            if (mx >= inputX + 10 && mx <= inputX + 56) {
                 pickAndUploadImage();
                 return true;
             }
-            if (mouseX >= inputX + 62 && mouseX <= inputX + 108) {
+            if (mx >= inputX + 62 && mx <= inputX + 108) {
                 emojiOpen = !emojiOpen;
                 return true;
             }
@@ -371,22 +395,30 @@ public class AtomChatScreen extends Screen {
         float sendW = 64;
         float sendX = panelX + panelWidth() - sendW - 16;
         float sendY = inputY + 10;
-        if (button == 0 && mouseX >= sendX && mouseX <= sendX + sendW && mouseY >= sendY && mouseY <= sendY + INPUT_HEIGHT - 10) {
+        if (button == 0 && mx >= sendX && mx <= sendX + sendW && my >= sendY && my <= sendY + INPUT_HEIGHT - 10) {
             sendMessage(inputText);
+            return true;
+        }
+
+        // Input box focus
+        float inputW = panelWidth() - 24;
+        inputFocused = false;
+        if (button == 0 && mx >= inputX && mx <= inputX + inputW && my >= inputY && my <= inputY + INPUT_HEIGHT) {
+            inputFocused = true;
             return true;
         }
 
         // Message interactions
         for (MessageHit hit : hits) {
-            if (mouseY >= hit.y() && mouseY <= hit.bottom()) {
+            if (my >= hit.y() && my <= hit.bottom()) {
                 if (button == 1) {
                     contextMessage = hit.message();
-                    contextX = (float) mouseX;
-                    contextY = (float) mouseY;
+                    contextX = mx;
+                    contextY = my;
                     return true;
                 }
-                if (button == 0 && mouseX >= hit.avatarX() && mouseX <= hit.avatarX() + hit.avatarSize()
-                        && mouseY >= hit.avatarY() && mouseY <= hit.avatarY() + hit.avatarSize()) {
+                if (button == 0 && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
+                        && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()) {
                     long now = System.currentTimeMillis();
                     if (now - lastAvatarClickTime < 350 && lastAvatarClickIndex == hit.index()) {
                         pokeIndex = hit.index();
@@ -406,14 +438,33 @@ public class AtomChatScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 257 || keyCode == 335) {
+        if (!inputFocused) {
+            if (keyCode == 257 || keyCode == 335) {
+                inputFocused = true;
+                return true;
+            }
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+        if (hasControlDown() && keyCode == 86) { // Ctrl+V paste
+            pasteFromClipboard();
+            return true;
+        }
+        if (keyCode == 257 || keyCode == 335) { // Enter
             sendMessage(inputText);
             return true;
         }
-        if (keyCode == 259) {
+        if (keyCode == 259) { // Backspace
             if (!inputText.isEmpty()) {
                 inputText = inputText.substring(0, inputText.length() - 1);
             }
+            return true;
+        }
+        if (keyCode == 265) { // Up: older history
+            setChatFromHistory(-1);
+            return true;
+        }
+        if (keyCode == 264) { // Down: newer history
+            setChatFromHistory(1);
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
@@ -421,6 +472,9 @@ public class AtomChatScreen extends Screen {
 
     @Override
     public boolean charTyped(char chr, int modifiers) {
+        if (!inputFocused) {
+            return true;
+        }
         if (chr == '§') {
             return true;
         }
@@ -428,6 +482,34 @@ public class AtomChatScreen extends Screen {
             inputText += chr;
         }
         return true;
+    }
+
+    private void pasteFromClipboard() {
+        String clip = this.client.keyboard.getClipboard();
+        if (clip == null || clip.isEmpty()) {
+            return;
+        }
+        String merged = StringUtils.normalizeSpace((inputText + " " + clip).trim());
+        inputText = StringHelper.truncateChat(merged);
+    }
+
+    private void setChatFromHistory(int offset) {
+        var history = this.client.inGameHud.getChatHud().getMessageHistory();
+        int size = history.size();
+        int idx = MathHelper.clamp(messageHistoryIndex + offset, 0, size);
+        if (idx == messageHistoryIndex) {
+            return;
+        }
+        if (idx == size) {
+            messageHistoryIndex = size;
+            inputText = chatLastMessage;
+        } else {
+            if (messageHistoryIndex == size) {
+                chatLastMessage = inputText;
+            }
+            inputText = history.get(idx);
+            messageHistoryIndex = idx;
+        }
     }
 
     private void pickAndUploadImage() {
@@ -448,7 +530,7 @@ public class AtomChatScreen extends Screen {
     }
 
     private void sendMessage(String text) {
-        String normalized = text.trim();
+        String normalized = normalizeInput(text);
         if (normalized.isEmpty()) {
             return;
         }
@@ -461,10 +543,18 @@ public class AtomChatScreen extends Screen {
                 }
                 this.client.player.networkHandler.sendChatMessage(normalized);
             }
+            this.client.inGameHud.getChatHud().addToMessageHistory(normalized);
             ChatStore.get().add(new ChatMessage(Text.literal(normalized), true));
             inputText = "";
             replyTarget = null;
+            inputFocused = false;
+            messageHistoryIndex = this.client.inGameHud.getChatHud().getMessageHistory().size();
+            chatLastMessage = "";
         }
+    }
+
+    private static String normalizeInput(String text) {
+        return StringHelper.truncateChat(StringUtils.normalizeSpace(text.trim()));
     }
 
     private static String extractImageUrl(String text) {
@@ -518,11 +608,41 @@ public class AtomChatScreen extends Screen {
     }
 
     private float panelWidth() {
-        return AtomChatConfig.get().panelWidth;
+        return Math.min(AtomChatConfig.get().panelWidth, vw() - 32.0F);
     }
 
     private float panelHeight() {
-        return AtomChatConfig.get().panelHeight;
+        return Math.min(AtomChatConfig.get().panelHeight, vh() - 32.0F);
+    }
+
+    // Virtual UI space: independent of vanilla GUI scale, anchored at 1080p.
+    private float uiDensity() {
+        var window = this.client.getWindow();
+        return Math.max(1.0F, window.getFramebufferHeight() / 1080.0F);
+    }
+
+    private float vw() {
+        return this.client.getWindow().getFramebufferWidth() / uiDensity();
+    }
+
+    private float vh() {
+        return this.client.getWindow().getFramebufferHeight() / uiDensity();
+    }
+
+    private float panelX() {
+        return 24.0F;
+    }
+
+    private float panelY() {
+        return (vh() - panelHeight()) / 2.0F;
+    }
+
+    private float toVirtualX(double guiX) {
+        return (float) (guiX * this.client.getWindow().getScaleFactor() / uiDensity());
+    }
+
+    private float toVirtualY(double guiY) {
+        return (float) (guiY * this.client.getWindow().getScaleFactor() / uiDensity());
     }
 
     @Override
