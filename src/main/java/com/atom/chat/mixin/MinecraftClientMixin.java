@@ -1,6 +1,6 @@
 package com.atom.chat.mixin;
 
-import com.atom.chat.screen.AtomChatScreen;
+import net.minecraft.client.gui.screen.AtomChatScreen;
 import net.minecraft.client.MinecraftClient;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

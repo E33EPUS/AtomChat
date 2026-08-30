@@ -47,3 +47,7 @@ java {
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
+
+loom {
+    accessWidenerPath = file("src/main/resources/atomchat.accesswidener")
+}
