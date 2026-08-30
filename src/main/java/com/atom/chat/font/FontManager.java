@@ -3,6 +3,7 @@ package com.atom.chat.font;
 import com.atom.chat.AtomChat;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.FontVariation;
 import io.github.humbleui.skija.FontStyle;
 import io.github.humbleui.skija.Typeface;
 
@@ -14,7 +15,10 @@ import java.util.Locale;
  * otherwise falls back to a system font so development can proceed without assets.
  */
 public final class FontManager {
-    private static final String BUNDLED_FONT = "/assets/atomchat/font/NotoSansSC-Regular.otf";
+    /** Drop a licensed font file here (e.g. Noto Sans SC) to bundle it. */
+    private static final String BUNDLED_FONT = "/assets/atomchat/font/bundled.otf";
+    /** Faux-bold for thin system fallback fonts; a real bundled font makes this redundant. */
+    private static boolean usingFallbackTypeface;
     private static Typeface defaultTypeface;
     private static final java.util.Map<String, Font> CACHE = new java.util.HashMap<>();
 
@@ -29,7 +33,8 @@ public final class FontManager {
         // Bundled font first.
         try (InputStream in = FontManager.class.getResourceAsStream(BUNDLED_FONT)) {
             if (in != null) {
-                defaultTypeface = Typeface.makeFromData(Data.makeFromBytes(in.readAllBytes()));
+                defaultTypeface = mediumWeight(Typeface.makeFromData(Data.makeFromBytes(in.readAllBytes())));
+                usingFallbackTypeface = false;
                 AtomChat.LOGGER.info("Loaded bundled font {}", BUNDLED_FONT);
                 return defaultTypeface;
             }
@@ -38,6 +43,7 @@ public final class FontManager {
         }
 
         // System fallbacks (Windows/other).
+        usingFallbackTypeface = true;
         String[] candidates = {"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Arial"};
         for (String name : candidates) {
             Typeface tf = Typeface.makeFromName(name, FontStyle.NORMAL);
@@ -56,6 +62,18 @@ public final class FontManager {
         return defaultTypeface;
     }
 
+    /** Variable fonts are cloned at Medium (wght 500) so text is not too thin. */
+    private static Typeface mediumWeight(Typeface face) {
+        try {
+            if (face.getVariations().length > 0) {
+                return face.makeClone(new FontVariation("wght", 500));
+            }
+        } catch (Throwable t) {
+            AtomChat.LOGGER.warn("Variable font weight clone failed, using default instance", t);
+        }
+        return face;
+    }
+
     public static Font font(float size) {
         String key = size + "px";
         Font cached = CACHE.get(key);
@@ -63,6 +81,9 @@ public final class FontManager {
             return cached;
         }
         Font font = new Font(getDefaultTypeface(), size);
+        if (usingFallbackTypeface) {
+            font.setEmboldened(true);
+        }
         CACHE.put(key, font);
         return font;
     }
