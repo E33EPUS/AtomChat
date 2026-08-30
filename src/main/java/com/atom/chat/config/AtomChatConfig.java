@@ -13,10 +13,12 @@ import java.nio.file.Path;
 public class AtomChatConfig {
     public static final AtomChatConfig DEFAULT = new AtomChatConfig();
 
-    public float panelWidth = 420.0F;
+    public float panelWidth = 480.0F;
     public float panelHeight = 780.0F;
     public boolean blurEnabled = true;
     public boolean animationEnabled = true;
+    /** Dumps avatar sampling PNGs to the config dir for color debugging. */
+    public boolean debug = false;
     public int accentColor = 0xFF4A90E2;
     public int ownBubbleColor = 0xFF4A90E2;
     public int otherBubbleColor = 0xFF343A44;

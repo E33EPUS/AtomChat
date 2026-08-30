@@ -19,10 +19,15 @@
   },
   "mixins": [
     {
+      "config": "atomchat.screen.mixins.json",
+      "environment": "client"
+    },
+    {
       "config": "atomchat.client.mixins.json",
       "environment": "client"
     }
   ],
+  "accessWidener": "atomchat.accesswidener",
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": "~1.21.1",
