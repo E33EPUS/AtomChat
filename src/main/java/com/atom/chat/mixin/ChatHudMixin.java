@@ -2,7 +2,7 @@ package com.atom.chat.mixin;
 
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatStore;
-import com.atom.chat.screen.AtomChatScreen;
+import net.minecraft.client.gui.screen.AtomChatScreen;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.ChatHud;
@@ -38,6 +38,6 @@ public class ChatHudMixin {
                 }
             }
         }
-        ChatStore.get().add(new ChatMessage(message, false));
+        ChatStore.get().add(new ChatMessage(message, false, !raw.startsWith("<")));
     }
 }
