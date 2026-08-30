@@ -58,15 +58,18 @@ public class AtomChatScreen extends Screen {
     private static final long OPEN_ANIM_MS = 220;
     private static final long MESSAGE_ANIM_MS = 250;
     private static final long SCROLL_ANIM_MS = 150;
+    private static final long WHEEL_ANIM_MS = 300;
     private final long openStart = System.currentTimeMillis();
     private boolean closing;
     private long closeStart;
     private boolean firstRender = true;
     private boolean scrollToBottom = true;
+    private float scrollTarget;
     private boolean scrollAnimActive;
     private float scrollAnimFrom;
     private float scrollAnimTo;
     private long scrollAnimStart;
+    private long scrollAnimMs = SCROLL_ANIM_MS;
     private int pressedButton = -1;
     private long pressTime;
 
@@ -270,35 +273,51 @@ public class AtomChatScreen extends Screen {
     }
 
     /**
-     * e33chat-style bottom stickiness: snap to bottom on first render, follow new
-     * messages while the view is at the bottom, and animate the travel (150ms).
+     * Tuui WheelUtils-style scrolling: wheel only moves a target value and the
+     * actual offset eases toward it. Bottom-stickiness (e33chat pattern) retargets
+     * to maxScroll while the view is at the bottom.
      */
     private void updateScrollAnimation() {
         long now = System.currentTimeMillis();
         if (firstRender) {
             scrollY = maxScroll;
+            scrollTarget = maxScroll;
             scrollToBottom = false;
             firstRender = false;
             return;
         }
+        // Stickiness follows the target: a wheel-up retarget immediately releases it.
+        boolean wasAtBottom = scrollTarget >= maxScroll - 3.0F;
+        if (scrollToBottom || wasAtBottom) {
+            scrollTarget = maxScroll;
+            scrollToBottom = false;
+            startScrollAnim(scrollTarget, SCROLL_ANIM_MS);
+        }
         if (scrollAnimActive) {
-            float t = Math.min(1.0F, (now - scrollAnimStart) / (float) SCROLL_ANIM_MS);
+            float t = Math.min(1.0F, (now - scrollAnimStart) / (float) scrollAnimMs);
             scrollY = scrollAnimFrom + (scrollAnimTo - scrollAnimFrom) * Easing.easeOutCubic(t);
             if (t >= 1.0F) {
                 scrollY = scrollAnimTo;
                 scrollAnimActive = false;
             }
+        }
+    }
+
+    private void startScrollAnim(float to, long durationMs) {
+        scrollTarget = to;
+        if (Math.abs(scrollY - to) <= 0.5F) {
+            scrollY = to;
+            scrollAnimActive = false;
             return;
         }
-        boolean wasAtBottom = scrollY >= maxScroll - 3.0F;
-        if ((scrollToBottom || wasAtBottom) && Math.abs(scrollY - maxScroll) > 3.0F) {
-            scrollAnimFrom = scrollY;
-            scrollAnimTo = maxScroll;
-            scrollAnimStart = now;
-            scrollAnimActive = true;
-        } else if (scrollToBottom) {
-            scrollToBottom = false;
+        if (scrollAnimActive && scrollAnimTo == to) {
+            return;
         }
+        scrollAnimFrom = scrollY;
+        scrollAnimTo = to;
+        scrollAnimStart = System.currentTimeMillis();
+        scrollAnimMs = durationMs;
+        scrollAnimActive = true;
     }
 
     private MessageHit drawMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
@@ -397,6 +416,7 @@ public class AtomChatScreen extends Screen {
         }
         maxScroll = Math.max(0, contentHeight - height);
         scrollY = Math.max(0, Math.min(scrollY, maxScroll));
+        scrollTarget = Math.max(0, Math.min(scrollTarget, maxScroll));
     }
 
     /**
@@ -464,9 +484,8 @@ public class AtomChatScreen extends Screen {
         float listH = panelHeight() - HEADER_HEIGHT - INPUT_HEIGHT - 16;
         if (mx >= listX && mx <= listX + listW && my >= listY && my <= listY + listH) {
             scrollToBottom = false;
-            scrollAnimActive = false;
-            scrollY -= verticalAmount * 20.0F;
-            scrollY = Math.max(0, Math.min(scrollY, maxScroll));
+            scrollTarget = Math.max(0, Math.min(scrollTarget - (float) verticalAmount * 20.0F, maxScroll));
+            startScrollAnim(scrollTarget, WHEEL_ANIM_MS);
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
