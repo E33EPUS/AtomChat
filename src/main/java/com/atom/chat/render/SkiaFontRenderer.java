@@ -19,6 +19,9 @@ public final class SkiaFontRenderer {
             0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF
     };
 
+    /** Per-codepoint+size cache of resolved fallback fonts (emoji / chars missing from the primary). */
+    private static final java.util.Map<String, Font> FALLBACK_FONT_CACHE = new java.util.HashMap<>();
+
     private SkiaFontRenderer() {
     }
 
@@ -26,7 +29,7 @@ public final class SkiaFontRenderer {
         float width = 0.0F;
         for (TextSegment segment : parseColoredText(text)) {
             if (!segment.text.isEmpty()) {
-                width += font.measureTextWidth(segment.text);
+                width += measureRuns(font, segment.text);
             }
         }
         return width;
@@ -34,7 +37,7 @@ public final class SkiaFontRenderer {
 
     public static float getHeight(Font font) {
         var metrics = font.getMetrics();
-        return (metrics.getDescent() - metrics.getAscent() + metrics.getLeading()) / 2.0F;
+        return metrics.getDescent() - metrics.getAscent() + metrics.getLeading();
     }
 
     public static float textHeight(Font font) {
@@ -48,6 +51,20 @@ public final class SkiaFontRenderer {
     public static float baselineY(Font font, float centerY) {
         var metrics = font.getMetrics();
         return centerY - (metrics.getAscent() + metrics.getDescent()) / 2.0F;
+    }
+
+    /**
+     * Baseline so the visual glyph body is centered at centerY. Uses capHeight:
+     * CJK fonts carry huge ascender space for diacritics, which pushes the plain
+     * metrics-center formula visually up inside the bubble.
+     */
+    public static float centerBaselineY(Font font, float centerY) {
+        var metrics = font.getMetrics();
+        float capHeight = metrics.getCapHeight();
+        if (capHeight > 0.0F) {
+            return centerY + capHeight / 2.0F;
+        }
+        return baselineY(font, centerY);
     }
 
     public static void drawTextCentered(Canvas canvas, Font font, String text, float centerX, float centerY, int color) {
@@ -73,13 +90,132 @@ public final class SkiaFontRenderer {
                 }
                 if (!segment.text.isEmpty()) {
                     paint.setColor(currentColor);
-                    canvas.drawString(segment.text, drawX, y, font, paint);
-                    drawX += font.measureTextWidth(segment.text);
+                    drawRuns(canvas, segment.text, drawX, y, font, paint);
+                    drawX += measureRuns(font, segment.text);
                 }
             }
         } finally {
             canvas.restore();
         }
+    }
+
+    /**
+     * Draws pre-wrapped lines as one block, vertically centered on centerY.
+     * Every line keeps Minecraft color-code support.
+     */
+    public static void drawLines(Canvas canvas, Font font, java.util.List<String> lines, float x, float centerY, float lineHeight, int color) {
+        if (lines.isEmpty()) {
+            return;
+        }
+        float totalH = lines.size() * lineHeight;
+        float blockTop = centerY - totalH / 2.0F;
+        canvas.save();
+        try (Paint paint = new Paint()) {
+            for (int i = 0; i < lines.size(); i++) {
+                float baseline = centerBaselineY(font, blockTop + (i + 0.5F) * lineHeight);
+                int currentColor = color;
+                float drawX = x;
+                for (TextSegment segment : parseColoredText(lines.get(i))) {
+                    if (segment.colorCode != null) {
+                        currentColor = getColorFromCode(segment.colorCode, currentColor, color);
+                    }
+                    if (!segment.text.isEmpty()) {
+                        paint.setColor(currentColor);
+                        drawRuns(canvas, segment.text, drawX, baseline, font, paint);
+                        drawX += measureRuns(font, segment.text);
+                    }
+                }
+            }
+        } finally {
+            canvas.restore();
+        }
+    }
+
+    /**
+     * Glyph-level fallback: codepoints missing from the primary (bundled subset)
+     * resolve through the system FontMgr, emoji ranges prefer Segoe UI Emoji.
+     */
+    private static Font fontFor(Font primary, int codepoint) {
+        if (primary.getUTF32Glyph(codepoint) != 0) {
+            return primary;
+        }
+        String key = codepoint + "@" + (int) primary.getSize();
+        Font cached = FALLBACK_FONT_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        Font resolved = null;
+        try {
+            io.github.humbleui.skija.FontMgr mgr = io.github.humbleui.skija.FontMgr.getDefault();
+            if (mgr != null) {
+                io.github.humbleui.skija.Typeface match;
+                if (isEmojiCodepoint(codepoint)) {
+                    match = mgr.matchFamilyStyle("Segoe UI Emoji", io.github.humbleui.skija.FontStyle.NORMAL);
+                } else {
+                    match = mgr.matchFamiliesStyleCharacter(
+                            new String[]{"Microsoft YaHei", "Segoe UI", "Noto Sans CJK SC", "Arial"},
+                            io.github.humbleui.skija.FontStyle.NORMAL, null, codepoint);
+                }
+                if (match != null) {
+                    resolved = new Font(match, primary.getSize());
+                }
+            }
+        } catch (Throwable t) {
+            // No fallback available: primary renders tofu, same as before.
+        }
+        if (resolved == null) {
+            resolved = primary;
+        }
+        FALLBACK_FONT_CACHE.put(key, resolved);
+        return resolved;
+    }
+
+    private static boolean isEmojiCodepoint(int cp) {
+        return (cp >= 0x1F000 && cp <= 0x1FAFF) || (cp >= 0x2600 && cp <= 0x27BF)
+                || cp == 0xFE0F || cp == 0x200D || (cp >= 0x2B00 && cp <= 0x2BFF);
+    }
+
+    private static void drawRuns(Canvas canvas, String text, float x, float y, Font primary, Paint paint) {
+        float drawX = x;
+        int i = 0;
+        int n = text.length();
+        while (i < n) {
+            int cp = text.codePointAt(i);
+            Font runFont = fontFor(primary, cp);
+            int j = i;
+            while (j < n) {
+                int cp2 = text.codePointAt(j);
+                if (fontFor(primary, cp2) != runFont) {
+                    break;
+                }
+                j += Character.charCount(cp2);
+            }
+            String run = text.substring(i, j);
+            canvas.drawString(run, drawX, y, runFont, paint);
+            drawX += runFont.measureTextWidth(run);
+            i = j;
+        }
+    }
+
+    private static float measureRuns(Font primary, String text) {
+        float width = 0.0F;
+        int i = 0;
+        int n = text.length();
+        while (i < n) {
+            int cp = text.codePointAt(i);
+            Font runFont = fontFor(primary, cp);
+            int j = i;
+            while (j < n) {
+                int cp2 = text.codePointAt(j);
+                if (fontFor(primary, cp2) != runFont) {
+                    break;
+                }
+                j += Character.charCount(cp2);
+            }
+            width += runFont.measureTextWidth(text.substring(i, j));
+            i = j;
+        }
+        return width;
     }
 
     public static List<String> wrap(Font font, String text, float maxWidth) {
@@ -97,17 +233,23 @@ public final class SkiaFontRenderer {
                 currentWidth = 0.0F;
                 continue;
             }
-            float charWidth = font.measureTextWidth(String.valueOf(c));
+            int cp = text.codePointAt(i);
+            int charCount = Character.charCount(cp);
+            float charWidth = fontFor(font, cp).measureTextWidth(text.substring(i, i + charCount));
             if (currentWidth + charWidth > maxWidth && current.length() > 0) {
                 lines.add(current.toString());
                 current.setLength(0);
                 currentWidth = 0.0F;
                 if (Character.isWhitespace(c)) {
+                    i += charCount - 1;
                     continue;
                 }
             }
-            current.append(c);
+            current.append(text, i, i + charCount);
             currentWidth += charWidth;
+            if (charCount > 1) {
+                i += charCount - 1;
+            }
         }
         if (current.length() > 0) {
             lines.add(current.toString());

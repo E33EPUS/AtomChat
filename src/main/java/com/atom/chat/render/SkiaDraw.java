@@ -31,6 +31,10 @@ public final class SkiaDraw {
     }
 
     public static void drawRoundedImage(Canvas canvas, Image image, float x, float y, float width, float height, float radius) {
+        drawRoundedImage(canvas, image, x, y, width, height, radius, SamplingMode.LINEAR);
+    }
+
+    public static void drawRoundedImage(Canvas canvas, Image image, float x, float y, float width, float height, float radius, SamplingMode mode) {
         if (image == null) {
             return;
         }
@@ -40,7 +44,7 @@ public final class SkiaDraw {
             Rect src = Rect.makeXYWH(0, 0, image.getWidth(), image.getHeight());
             Rect dst = Rect.makeXYWH(x, y, width, height);
             try (Paint paint = new Paint().setAntiAlias(true)) {
-                canvas.drawImageRect(image, src, dst, SamplingMode.LINEAR, paint, false);
+                canvas.drawImageRect(image, src, dst, mode, paint, false);
             }
         } finally {
             canvas.restore();

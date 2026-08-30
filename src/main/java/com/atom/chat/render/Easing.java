@@ -23,4 +23,9 @@ public final class Easing {
         t = 1.0F - t;
         return 1.0F - t * t * t;
     }
+
+    /** Exponential decel (Tuui's EaseOutQuart): long smooth tail for scrolling. */
+    public static float easeOutExpo(float t) {
+        return t >= 1.0F ? 1.0F : (float) (1.0 - Math.pow(2.0, -10.0 * t));
+    }
 }
