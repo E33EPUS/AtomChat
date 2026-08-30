@@ -26,6 +26,18 @@ public class ChatHudMixin {
 
     @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"))
     private void atomchat$captureMessage(Text message, MessageSignatureData signatureData, MessageIndicator indicator, CallbackInfo ci) {
+        String raw = message.getString();
+        if (raw.startsWith("<")) {
+            int end = raw.indexOf("> ");
+            if (end > 0) {
+                String sender = raw.substring(1, end);
+                MinecraftClient client = MinecraftClient.getInstance();
+                if (client.player != null && sender.equals(client.player.getName().getString())) {
+                    // Own message echo: already added locally by AtomChatScreen with the real name.
+                    return;
+                }
+            }
+        }
         ChatStore.get().add(new ChatMessage(message, false));
     }
 }
