@@ -628,9 +628,9 @@ public class AtomChatScreen extends ChatScreen {
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
         float nameCenterY = y + UiTokens.NAME_BAND / 2.0F;
         if (msg.isOwn()) {
-            SkiaFontRenderer.drawTextRight(canvas, nameFont, name, bubbleX + bubbleWidth, nameCenterY, textSecondary());
+            SkiaFontRenderer.drawTextRight(canvas, nameFont, name, bubbleX + bubbleWidth, nameCenterY, textPrimary());
         } else {
-            SkiaFontRenderer.drawText(canvas, nameFont, name, bubbleX, nameCenterY, textSecondary());
+            SkiaFontRenderer.drawText(canvas, nameFont, name, bubbleX, nameCenterY, textPrimary());
         }
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
@@ -719,7 +719,7 @@ public class AtomChatScreen extends ChatScreen {
         String name = msg.isOwn() ? ownName() : "玩家";
         float nameX = msg.isOwn() ? x + maxWidth - UiTokens.BUBBLE_RETRACT : x + nameOffset;
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.centerBaselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F), textSecondary());
+        SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.centerBaselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F), textPrimary());
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
