@@ -6,6 +6,7 @@ import io.github.humbleui.skija.BackendRenderTarget;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ColorSpace;
 import io.github.humbleui.skija.DirectContext;
+import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.PixelGeometry;
 import io.github.humbleui.skija.Surface;
 import io.github.humbleui.skija.SurfaceColorFormat;
@@ -27,6 +28,13 @@ public class SkiaGraphics {
     private Surface surface;
     private BackendRenderTarget renderTarget;
     private int lastFrameBufferId = -1;
+    /**
+     * Last framebuffer image captured at the start of a draw pass. Released the
+     * next time we capture (one frame of staleness is fine, GC plus native
+     * cleanup will happen shortly after). The Screen reads it to draw a blurred
+     * panel background.
+     */
+    private Image lastWorldSnapshot;
 
     public void checkFrameBufferId() {
         int current = MinecraftClient.getInstance().getFramebuffer().fbo;
@@ -64,7 +72,7 @@ public class SkiaGraphics {
         canvas = surface != null ? surface.getCanvas() : null;
     }
 
-    public void draw(Consumer<Canvas> renderer) {
+    public void draw(java.util.function.BiConsumer<Canvas, Image> renderer) {
         RenderSystem.assertOnRenderThread();
         if (context == null || surface == null || canvas == null) {
             createSurface();
@@ -83,12 +91,38 @@ public class SkiaGraphics {
         // Decouple from vanilla GUI scale: design density anchored at 1080p.
         float density = Math.max(1.0F, MinecraftClient.getInstance().getFramebuffer().textureHeight / 1080.0F);
         canvas.scale(density, density);
-        renderer.accept(canvas);
+        // Capture the world before we draw anything on top. makeImageSnapshot
+        // reads the FBO that the surface wraps — at this point it still holds
+        // what vanilla GL drew this frame.
+        Image snapshot = snapshotWorld();
+        renderer.accept(canvas, snapshot);
         canvas.restore();
 
         surface.flush();
         GlStateUtil.restore();
         RenderSystem.disableBlend();
+    }
+
+    private Image snapshotWorld() {
+        if (surface == null) {
+            return null;
+        }
+        // Vanilla GL may still have pending world-draw commands in flight when
+        // we reach this point; force them to complete before reading the FBO
+        // back. One sync per chat-open is cheap (sub-ms) and avoids a blurry /
+        // torn snapshot of the world.
+        GL11C.glFinish();
+        try {
+            Image snap = surface.makeImageSnapshot();
+            if (lastWorldSnapshot != null) {
+                lastWorldSnapshot.close();
+            }
+            lastWorldSnapshot = snap;
+            return snap;
+        } catch (Throwable t) {
+            AtomChat.LOGGER.warn("Skia framebuffer snapshot failed, blur disabled this frame", t);
+            return null;
+        }
     }
 
     private void glStorePixel() {

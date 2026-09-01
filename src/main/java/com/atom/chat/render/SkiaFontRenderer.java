@@ -67,16 +67,22 @@ public final class SkiaFontRenderer {
         return baselineY(font, centerY);
     }
 
+    /**
+     * Centers text on centerX and vertically on centerY using the cap-height
+     * baseline (see centerBaselineY) so it matches every other centered label.
+     */
     public static void drawTextCentered(Canvas canvas, Font font, String text, float centerX, float centerY, int color) {
-        try (Paint paint = new Paint().setColor(color)) {
-            canvas.drawString(text, centerX - font.measureTextWidth(text) / 2.0F, baselineY(font, centerY), font, paint);
-        }
+        drawText(canvas, font, text, centerX - getStringWidth(font, text) / 2.0F,
+                centerBaselineY(font, centerY), color);
     }
 
+    /**
+     * Right-aligns text at rightX, vertically centered on centerY with the same
+     * cap-height baseline used by drawTextCentered.
+     */
     public static void drawTextRight(Canvas canvas, Font font, String text, float rightX, float centerY, int color) {
-        try (Paint paint = new Paint().setColor(color)) {
-            canvas.drawString(text, rightX - font.measureTextWidth(text), baselineY(font, centerY), font, paint);
-        }
+        drawText(canvas, font, text, rightX - getStringWidth(font, text),
+                centerBaselineY(font, centerY), color);
     }
 
     public static void drawText(Canvas canvas, Font font, String text, float x, float y, int color) {

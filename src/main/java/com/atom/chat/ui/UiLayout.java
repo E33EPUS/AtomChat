@@ -11,6 +11,8 @@ public final class UiLayout {
     public final float panelY;
     public final float panelW;
     public final float panelH;
+    /** Extra height currently added to the input bar while the text wraps. */
+    public final float inputExtraH;
 
     public final Rect header;
     public final Rect list;
@@ -18,25 +20,28 @@ public final class UiLayout {
     public final Rect imageBtn;
     public final Rect emojiBtn;
     public final Rect sendBtn;
-    /** Vertical center of the input text row inside the input bar. */
+    /** Vertical center of the input text's FIRST visible line. */
     public final float inputTextCenterY;
 
-    private UiLayout(float panelX, float panelY, float panelW, float panelH) {
+    private UiLayout(float panelX, float panelY, float panelW, float panelH, float inputExtraH) {
         this.panelX = panelX;
         this.panelY = panelY;
         this.panelW = panelW;
         this.panelH = panelH;
+        this.inputExtraH = inputExtraH;
 
         // Header is an inset card (same style as the input bar); its edge gap
         // mirrors PANEL_BOTTOM_PAD so top and bottom breathing space match.
         this.header = new Rect(panelX + UiTokens.LIST_PAD_X, panelY + UiTokens.PANEL_BOTTOM_PAD,
                 panelW - UiTokens.LIST_PAD_X * 2.0F, UiTokens.HEADER_HEIGHT);
         float listTop = this.header.bottom() + UiTokens.PANEL_TOP_GAP;
+        // The bar is bottom-anchored: growing it eats into the list from below.
+        float inputH = UiTokens.INPUT_HEIGHT + inputExtraH;
         this.list = new Rect(panelX + UiTokens.LIST_PAD_X, listTop,
                 panelW - UiTokens.LIST_PAD_X * 2.0F,
-                panelH - (listTop - panelY) - UiTokens.INPUT_HEIGHT - UiTokens.PANEL_BOTTOM_PAD);
-        this.inputBar = new Rect(panelX + UiTokens.LIST_PAD_X, panelY + panelH - UiTokens.INPUT_HEIGHT - UiTokens.PANEL_BOTTOM_PAD,
-                panelW - UiTokens.LIST_PAD_X * 2.0F, UiTokens.INPUT_HEIGHT);
+                panelH - (listTop - panelY) - inputH - UiTokens.PANEL_BOTTOM_PAD);
+        this.inputBar = new Rect(panelX + UiTokens.LIST_PAD_X, panelY + panelH - inputH - UiTokens.PANEL_BOTTOM_PAD,
+                panelW - UiTokens.LIST_PAD_X * 2.0F, inputH);
 
         float rowLeft = inputBar.x + UiTokens.INPUT_ROW_PAD;
         float rowRight = inputBar.x + inputBar.w - UiTokens.INPUT_ROW_PAD;
@@ -50,11 +55,24 @@ public final class UiLayout {
     }
 
     public static UiLayout of(float panelX, float panelY, float panelW, float panelH) {
-        return new UiLayout(panelX, panelY, panelW, panelH);
+        return of(panelX, panelY, panelW, panelH, 0.0F);
+    }
+
+    public static UiLayout of(float panelX, float panelY, float panelW, float panelH, float inputExtraH) {
+        return new UiLayout(panelX, panelY, panelW, panelH, Math.max(0.0F, inputExtraH));
     }
 
     public Rect rect() {
         return new Rect(panelX, panelY, panelW, panelH);
+    }
+
+    /**
+     * Width the input text may occupy. Independent of how tall the bar is, so
+     * it is safe to query before the wrap (and therefore the extra height) is
+     * recomputed.
+     */
+    public float inputTextMaxWidth() {
+        return inputBar.w() - UiTokens.INPUT_TEXT_X * 2.0F;
     }
 
     public record Rect(float x, float y, float w, float h) {

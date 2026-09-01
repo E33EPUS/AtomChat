@@ -10,11 +10,13 @@ import com.atom.chat.image.SkinResolver;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.font.FontManager;
+import com.atom.chat.render.Animator;
 import com.atom.chat.render.Easing;
 import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
 import com.atom.chat.render.SkiaGraphics;
 import com.atom.chat.ui.UiLayout;
+import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
 import com.atom.chat.util.FilePicker;
 import io.github.humbleui.skija.Canvas;
@@ -57,11 +59,12 @@ public class AtomChatScreen extends ChatScreen {
     private float contextY;
 
 
-    // Animation state
-    private static final long OPEN_ANIM_MS = 220;
-    private static final long MESSAGE_ANIM_MS = 250;
-    private static final long SCROLL_ANIM_MS = 150;
-    private static final long WHEEL_ANIM_MS = 400;
+    // Animation state — durations live in UiMotion so every transition is tuned
+    // in one place and none of them can drift back to a sluggish value.
+    private static final long OPEN_ANIM_MS = UiMotion.PANEL_MS;
+    private static final long MESSAGE_ANIM_MS = UiMotion.MESSAGE_MS;
+    private static final long SCROLL_ANIM_MS = UiMotion.SCROLL_SNAP_MS;
+    private static final long WHEEL_ANIM_MS = UiMotion.SCROLL_WHEEL_MS;
     private final long openStart = System.currentTimeMillis();
     private boolean closing;
     private long closeStart;
@@ -77,10 +80,7 @@ public class AtomChatScreen extends ChatScreen {
     private long pressTime;
 
     // Scrollbar state (e33chat style: hover/sheet fade, drag to scroll)
-    private static final long SCROLLBAR_FADE_MS = 300;
-    private static final long SCROLLBAR_IDLE_MS = 2000;
     private float scrollBarAlpha;
-    private long lastScrollActivity = Long.MIN_VALUE / 2;
     // Per-frame animation state (smooth hover/popup transitions)
     private final float[] buttonHover = new float[3];
     private float scrollEmphasis;
@@ -93,6 +93,23 @@ public class AtomChatScreen extends ChatScreen {
     private float dragStartY;
     private float dragStartScroll;
     private long lastScrollbarFrame;
+    /** Scrollbar colour state: only a held left button turns the thumb blue. */
+    private float scrollActive;
+
+    // Multi-line input: the bar grows upward by whole line heights, and once the
+    // text passes INPUT_MAX_LINES it scrolls inside the fixed box.
+    private float inputExtraH;
+    /**
+     * Tracks the height transition as start/end/time rather than per-frame lerp:
+     * UiMotion.approach is unitless, so on a pixel-valued target it only covers
+     * a fraction of the distance per frame and leaves a multi-hundred-ms tail.
+     * Animator guarantees the bar reaches its target height within INPUT_GROW_MS.
+     */
+    private final Animator inputHeightAnim = new Animator(t -> t);
+    private int inputScrollLine;
+    private String inputWrapText;
+    private float inputWrapWidth = -1.0F;
+    private List<String> inputWrapCache;
 
     private long lastAvatarClickTime;
     private int lastAvatarClickIndex = -1;
@@ -117,12 +134,12 @@ public class AtomChatScreen extends ChatScreen {
         // No super.render: ChatScreen/Screen would draw the vanilla input box and
         // widget chrome; our UI is fully Skia-drawn, the suggestor renders explicitly.
         graphics.checkFrameBufferId();
-        graphics.draw(canvas -> drawPhone(canvas, mouseX, mouseY, delta));
+        graphics.draw((canvas, worldSnapshot) -> drawPhone(canvas, worldSnapshot, mouseX, mouseY, delta));
         // The hidden EditBox stays positioned so the IME floating window anchors
         // correctly; its text/cursor are drawn by Skia above. The suggestion popup
         // still renders through the vanilla pipeline on top.
         if (!closing && chatField != null) {
-            positionInputField(UiLayout.of(panelX(), panelY(), panelWidth(), panelHeight()));
+            positionInputField(layout());
             if (chatInputSuggestor != null) {
                 chatInputSuggestor.render(context, mouseX, mouseY);
             }
@@ -142,22 +159,22 @@ public class AtomChatScreen extends ChatScreen {
     private int anchorInputTopY() {
         double density = uiDensity();
         double scaleFactor = this.client.getWindow().getScaleFactor();
-        return (int) Math.round((UiLayout.of(panelX(), panelY(), panelWidth(), panelHeight()).inputTextCenterY - s(9)) * density / scaleFactor);
+        return (int) Math.round(caretLineTopY() * density / scaleFactor);
     }
 
     private int anchorInputLeftX() {
         double density = uiDensity();
         double scaleFactor = this.client.getWindow().getScaleFactor();
-        return (int) Math.round((UiLayout.of(panelX(), panelY(), panelWidth(), panelHeight()).inputBar.x() + UiTokens.INPUT_TEXT_X) * density / scaleFactor);
+        return (int) Math.round((layout().inputBar.x() + UiTokens.INPUT_TEXT_X) * density / scaleFactor);
     }
 
     private void positionInputField(UiLayout layout) {
         double density = uiDensity();
         double scaleFactor = this.client.getWindow().getScaleFactor();
         chatField.setX((int) Math.round((layout.inputBar.x() + UiTokens.INPUT_TEXT_X) * density / scaleFactor));
-        chatField.setY((int) Math.round((layout.inputTextCenterY - s(9)) * density / scaleFactor));
+        chatField.setY((int) Math.round(caretLineTopY() * density / scaleFactor));
         chatField.setWidth((int) Math.max(10.0F, Math.round((layout.inputBar.w() - UiTokens.INPUT_TEXT_X * 2.0F) * density / scaleFactor)));
-        chatField.setHeight((int) Math.round(s(18) * density / scaleFactor));
+        chatField.setHeight((int) Math.round(inputLineHeight() * density / scaleFactor));
     }
 
     @Override
@@ -200,7 +217,7 @@ public class AtomChatScreen extends ChatScreen {
         chatField.setFocused(true);
     }
 
-    private void drawPhone(Canvas canvas, int mouseX, int mouseY, float delta) {
+    private void drawPhone(Canvas canvas, Image worldSnapshot, int mouseX, int mouseY, float delta) {
         float x = panelX();
         float y = panelY();
         long now = System.currentTimeMillis();
@@ -215,7 +232,9 @@ public class AtomChatScreen extends ChatScreen {
             layer.setColor(Color.makeARGB((int) (255.0F * progress), 0, 0, 0));
             canvas.saveLayer(Rect.makeXYWH(x - 32.0F, y - 32.0F, panelWidth() + 64.0F, panelHeight() + 64.0F), layer);
             canvas.translate((progress - 1.0F) * 36.0F, 0.0F);
-            drawPanel(canvas, x, y, mouseX, mouseY, delta);
+            // The world snapshot sits inside the saveLayer/translate stack so it
+            // fades in with the panel and slides with it — no special handling.
+            drawPanel(canvas, x, y, worldSnapshot, mouseX, mouseY, delta);
             canvas.restore();
         }
         canvas.restore();
@@ -228,36 +247,51 @@ public class AtomChatScreen extends ChatScreen {
         }
     }
 
-    private void drawPanel(Canvas canvas, float x, float y, int mouseX, int mouseY, float delta) {
+    private void drawPanel(Canvas canvas, float x, float y, Image worldSnapshot, int mouseX, int mouseY, float delta) {
         inputFocused = chatField != null && chatField.isFocused();
         long nowMs = System.currentTimeMillis();
         frameDt = Math.min(50L, Math.max(1L, nowMs - lastFrameMs));
         lastFrameMs = nowMs;
         float emojiTarget = emojiOpen ? 1.0F : 0.0F;
-        emojiAnim += (emojiTarget - emojiAnim) * Math.min(1.0F, frameDt / 140.0F);
-        UiLayout layout = UiLayout.of(x, y, panelWidth(), panelHeight());
+        emojiAnim = UiMotion.approach(emojiAnim, emojiTarget, frameDt, UiMotion.POPUP_MS);
+        UiLayout layout = layout();
         UiLayout.Rect panel = layout.rect();
         // Phone bezel: background is inset by the full stroke width so nothing can
         // bleed outside; the white ring itself is drawn LAST (see end of method)
         // so every component sits beneath a clean edge.
         float strokeWidth = s(3);
-        try (Paint bg = new Paint().setColor(panelBg())) {
+        boolean blur = AtomChatConfig.get().blurEnabled;
+        if (blur && worldSnapshot != null) {
+            SkiaDraw.drawBlurredBackground(canvas, worldSnapshot,
+                    panel.x() + strokeWidth, panel.y() + strokeWidth,
+                    panel.w() - strokeWidth * 2.0F, panel.h() - strokeWidth * 2.0F,
+                    UiTokens.PANEL_RADIUS - strokeWidth, UiTokens.PANEL_BLUR_SIGMA);
+        }
+        int tint = blur ? UiTokens.PANEL_BLUR_TINT : panelBg();
+        try (Paint bg = new Paint().setColor(tint)) {
             canvas.drawRRect(RRect.makeXYWH(panel.x() + strokeWidth, panel.y() + strokeWidth,
                     panel.w() - strokeWidth * 2.0F, panel.h() - strokeWidth * 2.0F, UiTokens.PANEL_RADIUS - strokeWidth), bg);
         }
 
         // Header: inset card, same style as the input bar.
         try (Paint header = new Paint().setColor(Color.makeARGB(60, 255, 255, 255))) {
-            canvas.drawRRect(RRect.makeXYWH(layout.header.x(), layout.header.y(), layout.header.w(), layout.header.h(), s(18)), header);
+            canvas.drawRRect(RRect.makeXYWH(layout.header.x(), layout.header.y(), layout.header.w(), layout.header.h(), UiTokens.HEADER_RADIUS), header);
         }
+        // Channel name is centered in the card (both axes); the clock stays
+        // pinned to the right edge.
         Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
-        SkiaFontRenderer.drawText(canvas, titleFont, "世界频道", layout.header.x() + UiTokens.HEADER_PAD_X,
-                SkiaFontRenderer.centerBaselineY(titleFont, layout.header.y() + layout.header.h() / 2.0F), textPrimary());
+        SkiaFontRenderer.drawTextCentered(canvas, titleFont, "世界频道",
+                layout.header.x() + layout.header.w() / 2.0F,
+                layout.header.y() + layout.header.h() / 2.0F, textPrimary());
         LocalTime now = LocalTime.now();
         String time = String.format("%02d:%02d", now.getHour(), now.getMinute());
         Font timeFont = FontManager.font(UiTokens.FONT_TIME);
         SkiaFontRenderer.drawTextRight(canvas, timeFont, time, layout.header.right() - UiTokens.HEADER_PAD_X,
-                layout.header.y() + layout.header.h() / 2.0F, textSecondary());
+                layout.header.y() + layout.header.h() / 2.0F, textPrimary());
+
+        // Grow the input bar before the list is measured, so the list loses
+        // exactly the height the bar gains.
+        layout = updateInputLayout(layout);
 
         drawMessages(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h());
 
@@ -279,27 +313,58 @@ public class AtomChatScreen extends ChatScreen {
         drawSendButton(canvas, layout.sendBtn.x(), layout.sendBtn.y(), mouseX, mouseY);
 
         // Input text: rendered by Skia at fixed density; the hidden EditBox is the
-        // input backend (IME/keys) only. Cursor blinks at the vanilla cursor index.
+        // input backend (IME/keys) only. It wraps onto a second line (the bar has
+        // already grown for it) and scrolls past INPUT_MAX_LINES.
         Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
-        float inputCenterY = layout.inputTextCenterY;
+        float lineH = inputLineHeight();
         String current = inputGetText();
-        // Cap the visible text to the input bar width so it never overflows the bezel.
-        float inputTextMaxW = bar.w() - UiTokens.INPUT_TEXT_X * 2.0F;
-        String visible = current;
-        if (SkiaFontRenderer.getStringWidth(inputFont, visible) > inputTextMaxW) {
-            visible = truncateToWidth(inputFont, current, inputTextMaxW);
-        }
+        float textX = bar.x() + UiTokens.INPUT_TEXT_X;
+        List<String> lines = wrappedInput(layout.inputTextMaxWidth());
+        int total = lines.size();
+        int caretRow = total == 0 ? 0 : caretLine(lines, caretIndex());
+        scrollInputToCaret(caretRow, total);
+        int shown = Math.min(UiTokens.INPUT_MAX_LINES, total);
+        int from = total == 0 ? 0 : Math.min(inputScrollLine, total - shown);
+
+        // Clip to whatever the bar currently has room for, so the text can never
+        // spill past the card while the height is still animating.
+        float clipTop = layout.inputTextCenterY - lineH / 2.0F;
+        float clipBottom = bar.bottom() - UiTokens.INPUT_ROW_PAD;
+        canvas.save();
+        SkiaDraw.clip(canvas, textX, clipTop, layout.inputTextMaxWidth(), Math.max(0.0F, clipBottom - clipTop), 0.0F);
         if (current.isEmpty() && !inputFocused) {
-            SkiaFontRenderer.drawText(canvas, inputFont, "输入点什么，可以直接粘贴文件或图片哦~", bar.x() + UiTokens.INPUT_TEXT_X, SkiaFontRenderer.centerBaselineY(inputFont, inputCenterY), textSecondary());
-        } else if (!current.isEmpty()) {
-            SkiaFontRenderer.drawText(canvas, inputFont, visible, bar.x() + UiTokens.INPUT_TEXT_X, SkiaFontRenderer.centerBaselineY(inputFont, inputCenterY), textPrimary());
+            String hint = truncateToWidth(inputFont, "输入点什么，可以直接粘贴文件或图片哦~", layout.inputTextMaxWidth());
+            SkiaFontRenderer.drawText(canvas, inputFont, hint, textX,
+                    SkiaFontRenderer.centerBaselineY(inputFont, layout.inputTextCenterY), textSecondary());
+        } else {
+            for (int i = from; i < from + shown && i < total; i++) {
+                float cy = layout.inputTextCenterY + (i - from) * lineH;
+                SkiaFontRenderer.drawText(canvas, inputFont, lines.get(i), textX,
+                        SkiaFontRenderer.centerBaselineY(inputFont, cy), textPrimary());
+            }
         }
         if (inputFocused && chatField != null && (System.currentTimeMillis() / 500L) % 2L == 0L) {
-            int cursor = MathHelper.clamp(chatField.getCursor(), 0, current.length());
-            float cursorX = bar.x() + UiTokens.INPUT_TEXT_X + SkiaFontRenderer.getStringWidth(inputFont, current.substring(0, Math.min(cursor, visible.length()))) + 2.0F;
+            int caret = caretIndex();
+            float cursorY;
+            String measure;
+            if (total == 0) {
+                // Empty draft: caret sits at the start of the first visible line.
+                cursorY = layout.inputTextCenterY;
+                measure = "";
+            } else {
+                int lineStart = 0;
+                for (int i = 0; i < caretRow; i++) {
+                    lineStart += lines.get(i).length();
+                }
+                int col = MathHelper.clamp(caret - lineStart, 0, lines.get(caretRow).length());
+                cursorY = layout.inputTextCenterY + (caretRow - from) * lineH;
+                measure = lines.get(caretRow).substring(0, col);
+            }
+            float cursorX = textX + SkiaFontRenderer.getStringWidth(inputFont, measure) + 2.0F;
             float cursorH = SkiaFontRenderer.textHeight(inputFont);
-            SkiaDraw.drawRoundedRect(canvas, cursorX, inputCenterY - cursorH / 2.0F, 2.0F, cursorH, 1.0F, textPrimary());
+            SkiaDraw.drawRoundedRect(canvas, cursorX, cursorY - cursorH / 2.0F, 2.0F, cursorH, 1.0F, textPrimary());
         }
+        canvas.restore();
 
         // Scrollbar (e33chat style): fades in near/hinting scroll, draggable, highlights.
         drawScrollbar(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY));
@@ -322,18 +387,18 @@ public class AtomChatScreen extends ChatScreen {
         float vmx = toVirtualX(mouseX);
         float vmy = toVirtualY(mouseY);
         boolean hover = vmx >= bx && vmx <= bx + UiTokens.BUTTON_W && vmy >= by && vmy <= by + UiTokens.BUTTON_H;
-        buttonHover[id] += ((hover ? 1.0F : 0.0F) - buttonHover[id]) * Math.min(1.0F, frameDt / 120.0F);
+        buttonHover[id] = UiMotion.approach(buttonHover[id], hover ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
         int fill = Math.min(255, (int) (70 + buttonHover[id] * 45.0F + (buttonPressed(id) ? 50 : 0)));
         SkiaDraw.drawRoundedRect(canvas, bx, by, UiTokens.BUTTON_W, UiTokens.BUTTON_H, UiTokens.BUTTON_RADIUS, Color.makeARGB(fill, 255, 255, 255));
         Font buttonFont = FontManager.font(UiTokens.FONT_BUTTON);
-        SkiaFontRenderer.drawTextCentered(canvas, buttonFont, label, bx + UiTokens.BUTTON_W / 2.0F, by + UiTokens.BUTTON_H / 2.0F, textSecondary());
+        SkiaFontRenderer.drawTextCentered(canvas, buttonFont, label, bx + UiTokens.BUTTON_W / 2.0F, by + UiTokens.BUTTON_H / 2.0F, textPrimary());
     }
 
     private void drawSendButton(Canvas canvas, float bx, float by, int mouseX, int mouseY) {
         float vmx = toVirtualX(mouseX);
         float vmy = toVirtualY(mouseY);
         boolean hover = vmx >= bx && vmx <= bx + UiTokens.BUTTON_W && vmy >= by && vmy <= by + UiTokens.BUTTON_H;
-        buttonHover[2] += ((hover ? 1.0F : 0.0F) - buttonHover[2]) * Math.min(1.0F, frameDt / 120.0F);
+        buttonHover[2] = UiMotion.approach(buttonHover[2], hover ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
         SkiaDraw.drawRoundedRect(canvas, bx, by, UiTokens.BUTTON_W, UiTokens.BUTTON_H, UiTokens.BUTTON_RADIUS, accent());
         float overlay = buttonHover[2] * 55.0F + (buttonPressed(2) ? 90.0F : 0.0F);
         if (overlay > 0.5F) {
@@ -356,11 +421,6 @@ public class AtomChatScreen extends ChatScreen {
         if (face != null) {
             SkiaDraw.drawRoundedImage(canvas, face, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE,
                     UiTokens.AVATAR_SIZE / 2.0F, SamplingMode.DEFAULT);
-            // Thin smooth ring on the rim: covers pixel stair-steps, reads as a bezel.
-            try (Paint ring = new Paint().setMode(PaintMode.STROKE).setStrokeWidth(s(2)).setColor(0xF2FFFFFF)) {
-                float c = UiTokens.AVATAR_SIZE / 2.0F;
-                canvas.drawCircle(avatarX + c, avatarY + c, c - s(1), ring);
-            }
         }
     }
 
@@ -374,8 +434,8 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     /**
-     * Rounded scrollbar: fades in while the pointer is on the message list,
-     * while the view is animating, or while dragged; idles out after 2s.
+     * Rounded scrollbar: fades in only while the pointer is near the track or
+     * while dragged, and fades straight back out otherwise.
      * Thumb maps scrollY to the track; drag maps 1:1 with clamping.
      */
     private void drawScrollbar(Canvas canvas, UiLayout layout, float vmx, float vmy) {
@@ -396,10 +456,8 @@ public class AtomChatScreen extends ChatScreen {
                 && vmy >= list.y() - s(12) && vmy <= list.bottom() + s(12);
         boolean active = maxScroll > 0.0F && (draggingScrollbar || nearTrack);
         float target = active ? 1.0F : 0.0F;
-        float fadeSpeed = Math.max(0.05F, (float) dt / (float) SCROLLBAR_FADE_MS);
-        scrollBarAlpha += (target - scrollBarAlpha) * Math.min(1.0F, fadeSpeed);
-        if (scrollBarAlpha < 0.01F) {
-            scrollBarAlpha = 0.0F;
+        scrollBarAlpha = UiMotion.approach(scrollBarAlpha, target, dt, UiMotion.SCROLLBAR_FADE_MS);
+        if (scrollBarAlpha <= 0.0F) {
             return;
         }
 
@@ -415,15 +473,17 @@ public class AtomChatScreen extends ChatScreen {
         boolean hover = !draggingScrollbar
                 && vmx >= trackX - s(8) && vmx <= trackX + trackW + s(8)
                 && vmy >= list.y() && vmy <= list.bottom();
-        boolean emphasized = draggingScrollbar || hover;
-        scrollEmphasis += ((emphasized ? 1.0F : 0.0F) - scrollEmphasis) * Math.min(1.0F, frameDt / 150.0F);
+        // Two separate states: hovering only thickens the thumb (so it reads as
+        // grabbable), while the accent colour is reserved for a held left button.
+        scrollEmphasis = UiMotion.approach(scrollEmphasis, (hover || draggingScrollbar) ? 1.0F : 0.0F, frameDt, UiMotion.SCROLLBAR_EMPHASIS_MS);
+        scrollActive = UiMotion.approach(scrollActive, draggingScrollbar ? 1.0F : 0.0F, frameDt, UiMotion.SCROLLBAR_EMPHASIS_MS);
         float w = trackW + scrollEmphasis * s(3);
         int ar = (accent() >> 16) & 0xFF;
         int ag = (accent() >> 8) & 0xFF;
         int ab = accent() & 0xFF;
-        int r = (int) (255 + (ar - 255) * scrollEmphasis);
-        int g = (int) (255 + (ag - 255) * scrollEmphasis);
-        int bch = (int) (255 + (ab - 255) * scrollEmphasis);
+        int r = (int) (255 + (ar - 255) * scrollActive);
+        int g = (int) (255 + (ag - 255) * scrollActive);
+        int bch = (int) (255 + (ab - 255) * scrollActive);
         int alpha = MathHelper.clamp((int) ((170 + 60 * scrollEmphasis) * scrollBarAlpha), 0, 255);
         int color = (alpha << 24) | (r << 16) | (g << 8) | bch;
         SkiaDraw.drawRoundedRect(canvas, trackX - (w - trackW) / 2.0F, thumbY, w, thumbH, w / 2.0F, color);
@@ -505,7 +565,7 @@ public class AtomChatScreen extends ChatScreen {
         }
         if (scrollAnimActive) {
             float t = Math.min(1.0F, (now - scrollAnimStart) / (float) scrollAnimMs);
-            scrollY = scrollAnimFrom + (scrollAnimTo - scrollAnimFrom) * Easing.easeOutExpo(t);
+            scrollY = scrollAnimFrom + (scrollAnimTo - scrollAnimFrom) * Easing.easeOutCubic(t);
             if (t >= 1.0F) {
                 scrollY = scrollAnimTo;
                 scrollAnimActive = false;
@@ -559,8 +619,8 @@ public class AtomChatScreen extends ChatScreen {
         boolean hasQuote = msg.getQuoteName() != null;
         float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
         float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
-        float bubbleHeight = textHeight + s(18);
-        float nameOffset = UiTokens.AVATAR_SIZE + s(6);
+        float bubbleHeight = textHeight + UiTokens.BUBBLE_PAD_Y;
+        float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
         float bubbleX = msg.isOwn() ? x + maxWidth - bubbleWidth - nameOffset : x + nameOffset;
 
         // Name hugs the bubble's outer edge: right-aligned for own, left for others.
@@ -609,7 +669,7 @@ public class AtomChatScreen extends ChatScreen {
         java.util.List<String> lines = SkiaFontRenderer.wrap(font, display, maxWidth - UiTokens.BUBBLE_PAD * 2.0F);
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float textHeight = Math.max(lineHeight, lines.size() * lineHeight);
-        float bubbleHeight = textHeight + s(10);
+        float bubbleHeight = textHeight + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         float lineMax = 0.0F;
         for (String line : lines) {
             lineMax = Math.max(lineMax, SkiaFontRenderer.getStringWidth(font, line));
@@ -655,11 +715,11 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
-        float nameOffset = UiTokens.AVATAR_SIZE + s(6);
+        float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
         String name = msg.isOwn() ? ownName() : "玩家";
         float nameX = msg.isOwn() ? x + maxWidth - UiTokens.BUBBLE_RETRACT : x + nameOffset;
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.baselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F), textSecondary());
+        SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.centerBaselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F), textSecondary());
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
@@ -712,7 +772,7 @@ public class AtomChatScreen extends ChatScreen {
             Font font = FontManager.font(UiTokens.FONT_QUOTE);
             float lineHeight = SkiaFontRenderer.getHeight(font);
             int lines = SkiaFontRenderer.wrap(font, msg.getDisplayText(), maxWidth - UiTokens.BUBBLE_PAD * 2.0F).size();
-            return s(2) + Math.max(lineHeight, lines * lineHeight) + s(10);
+            return s(2) + Math.max(lineHeight, lines * lineHeight) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         }
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
         if (extractImageUrl(msg.getRawText()) != null) {
@@ -722,7 +782,7 @@ public class AtomChatScreen extends ChatScreen {
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float wrapW = Math.max(s(20), maxWidth - UiTokens.BUBBLE_RETRACT - UiTokens.BUBBLE_PAD * 2.0F);
         int lines = SkiaFontRenderer.wrap(font, msg.getDisplayText(), wrapW).size();
-        return UiTokens.NAME_BAND + quoteH + s(18) + Math.max(lineHeight, lines * lineHeight);
+        return UiTokens.NAME_BAND + quoteH + UiTokens.BUBBLE_PAD_Y + Math.max(lineHeight, lines * lineHeight);
     }
 
     private static float emojiPanelW() {
@@ -744,8 +804,15 @@ public class AtomChatScreen extends ChatScreen {
         return panelX() + UiTokens.LIST_PAD_X;
     }
 
+    /** Sits directly above the input bar, so it follows the bar's grown height. */
     private float emojiPanelY() {
-        return panelY() + panelHeight() - UiTokens.INPUT_HEIGHT - UiTokens.PANEL_TOP_GAP - emojiPanelH() - s(6);
+        return layout().inputBar.y() - UiTokens.PANEL_TOP_GAP - emojiPanelH() - s(6);
+    }
+
+    private boolean overEmojiPanel(float mx, float my) {
+        float px = emojiPanelX();
+        float py = emojiPanelY();
+        return mx >= px && mx <= px + emojiPanelW() && my >= py && my <= py + emojiPanelH();
     }
 
     private void drawEmojiPanel(Canvas canvas) {
@@ -790,7 +857,7 @@ public class AtomChatScreen extends ChatScreen {
             return;
         }
         float target = contextMessage != null ? 1.0F : 0.0F;
-        contextAnim += (target - contextAnim) * Math.min(1.0F, frameDt / 140.0F);
+        contextAnim = UiMotion.approach(contextAnim, target, frameDt, UiMotion.POPUP_MS);
         if (contextAnim < 0.01F) {
             if (target == 0.0F) {
                 lastContextMessage = null;
@@ -820,11 +887,26 @@ public class AtomChatScreen extends ChatScreen {
         canvas.restore();
     }
 
+    /**
+     * Hands the open menu over to lastContextMessage so it can play the closing
+     * animation instead of vanishing. Never recurse: it used to call itself,
+     * which left contextMessage set forever and blew the stack on the caller.
+     */
     private void closeContextMenu() {
         if (contextMessage != null) {
             lastContextMessage = contextMessage;
+            contextMessage = null;
         }
-        closeContextMenu();
+    }
+
+    private void copyToClipboard(String text) {
+        try {
+            this.client.keyboard.setClipboard(text);
+        } catch (Throwable t) {
+            // Never let a clipboard failure abort the click handler: it used to
+            // leave the menu stuck open with no clue why.
+            AtomChat.LOGGER.warn("Failed to copy message to clipboard", t);
+        }
     }
 
     @Override
@@ -835,10 +917,9 @@ public class AtomChatScreen extends ChatScreen {
         }
         float mx = toVirtualX(mouseX);
         float my = toVirtualY(mouseY);
-        UiLayout.Rect list = UiLayout.of(panelX(), panelY(), panelWidth(), panelHeight()).list;
+        UiLayout.Rect list = layout().list;
         if (list.contains((float) mx, (float) my)) {
             scrollToBottom = false;
-            lastScrollActivity = System.currentTimeMillis();
             scrollTarget = Math.max(0, Math.min(scrollTarget - (float) verticalAmount * 45.0F, maxScroll));
             startScrollAnim(scrollTarget, WHEEL_ANIM_MS);
             return true;
@@ -859,34 +940,49 @@ public class AtomChatScreen extends ChatScreen {
         float my = toVirtualY(mouseY);
         float panelX = panelX();
         float panelY = panelY();
+        UiLayout layout = layout();
 
-        // Emoji panel click
+        // The emoji toggle button is tested before the panel's own "click outside
+        // dismisses" rule, otherwise closing and reopening in the same click nets
+        // back to open and the button can never toggle the panel off.
+        if (button == 0 && layout.emojiBtn.contains((float) mx, (float) my)) {
+            pressButton(1);
+            inputFocused = true;
+            emojiOpen = !emojiOpen;
+            return true;
+        }
+
+        // Emoji panel click. Cells must come from EMOJIS — the array that is
+        // actually drawn — not a shorter local copy, or the lower rows are dead.
         if (emojiOpen) {
-            float panelX2 = emojiPanelX();
-            float panelY2 = emojiPanelY();
-            if (mx >= panelX2 && mx <= panelX2 + emojiPanelW() && my >= panelY2 && my <= panelY2 + emojiPanelH()) {
-                String[] emojis = {"👍", "😂", "❤️", "🎉", "🔥", "😮", "😢", "👀", "✨", "💯", "🙏", "🤔"};
-                int col = (int) ((mx - panelX2 - s(12)) / UiTokens.EMOJI_CELL);
-                int row = (int) ((my - panelY2 - s(16)) / UiTokens.EMOJI_CELL);
-                int idx = row * UiTokens.EMOJI_COLS + col;
-                if (idx >= 0 && idx < emojis.length) {
-                    inputAppend(emojis[idx]);
-                    emojiOpen = false;
-                    return true;
+            if (overEmojiPanel((float) mx, (float) my)) {
+                int col = (int) (((float) mx - emojiPanelX() - s(12)) / UiTokens.EMOJI_CELL);
+                int row = (int) (((float) my - emojiPanelY() - s(16)) / UiTokens.EMOJI_CELL);
+                if (col >= 0 && col < UiTokens.EMOJI_COLS && row >= 0) {
+                    int idx = row * UiTokens.EMOJI_COLS + col;
+                    if (idx < EMOJIS.length) {
+                        inputAppend(EMOJIS[idx]);
+                        return true;
+                    }
                 }
+                return true; // inside the panel but between cells: swallow, don't fall through
             }
             emojiOpen = false;
         }
 
-        // Context menu click
+        // Context menu click. Remember the target before dismissing so a
+        // right-click on the same bubble toggles instead of reopening.
+        ChatMessage menuBefore = contextMessage;
         if (contextMessage != null) {
             float menuW = UiTokens.MENU_W;
             float menuH = UiTokens.MENU_H;
             float menuX = Math.min(contextX, panelX + panelWidth() - menuW - s(8));
             float menuY = Math.min(contextY, panelY + panelHeight() - menuH - s(8));
-            if (mx >= menuX && mx <= menuX + menuW && my >= menuY && my <= menuY + menuH) {
-                if (my < menuY + menuH / 2.0F) {
-                    this.client.keyboard.setClipboard(contextMessage.getContentText());
+            boolean inside = (float) mx >= menuX && (float) mx <= menuX + menuW
+                    && (float) my >= menuY && (float) my <= menuY + menuH;
+            if (inside && button == 0) {
+                if ((float) my < menuY + menuH / 2.0F) {
+                    copyToClipboard(contextMessage.getContentText());
                 } else {
                     replyTarget = contextMessage;
                     inputFocused = true;
@@ -896,24 +992,21 @@ public class AtomChatScreen extends ChatScreen {
                 closeContextMenu();
                 return true;
             }
+            // Any other click — including a right-click aimed at another bubble —
+            // dismisses first; the handlers below may then open a new menu.
             closeContextMenu();
         }
 
         // Button row: image / emoji / send share one row and one size,
         // geometry comes from UiLayout so hits can never drift from the drawing.
-        UiLayout layout = UiLayout.of(panelX, panelY, panelWidth(), panelHeight());
         if (button == 0 && layout.imageBtn.contains((float) mx, (float) my)) {
             pressButton(0);
             inputFocused = true;
             pickAndUploadImage();
             return true;
         }
-        if (button == 0 && layout.emojiBtn.contains((float) mx, (float) my)) {
-            pressButton(1);
-            inputFocused = true;
-            emojiOpen = !emojiOpen;
-            return true;
-        }
+        // Inserting an emoji must NOT close the panel: users often want to pick several
+        // in a row. The panel still closes on any outside click or the toggle button.
         if (button == 0 && layout.sendBtn.contains((float) mx, (float) my)) {
             pressButton(2);
             sendMessage(inputGetText());
@@ -937,7 +1030,6 @@ public class AtomChatScreen extends ChatScreen {
             draggingScrollbar = true;
             dragStartY = my;
             dragStartScroll = scrollY;
-            lastScrollActivity = System.currentTimeMillis();
             return true;
         }
 
@@ -945,6 +1037,10 @@ public class AtomChatScreen extends ChatScreen {
         for (MessageHit hit : hits) {
             if (my >= hit.y() && my <= hit.bottom()) {
                 if (button == 1) {
+                    // Right-clicking the bubble the menu is already on closes it.
+                    if (menuBefore == hit.message()) {
+                        return true;
+                    }
                     contextMessage = hit.message();
                     contextX = mx;
                     contextY = my;
@@ -974,7 +1070,6 @@ public class AtomChatScreen extends ChatScreen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (draggingScrollbar && button == 0) {
             draggingScrollbar = false;
-            lastScrollActivity = System.currentTimeMillis();
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -999,6 +1094,31 @@ public class AtomChatScreen extends ChatScreen {
                 sendMessage(inputGetText());
             }
             return true;
+        }
+        // Up/Down only become caret navigation once the text is actually
+        // scrolling inside the box (> INPUT_MAX_LINES wrapped lines). At two
+        // lines the box shows everything and vanilla history cycling is still
+        // what the user expects.
+        if (inputFocused && chatField != null && (keyCode == 265 || keyCode == 264)) {
+            List<String> lines = wrappedInput(layout().inputTextMaxWidth());
+            if (lines.size() > UiTokens.INPUT_MAX_LINES) {
+                int caret = caretIndex();
+                int row = caretLine(lines, caret);
+                int target = (keyCode == 265) ? row - 1 : row + 1;
+                if (target >= 0 && target < lines.size()) {
+                    int pos = 0;
+                    for (int i = 0; i < target; i++) {
+                        pos += lines.get(i).length();
+                    }
+                    // Up = end of target line; Down = start of target line.
+                    if (keyCode == 265) {
+                        pos += lines.get(target).length();
+                    }
+                    chatField.setCursor(pos, false);
+                    return true;
+                }
+                // Caret is already on the edge line: fall through to super for history.
+            }
         }
         if (inputFocused && AtomChatConfig.get().debug) {
             AtomChat.LOGGER.info("keyPressed: {} (sc {}) mod {}", keyCode, scanCode, modifiers);
@@ -1156,6 +1276,108 @@ public class AtomChatScreen extends ChatScreen {
 
     private float panelY() {
         return (vh() - panelHeight()) / 2.0F;
+    }
+
+    /**
+     * The one and only way to build the layout. Rendering and every hit test go
+     * through it so the input bar's animated height can never desync a click
+     * from what was drawn.
+     */
+    private UiLayout layout() {
+        return UiLayout.of(panelX(), panelY(), panelWidth(), panelHeight(), inputExtraH);
+    }
+
+    // ---------------------------------------------------------------- input box
+
+    /**
+     * Wraps the draft text, then eases the bar's extra height toward what that
+     * wrap needs (0 for one line, one line height for two — never more).
+     *
+     * <p>Must run before the message list is measured: the bar is bottom-anchored,
+     * so whatever it gains the list gives up. When the list shrinks under a view
+     * that was pinned to the bottom, re-stick it, otherwise the newest message
+     * would slide out of sight.</p>
+     *
+     * @return a layout rebuilt with the updated height.
+     */
+    private UiLayout updateInputLayout(UiLayout current) {
+        float lineH = inputLineHeight();
+        List<String> lines = wrappedInput(current.inputTextMaxWidth());
+        int targetLines = Math.min(UiTokens.INPUT_MAX_LINES, Math.max(1, lines.size()));
+        float targetExtra = (targetLines - 1) * lineH;
+        if (Math.abs(targetExtra - inputExtraH) > 0.5F && scrollTarget >= maxScroll - 3.0F) {
+            scrollToBottom = true;
+        }
+        inputHeightAnim.animateTo(UiMotion.INPUT_GROW_MS, targetExtra);
+        inputHeightAnim.update(frameDt);
+        inputExtraH = inputHeightAnim.getValue();
+        return layout();
+    }
+
+    private float inputLineHeight() {
+        return SkiaFontRenderer.getHeight(FontManager.font(UiTokens.FONT_INPUT));
+    }
+
+    /** Wrapped input text, cached until the text or the available width changes. */
+    private List<String> wrappedInput(float maxWidth) {
+        String current = inputGetText();
+        if (inputWrapCache == null || inputWrapWidth != maxWidth || !current.equals(inputWrapText)) {
+            inputWrapText = current;
+            inputWrapWidth = maxWidth;
+            inputWrapCache = SkiaFontRenderer.wrap(FontManager.font(UiTokens.FONT_INPUT), current, maxWidth);
+        }
+        return inputWrapCache;
+    }
+
+    /**
+     * Absolute index of the line holding the caret. wrap() drops the whitespace
+     * at a break point, so line lengths can sum to slightly less than the full
+     * text — the mapping is exact everywhere except right at a break.
+     */
+    private static int caretLine(List<String> lines, int caret) {
+        int pos = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            pos += lines.get(i).length();
+            if (caret <= pos) {
+                return i;
+            }
+        }
+        return Math.max(0, lines.size() - 1);
+    }
+
+    private int caretIndex() {
+        return chatField == null ? 0 : MathHelper.clamp(chatField.getCursor(), 0, inputGetText().length());
+    }
+
+    /** Keeps the caret's line inside the visible window, clamping to the ends. */
+    private void scrollInputToCaret(int caretLine, int totalLines) {
+        int max = UiTokens.INPUT_MAX_LINES;
+        if (totalLines <= max) {
+            inputScrollLine = 0;
+            return;
+        }
+        if (caretLine < inputScrollLine) {
+            inputScrollLine = caretLine;
+        } else if (caretLine > inputScrollLine + max - 1) {
+            inputScrollLine = caretLine - max + 1;
+        }
+        inputScrollLine = Math.max(0, Math.min(inputScrollLine, totalLines - max));
+    }
+
+    /** Virtual-space top edge of the line the caret sits on, for IME anchoring. */
+    private float caretLineTopY() {
+        UiLayout l = layout();
+        Font font = FontManager.font(UiTokens.FONT_INPUT);
+        float lineH = SkiaFontRenderer.getHeight(font);
+        List<String> lines = wrappedInput(l.inputTextMaxWidth());
+        if (lines.isEmpty()) {
+            return l.inputTextCenterY - lineH / 2.0F;
+        }
+        int line = caretLine(lines, caretIndex());
+        int shown = Math.min(UiTokens.INPUT_MAX_LINES, lines.size());
+        int from = Math.min(inputScrollLine, lines.size() - shown);
+        int row = Math.max(0, Math.min(line - from, shown - 1));
+        return l.inputTextCenterY + row * lineH - lineH / 2.0F;
     }
 
     private float toVirtualX(double guiX) {
