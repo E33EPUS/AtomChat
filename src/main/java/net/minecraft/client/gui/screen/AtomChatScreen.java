@@ -1095,13 +1095,12 @@ public class AtomChatScreen extends ChatScreen {
             }
             return true;
         }
-        // Up/Down only become caret navigation once the text is actually
-        // scrolling inside the box (> INPUT_MAX_LINES wrapped lines). At two
-        // lines the box shows everything and vanilla history cycling is still
-        // what the user expects.
+        // Up/Down become caret navigation as soon as the text wraps onto a second
+        // line (>= INPUT_MAX_LINES). Vanilla history cycling only takes over on
+        // the edge lines, so a single-line draft still behaves exactly as before.
         if (inputFocused && chatField != null && (keyCode == 265 || keyCode == 264)) {
             List<String> lines = wrappedInput(layout().inputTextMaxWidth());
-            if (lines.size() > UiTokens.INPUT_MAX_LINES) {
+            if (lines.size() >= UiTokens.INPUT_MAX_LINES) {
                 int caret = caretIndex();
                 int row = caretLine(lines, caret);
                 int target = (keyCode == 265) ? row - 1 : row + 1;

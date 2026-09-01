@@ -9,6 +9,11 @@
   scroll vertically inside the fixed box, following the caret. The bar is
   bottom-anchored, so the message list gives back exactly the height the bar
   takes and stays pinned to the newest message while it grows.
+- **Up/Down caret navigation**: once the draft wraps onto a second line,
+  Up/Down move the caret between lines (Up = end of target line, Down = start
+  of target line). Pressing Up on the first line or Down on the last line
+  falls back to vanilla chat-history cycling; a single-line draft is
+  unchanged.
 
 ### Fixed
 
