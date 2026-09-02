@@ -26,14 +26,28 @@ public class SkiaGraphics {
     private Surface surface;
     private BackendRenderTarget renderTarget;
     private int lastFrameBufferId = -1;
+    private int lastFramebufferWidth = -1;
+    private int lastFramebufferHeight = -1;
     /**
      * Reserved for the panel background blur. Currently always null — see
      * snapshotWorld() for why the blur is disabled.
      */
 
     public void checkFrameBufferId() {
-        int current = MinecraftClient.getInstance().getFramebuffer().fbo;
-        if (lastFrameBufferId != -1 && lastFrameBufferId != current) {
+        var fb = MinecraftClient.getInstance().getFramebuffer();
+        int current = fb.fbo;
+        int width = fb.textureWidth;
+        int height = fb.textureHeight;
+        // Minecraft resizes the main framebuffer in place when the window
+        // changes (F11 fullscreen toggle, dragging a windowed border), keeping
+        // the same FBO id. The Skia surface must be recreated on size changes
+        // too, otherwise its coordinate system goes stale while the raw-GL blur
+        // pre-pass keeps using the new size — that is the small-window
+        // misalignment/blur-offset bug.
+        if (lastFrameBufferId != -1
+                && (lastFrameBufferId != current
+                || lastFramebufferWidth != width
+                || lastFramebufferHeight != height)) {
             createSurface();
         }
     }
@@ -53,6 +67,8 @@ public class SkiaGraphics {
         int width = fb.textureWidth;
         int height = fb.textureHeight;
         int fbo = fb.fbo;
+        lastFramebufferWidth = width;
+        lastFramebufferHeight = height;
 
         renderTarget = BackendRenderTarget.makeGL(width, height, 0, 8, fbo, 32856);
         surface = Surface.wrapBackendRenderTarget(
