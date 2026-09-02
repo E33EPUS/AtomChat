@@ -13,9 +13,12 @@ public final class UiLayout {
     public final float panelH;
     /** Extra height currently added to the input bar while the text wraps. */
     public final float inputExtraH;
+    /** Reserved height for the reply banner (0 when no quote is pending). */
+    public final float replyH;
 
     public final Rect header;
     public final Rect list;
+    public final Rect replyBar;
     public final Rect inputBar;
     public final Rect imageBtn;
     public final Rect emojiBtn;
@@ -23,24 +26,34 @@ public final class UiLayout {
     /** Vertical center of the input text's FIRST visible line. */
     public final float inputTextCenterY;
 
-    private UiLayout(float panelX, float panelY, float panelW, float panelH, float inputExtraH) {
+    private UiLayout(float panelX, float panelY, float panelW, float panelH, float inputExtraH, float replyH) {
         this.panelX = panelX;
         this.panelY = panelY;
         this.panelW = panelW;
         this.panelH = panelH;
         this.inputExtraH = inputExtraH;
+        this.replyH = Math.max(0.0F, replyH);
 
         // Header is an inset card (same style as the input bar); its edge gap
         // mirrors PANEL_BOTTOM_PAD so top and bottom breathing space match.
         this.header = new Rect(panelX + UiTokens.LIST_PAD_X, panelY + UiTokens.PANEL_BOTTOM_PAD,
                 panelW - UiTokens.LIST_PAD_X * 2.0F, UiTokens.HEADER_HEIGHT);
         float listTop = this.header.bottom() + UiTokens.PANEL_TOP_GAP;
-        // The bar is bottom-anchored: growing it eats into the list from below.
-        float inputH = UiTokens.INPUT_HEIGHT + inputExtraH;
+        // The message list is anchored to the one-line input bar's top and does
+        // NOT move when the input grows: the composer overlays the bottom of the
+        // list. Reply banners also overlay the list, but are drawn on top of it.
+        float listBottom = panelY + panelH - UiTokens.INPUT_HEIGHT - UiTokens.PANEL_BOTTOM_PAD;
         this.list = new Rect(panelX + UiTokens.LIST_PAD_X, listTop,
                 panelW - UiTokens.LIST_PAD_X * 2.0F,
-                panelH - (listTop - panelY) - inputH - UiTokens.PANEL_BOTTOM_PAD);
-        this.inputBar = new Rect(panelX + UiTokens.LIST_PAD_X, panelY + panelH - inputH - UiTokens.PANEL_BOTTOM_PAD,
+                Math.max(0.0F, listBottom - listTop));
+        float inputH = UiTokens.INPUT_HEIGHT + inputExtraH;
+        float inputY = panelY + panelH - inputH - UiTokens.PANEL_BOTTOM_PAD;
+        float replyY = inputY - this.replyH;
+        this.replyBar = this.replyH > 0.0F
+                ? new Rect(panelX + UiTokens.LIST_PAD_X, replyY,
+                panelW - UiTokens.LIST_PAD_X * 2.0F, this.replyH)
+                : new Rect(panelX + UiTokens.LIST_PAD_X, replyY, 0.0F, 0.0F);
+        this.inputBar = new Rect(panelX + UiTokens.LIST_PAD_X, inputY,
                 panelW - UiTokens.LIST_PAD_X * 2.0F, inputH);
 
         float rowLeft = inputBar.x + UiTokens.INPUT_ROW_PAD;
@@ -55,11 +68,15 @@ public final class UiLayout {
     }
 
     public static UiLayout of(float panelX, float panelY, float panelW, float panelH) {
-        return of(panelX, panelY, panelW, panelH, 0.0F);
+        return of(panelX, panelY, panelW, panelH, 0.0F, 0.0F);
     }
 
     public static UiLayout of(float panelX, float panelY, float panelW, float panelH, float inputExtraH) {
-        return new UiLayout(panelX, panelY, panelW, panelH, Math.max(0.0F, inputExtraH));
+        return of(panelX, panelY, panelW, panelH, inputExtraH, 0.0F);
+    }
+
+    public static UiLayout of(float panelX, float panelY, float panelW, float panelH, float inputExtraH, float replyH) {
+        return new UiLayout(panelX, panelY, panelW, panelH, Math.max(0.0F, inputExtraH), Math.max(0.0F, replyH));
     }
 
     public Rect rect() {

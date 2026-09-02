@@ -68,6 +68,19 @@ public class SkiaGraphics {
     }
 
     public void draw(java.util.function.BiConsumer<Canvas, Image> renderer) {
+        draw(null, renderer);
+    }
+
+    /**
+     * Draws the Skia UI after an optional raw-GL pre-pass.
+     *
+     * <p>The pre-pass runs after {@link GlStateUtil#save()} and before Skia
+     * paints anything, so it can safely mutate GL state and blur the world
+     * behind the panel; {@link GlStateUtil#restore()} cleans up afterwards.
+     * This is the only supported way to touch the main framebuffer from the
+     * AtomChat pipeline without owning Skia GPU resources.</p>
+     */
+    public void draw(Runnable preUi, java.util.function.BiConsumer<Canvas, Image> renderer) {
         RenderSystem.assertOnRenderThread();
         if (context == null || surface == null || canvas == null) {
             createSurface();
@@ -79,6 +92,9 @@ public class SkiaGraphics {
 
         GlStateUtil.save();
         glStorePixel();
+        if (preUi != null) {
+            preUi.run();
+        }
         // Capture the world before Skia resets its resource tracking: resetAll()
         // can drop the bookkeeping for our adopted texture-backed image.
         Image snapshot = snapshotWorld();
@@ -98,38 +114,16 @@ public class SkiaGraphics {
     }
 
     /**
-     * Returns the world image the panel can blur, or null when unavailable.
-     *
-     * <p><b>Currently always null: the blur is disabled.</b> Three Skia-side
-     * approaches were tried and all failed. Do not re-attempt them:</p>
-     * <ol>
-     *   <li>{@code surface.makeImageSnapshot()} — on a wrapBackendRenderTarget
-     *       surface Skia has not drawn on yet this frame it reports the backing
-     *       FBO as empty and returns a fully transparent image. The blur drew
-     *       nothing and only the tint showed (read as an oil film).</li>
-     *   <li>{@code glReadPixels} into a Skia bitmap — correct pixels, but needs
-     *       glFinish plus an 8&nbsp;MB readback, row flip and per-frame upload:
-     *       tens of ms per frame.</li>
-     *   <li>{@code glCopyTexSubImage2D} + {@code Image.adoptGLTextureFrom} —
-     *       fatally broken. {@code context.resetAll()} runs every frame in this
-     *       pipeline (it is required: MC mutates GL state between draws) and it
-     *       abandons <i>all</i> Skia GPU resources. An adopted texture image is
-     *       such a resource, so frame 2 draws a resource frame 1's resetAll
-     *       already destroyed → GPU hang, no Java stack trace, window killed.
-     *       Any persistent Skia GPU resource is incompatible with resetAll().</li>
-     * </ol>
-     *
-     * <p>The working approach is Tuui's {@code BlurProgram}: blit the main
-     * framebuffer to an offscreen target with glBlitFramebuffer and blur it
-     * with an MC post-chain shader ({@code assets/tuui/shaders/core/blur.fsh}),
-     * i.e. keep the blur outside Skia entirely. See the Tuui decompilation
-     * notes before attempting this again.</p>
+     * Legacy Skia-side snapshot path. Intentionally returns null: the panel
+     * blur is now implemented by {@link PanelBlurRenderer} with raw GL and a
+     * core shader outside Skia, so no Skia GPU resource crosses
+     * {@code context.resetAll()}. Do not re-introduce Skia snapshots here.
      */
     private Image snapshotWorld() {
         return null;
     }
 
-    /** No-op while the blur is disabled; kept so callers need no change. */
+    /** No-op; kept so callers need no change. */
     public void releaseWorldSnapshot() {
     }
 

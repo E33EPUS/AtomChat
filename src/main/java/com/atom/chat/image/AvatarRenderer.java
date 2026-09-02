@@ -62,10 +62,6 @@ public final class AvatarRenderer {
         return sampled;
     }
 
-    private static float MathHelper_clamp(float v, float min, float max) {
-        return v < min ? min : Math.min(v, max);
-    }
-
     private static Image sample(Identifier skin) {
         try {
             MinecraftClient client = MinecraftClient.getInstance();
@@ -104,28 +100,6 @@ public final class AvatarRenderer {
                             pixels[dst + 2] = red;
                             pixels[dst + 3] = (byte) 255;
                         }
-                    }
-                }
-            }
-
-            // Bake an anti-aliased circular alpha mask into the texture (premultiplied
-            // for N32). The 2.5px feather is wide enough that down-sampling the 64x64
-            // face into the small AVATAR_SIZE stays smooth without needing a bezel ring
-            // drawn over the top — a thin 1px ring used to paper over the aliasing here.
-            float center = FACE_SIZE * scale / 2.0F;
-            float radius = center - 0.5F;
-            for (int y = 0; y < FACE_SIZE * scale; y++) {
-                for (int x = 0; x < FACE_SIZE * scale; x++) {
-                    int dst = (y * FACE_SIZE * scale + x) * 4;
-                    float dx = x + 0.5F - center;
-                    float dy = y + 0.5F - center;
-                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
-                    int a = (int) (MathHelper_clamp(radius - dist + 2.5F, 0.0F, 1.0F) * 255.0F);
-                    if (a < 255) {
-                        pixels[dst] = (byte) ((pixels[dst] & 0xFF) * a / 255);
-                        pixels[dst + 1] = (byte) ((pixels[dst + 1] & 0xFF) * a / 255);
-                        pixels[dst + 2] = (byte) ((pixels[dst + 2] & 0xFF) * a / 255);
-                        pixels[dst + 3] = (byte) a;
                     }
                 }
             }

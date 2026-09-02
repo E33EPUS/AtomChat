@@ -46,7 +46,7 @@ public final class UiTokens {
     public static final float FONT_INPUT = s(18);
     public static final float FONT_BUTTON = s(16);
     public static final float FONT_EMOJI = s(26);
-    public static final float FONT_QUOTE = s(14);
+    public static final float FONT_QUOTE = s(15);
 
     // Messages
     public static final float AVATAR_SIZE = s(40);
@@ -57,18 +57,23 @@ public final class UiTokens {
     public static final float LIST_GAP = s(10);
     public static final float LIST_PAD_X = s(12);
     public static final float BUBBLE_RADIUS = s(12);
-    public static final float BUBBLE_PAD = s(14);
+    /** Horizontal bubble padding (both sides). Shared by drawing and messageHeight(). */
+    public static final float BUBBLE_PAD = s(12);
     /** Vertical bubble padding. Shared by drawing and messageHeight() — never inline it. */
-    public static final float BUBBLE_PAD_Y = s(14);
+    public static final float BUBBLE_PAD_Y = s(11);
     /** Same, for the centered system-message capsule. */
-    public static final float SYSTEM_BUBBLE_PAD_Y = s(8);
-    public static final float BUBBLE_MIN_W = s(28);
+    public static final float SYSTEM_BUBBLE_PAD_Y = s(6);
+    public static final float BUBBLE_MIN_W = s(24);
     public static final float BUBBLE_RETRACT = s(106);
+    /** Image card height (also mirrored in messageHeight()). */
+    public static final float IMAGE_HEIGHT = s(140);
+    /** Horizontal QQ-style entrance slide distance (own from right, other from left). */
+    public static final float MESSAGE_SLIDE = s(32);
 
     // Quote pill (e33chat style: a small capsule above the bubble)
-    public static final float QUOTE_HEIGHT = s(20);
-    public static final float QUOTE_GAP = s(2);
-    public static final float QUOTE_PAD_X = s(5);
+    public static final float QUOTE_HEIGHT = s(24);
+    public static final float QUOTE_GAP = s(3);
+    public static final float QUOTE_PAD_X = s(8);
 
     // Emoji panel
     public static final float EMOJI_CELL = s(38);
@@ -83,7 +88,7 @@ public final class UiTokens {
     // it — 0x66 read as a bare oil film over the world, 0x99 keeps the panel's
     // blue-grey character while still letting the blur show through.
     public static final float PANEL_BLUR_SIGMA = 30.0F;
-    public static final int PANEL_BLUR_TINT = 0x9916191F;
+    public static final int PANEL_BLUR_TINT = 0xCC16191F;
 
     private UiTokens() {
     }

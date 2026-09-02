@@ -38,8 +38,10 @@ class UiLayoutTest {
         // Breathing space below the input bar.
         assertEquals(panel.bottom() - l.inputBar.bottom(), UiTokens.PANEL_BOTTOM_PAD, EPS, "bottom breathing space");
 
-        // The message list ends above the input bar.
-        assertTrue(l.list.bottom() <= l.inputBar.y() + EPS, "list above input bar");
+        // The message list stays inside the panel and has room. A grown input
+        // bar may intentionally overlay the list's bottom, so no "above input"
+        // invariant is asserted here.
+        assertTrue(panel.contains(l.list), "list inside panel");
         assertTrue(l.list.h() > 0, "list has room");
     }
 
@@ -49,7 +51,7 @@ class UiLayoutTest {
     }
 
     @Test
-    void grownInputBarStaysBottomAnchored() {
+    void grownInputBarOverlaysListInsteadOfMovingIt() {
         float lineH = 29.0F; // one wrapped line of the input font
         UiLayout base = UiLayout.of(24, 100, 525, 975);
 
@@ -61,9 +63,11 @@ class UiLayoutTest {
                     "bar bottom stays put, extra " + extra);
             assertEquals(UiTokens.INPUT_HEIGHT + extra, grown.inputBar.h(), EPS,
                     "bar height grows by the requested amount");
-            // The list gives back exactly what the bar took.
-            assertEquals(base.list.h() - extra, grown.list.h(), EPS, "list yields the bar's gain");
-            assertTrue(grown.list.bottom() <= grown.inputBar.y() + EPS, "list still ends above the bar");
+            // The message list does NOT move or shrink; the taller bar overlays it.
+            assertEquals(base.list.y(), grown.list.y(), EPS, "list top stays put");
+            assertEquals(base.list.h(), grown.list.h(), EPS, "list keeps its height");
+            assertTrue(grown.inputBar.y() <= grown.list.bottom() + EPS,
+                    "grown input bar may overlap the list bottom");
             // Buttons ride up with the bar's top edge.
             assertEquals(grown.inputBar.y() + UiTokens.INPUT_ROW_PAD, grown.sendBtn.y(), EPS,
                     "button row pinned to the bar top");

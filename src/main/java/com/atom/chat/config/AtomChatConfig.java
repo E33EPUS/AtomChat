@@ -13,10 +13,10 @@ import java.nio.file.Path;
 public class AtomChatConfig {
     public static final AtomChatConfig DEFAULT = new AtomChatConfig();
 
-    public float panelWidth = 480.0F;
+    public float panelWidth = 420.0F;
     public float panelHeight = 780.0F;
-    /** Reserved for the panel background blur. Currently a no-op — see SkiaGraphics.snapshotWorld(). */
-    public boolean blurEnabled = false;
+    /** Rounded panel background blur (raw GL + core shader, outside Skia). */
+    public boolean blurEnabled = true;
     public boolean animationEnabled = true;
     /** Dumps avatar sampling PNGs to the config dir for color debugging. */
     public boolean debug = false;

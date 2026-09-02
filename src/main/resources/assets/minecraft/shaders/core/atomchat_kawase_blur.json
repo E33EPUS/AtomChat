@@ -1,0 +1,15 @@
+{
+  "blend": {
+    "func": "add",
+    "srcrgb": "one",
+    "dstrgb": "zero"
+  },
+  "vertex": "atomchat_kawase_blur",
+  "fragment": "atomchat_kawase_blur",
+  "samplers": [
+    { "name": "Sampler0" }
+  ],
+  "uniforms": [
+    { "name": "u_Spacing", "type": "float", "count": 1, "values": [ 2.0 ] }
+  ]
+}

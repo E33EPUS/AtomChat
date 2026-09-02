@@ -12,6 +12,7 @@ import com.atom.chat.image.ImageUploader;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.render.Animator;
 import com.atom.chat.render.Easing;
+import com.atom.chat.render.PanelBlurRenderer;
 import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
 import com.atom.chat.render.SkiaGraphics;
@@ -68,6 +69,8 @@ public class AtomChatScreen extends ChatScreen {
     private final long openStart = System.currentTimeMillis();
     private boolean closing;
     private long closeStart;
+    private float panelProgress = 1.0F;
+    private boolean blurDrawnThisFrame;
     private boolean firstRender = true;
     private boolean scrollToBottom = true;
     private float scrollTarget;
@@ -116,6 +119,16 @@ public class AtomChatScreen extends ChatScreen {
     private int pokeIndex = -1;
     private long pokeStartTime;
 
+    // Message text drag-selection state (Skia-drawn highlight; Ctrl+C copies).
+    private ChatMessage selectionMessage;
+    private int selectionAnchorLine = -1;
+    private int selectionAnchorChar = -1;
+    private int selectionFocusLine = -1;
+    private int selectionFocusChar = -1;
+    private boolean selecting;
+    private boolean selectionMoved;
+    private List<String> selectionMessageLines = List.of();
+
     public AtomChatScreen(String originalChatText) {
         super(originalChatText);
         this.originalChatText = originalChatText;
@@ -131,10 +144,50 @@ public class AtomChatScreen extends ChatScreen {
             this.client.setScreen(null);
             return;
         }
+        panelProgress = currentPanelProgress();
+
+        // The blur pre-pass is raw GL and must run before Skia paints the panel.
+        // Load the shader first so drawPanel knows whether it may use the
+        // translucent tint or must keep the solid fallback. The actual draw
+        // result is tracked in blurDrawnThisFrame so a silent shader no-op can
+        // never strip the solid background again.
+        blurDrawnThisFrame = false;
+        if (AtomChatConfig.get().blurEnabled) {
+            PanelBlurRenderer.ensureLoaded();
+        }
+
+        graphics.checkFrameBufferId();
+        Runnable preUi = null;
+        if (AtomChatConfig.get().blurEnabled && PanelBlurRenderer.isAvailable()) {
+            preUi = () -> {
+                try {
+                    float strokeWidth = s(3);
+                    float slide = (panelProgress - 1.0F) * 36.0F;
+                    float vx = panelX() + strokeWidth + slide;
+                    float vy = panelY() + strokeWidth;
+                    float vw = panelWidth() - strokeWidth * 2.0F;
+                    float vh = panelHeight() - strokeWidth * 2.0F;
+                    float vRadius = UiTokens.PANEL_RADIUS - strokeWidth;
+                    double density = uiDensity();
+                    double scaleFactor = this.client.getWindow().getScaleFactor();
+                    float gx = (float) (vx * density / scaleFactor);
+                    float gy = (float) (vy * density / scaleFactor);
+                    float gw = (float) (vw * density / scaleFactor);
+                    float gh = (float) (vh * density / scaleFactor);
+                    float gr = (float) (vRadius * density / scaleFactor);
+                    blurDrawnThisFrame = PanelBlurRenderer.render(
+                            context.getMatrices().peek().getPositionMatrix(),
+                            gx, gy, gw, gh, gr, panelProgress);
+                } catch (Throwable t) {
+                    AtomChat.LOGGER.warn("AtomChat panel blur pre-pass failed, using solid background", t);
+                    blurDrawnThisFrame = false;
+                }
+            };
+        }
+
         // No super.render: ChatScreen/Screen would draw the vanilla input box and
         // widget chrome; our UI is fully Skia-drawn, the suggestor renders explicitly.
-        graphics.checkFrameBufferId();
-        graphics.draw((canvas, worldSnapshot) -> drawPhone(canvas, worldSnapshot, mouseX, mouseY, delta));
+        graphics.draw(preUi, (canvas, worldSnapshot) -> drawPhone(canvas, worldSnapshot, mouseX, mouseY, delta));
         // The hidden EditBox stays positioned so the IME floating window anchors
         // correctly; its text/cursor are drawn by Skia above. The suggestion popup
         // still renders through the vanilla pipeline on top.
@@ -144,6 +197,14 @@ public class AtomChatScreen extends ChatScreen {
                 chatInputSuggestor.render(context, mouseX, mouseY);
             }
         }
+    }
+
+    private float currentPanelProgress() {
+        long now = System.currentTimeMillis();
+        if (closing) {
+            return 1.0F - Easing.easeOutCubic(Math.min(1.0F, (now - closeStart) / (float) OPEN_ANIM_MS));
+        }
+        return Easing.easeOutCubic(Math.min(1.0F, (now - openStart) / (float) OPEN_ANIM_MS));
     }
 
     /** Collapses the suggestion popup and clears the gray ghost suffix. */
@@ -220,13 +281,7 @@ public class AtomChatScreen extends ChatScreen {
     private void drawPhone(Canvas canvas, Image worldSnapshot, int mouseX, int mouseY, float delta) {
         float x = panelX();
         float y = panelY();
-        long now = System.currentTimeMillis();
-        float progress;
-        if (closing) {
-            progress = 1.0F - Easing.easeOutCubic(Math.min(1.0F, (now - closeStart) / (float) OPEN_ANIM_MS));
-        } else {
-            progress = Easing.easeOutCubic(Math.min(1.0F, (now - openStart) / (float) OPEN_ANIM_MS));
-        }
+        float progress = panelProgress;
         canvas.save();
         try (Paint layer = new Paint()) {
             layer.setColor(Color.makeARGB((int) (255.0F * progress), 0, 0, 0));
@@ -267,20 +322,10 @@ public class AtomChatScreen extends ChatScreen {
         // bleed outside; the white ring itself is drawn LAST (see end of method)
         // so every component sits beneath a clean edge.
         float strokeWidth = s(3);
-        // A blur failure must never strip the panel of its background: fall back
-        // to the solid panelBg() (which the tint below then uses at full strength).
-        boolean blurred = false;
-        if (AtomChatConfig.get().blurEnabled && worldSnapshot != null) {
-            try {
-                SkiaDraw.drawBlurredBackground(canvas, worldSnapshot,
-                        panel.x() + strokeWidth, panel.y() + strokeWidth,
-                        panel.w() - strokeWidth * 2.0F, panel.h() - strokeWidth * 2.0F,
-                        UiTokens.PANEL_RADIUS - strokeWidth, UiTokens.PANEL_BLUR_SIGMA);
-                blurred = true;
-            } catch (Throwable t) {
-                AtomChat.LOGGER.warn("Panel blur failed, falling back to the solid background", t);
-            }
-        }
+        // The raw-GL blur pre-pass already painted the rounded blurred image on
+        // the main framebuffer. When it is available we only add the translucent
+        // tint; otherwise the solid panelBg() stays as the safe fallback.
+        boolean blurred = AtomChatConfig.get().blurEnabled && blurDrawnThisFrame;
         int tint = blurred ? UiTokens.PANEL_BLUR_TINT : panelBg();
         try (Paint bg = new Paint().setColor(tint)) {
             canvas.drawRRect(RRect.makeXYWH(panel.x() + strokeWidth, panel.y() + strokeWidth,
@@ -309,14 +354,16 @@ public class AtomChatScreen extends ChatScreen {
 
         drawMessages(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h());
 
-        // Reply bar above input
+        // Reply bar floats above the input bar. It is drawn after the message
+        // list so it always sits on top; the layout keeps an 8px gap below it.
         if (replyTarget != null) {
-            float replyY = layout.inputBar.y() - s(34);
-            SkiaDraw.drawRoundedRect(canvas, layout.list.x(), replyY, layout.list.w(), s(26), s(8), Color.makeARGB(90, 74, 144, 226));
+            UiLayout.Rect reply = layout.replyBar;
+            float replyH = s(26);
+            SkiaDraw.drawRoundedRect(canvas, reply.x(), reply.y(), reply.w(), replyH, s(8), Color.makeARGB(90, 74, 144, 226));
             Font replyFont = FontManager.font(UiTokens.FONT_NAME);
-            String replyLabel = "回复 " + (replyTarget.isOwn() ? ownName() : "玩家") + ": " + abbreviate(replyTarget.getContentText(), 26);
-            SkiaFontRenderer.drawText(canvas, replyFont, replyLabel, layout.list.x() + UiTokens.QUOTE_PAD_X,
-                    SkiaFontRenderer.centerBaselineY(replyFont, replyY + s(13)), textPrimary());
+            String replyLabel = "回复 @" + (replyTarget.isOwn() ? ownName() : "玩家") + ": " + abbreviate(replyTarget.getContentText(), 26);
+            SkiaFontRenderer.drawText(canvas, replyFont, replyLabel, reply.x() + UiTokens.QUOTE_PAD_X,
+                    SkiaFontRenderer.centerBaselineY(replyFont, reply.y() + s(13)), textPrimary());
         }
 
         // Input bar: one button row (image / emoji … send), text row below
@@ -351,6 +398,7 @@ public class AtomChatScreen extends ChatScreen {
             SkiaFontRenderer.drawText(canvas, inputFont, hint, textX,
                     SkiaFontRenderer.centerBaselineY(inputFont, layout.inputTextCenterY), textSecondary());
         } else {
+            drawInputSelection(canvas, inputFont, lines, from, shown, textX, layout.inputTextCenterY, lineH);
             for (int i = from; i < from + shown && i < total; i++) {
                 float cy = layout.inputTextCenterY + (i - from) * lineH;
                 SkiaFontRenderer.drawText(canvas, inputFont, lines.get(i), textX,
@@ -424,17 +472,64 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     /**
-     * Circular avatar from the player's real skin face (face + hat layer sampled
-     * from the 64x64 skin). Falls back to the flat placeholder circle while the
-     * skin texture is unavailable.
+     * Draws the hidden EditBox's selection as Skia highlight blocks over the
+     * wrapped input lines. AtomChat renders its own text, so the vanilla field's
+     * selection highlight would otherwise be invisible.
      */
-    private void drawAvatarTexture(Canvas canvas, ChatMessage msg, float avatarX, float avatarY) {
+    private void drawInputSelection(Canvas canvas, Font font, List<String> lines, int from, int shown,
+                                    float textX, float centerY, float lineH) {
+        if (chatField == null || lines.isEmpty()) {
+            return;
+        }
+        int len = inputGetText().length();
+        int a = MathHelper.clamp(chatField.selectionStart, 0, len);
+        int b = MathHelper.clamp(chatField.selectionEnd, 0, len);
+        int selStart = Math.min(a, b);
+        int selEnd = Math.max(a, b);
+        if (selStart >= selEnd) {
+            return;
+        }
+
+        for (int i = from; i < from + shown && i < lines.size(); i++) {
+            int lineStart = 0;
+            for (int j = 0; j < i; j++) {
+                lineStart += lines.get(j).length();
+            }
+            int lineLen = lines.get(i).length();
+            int lineEnd = lineStart + lineLen;
+            if (selEnd <= lineStart || selStart >= lineEnd) {
+                continue;
+            }
+            int c0 = Math.max(0, Math.min(selStart - lineStart, lineLen));
+            int c1 = Math.max(0, Math.min(selEnd - lineStart, lineLen));
+            if (c0 >= c1) {
+                continue;
+            }
+            String line = lines.get(i);
+            float x0 = textX + SkiaFontRenderer.getStringWidth(font, line.substring(0, c0));
+            float x1 = textX + SkiaFontRenderer.getStringWidth(font, line.substring(0, c1));
+            float cy = centerY + (i - from) * lineH;
+            SkiaDraw.drawRoundedRect(canvas, x0, cy - lineH / 2.0F, Math.max(1.0F, x1 - x0), lineH, s(2), 0xE02D6FD6);
+        }
+    }
+
+    /**
+     * Circular avatar from the player's real skin face (face + hat layer sampled
+     * from the 64x64 skin). The face image is an opaque square; the circle is
+     * produced by drawRoundedImage's clip only, so there is exactly one rounded
+     * edge (no CPU mask + clip double edge, and no placeholder bleeding through
+     * the avatar). Falls back to a flat gray circle while the skin is missing.
+     */
+    private void drawAvatar(Canvas canvas, ChatMessage msg, float avatarX, float avatarY) {
         UUID uuid = msg.isOwn() && this.client.player != null ? this.client.player.getUuid() : null;
         String name = msg.isOwn() ? ownName() : "玩家";
         Image face = AvatarRenderer.face(SkinResolver.getSkin(uuid, name));
         if (face != null) {
             SkiaDraw.drawRoundedImage(canvas, face, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE,
-                    UiTokens.AVATAR_SIZE / 2.0F, SamplingMode.DEFAULT);
+                    UiTokens.AVATAR_SIZE / 2.0F, SamplingMode.LINEAR);
+        } else {
+            SkiaDraw.drawRoundedRect(canvas, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE,
+                    UiTokens.AVATAR_SIZE / 2.0F, Color.makeARGB(255, 120, 130, 145));
         }
     }
 
@@ -514,7 +609,14 @@ public class AtomChatScreen extends ChatScreen {
     private void drawMessages(Canvas canvas, float x, float y, float width, float height) {
         List<ChatMessage> messages = ChatStore.get().snapshot();
         hits.clear();
+        // Snapshot "was at bottom" before maxScroll grows: after new messages
+        // arrive the old target is no longer near the new max, so comparing after
+        // recompute would make us miss the follow and leave a growing gap.
+        boolean wasAtBottom = scrollToBottom || scrollTarget >= maxScroll - 3.0F;
         recomputeMaxScroll(messages, width, y, height);
+        if (wasAtBottom) {
+            scrollToBottom = true;
+        }
         updateScrollAnimation();
         canvas.save();
         try {
@@ -533,10 +635,22 @@ public class AtomChatScreen extends ChatScreen {
                     boolean layered = ease < 0.999F;
                     canvas.save();
                     if (layered) {
+                        // QQ-style entrance: own bubbles come in from the right
+                        // (toward the left), other bubbles from the left. The
+                        // layer rectangle must cover the full travel so a sliding
+                        // bubble is never clipped by its own offscreen layer.
+                        float travel = UiTokens.MESSAGE_SLIDE;
+                        // System capsules are centered and have no sender side;
+                        // they fade in place rather than pretending to be someone's
+                        // bubble.
+                        float dx = msg.isSystem() ? 0.0F
+                                : msg.isOwn() ? (1.0F - ease) * travel
+                                : -(1.0F - ease) * travel;
                         try (Paint layer = new Paint()) {
                             layer.setColor(Color.makeARGB((int) (255.0F * ease), 0, 0, 0));
-                            canvas.saveLayer(Rect.makeXYWH(x - 4.0F, cursorY - 4.0F, width + 8.0F, h + 28.0F), layer);
-                            canvas.translate(0.0F, (1.0F - ease) * 10.0F);
+                            canvas.saveLayer(Rect.makeXYWH(x - travel - 4.0F, cursorY - 4.0F,
+                                    width + travel * 2.0F + 8.0F, h + 28.0F), layer);
+                            canvas.translate(dx, 0.0F);
                         }
                     }
                     MessageHit hit = drawMessage(canvas, msg, x, cursorY, width, hits.size());
@@ -547,9 +661,9 @@ public class AtomChatScreen extends ChatScreen {
                     // Hits are hit-tested in screen space; drawing happens in content space.
                     hits.add(new MessageHit(hit.message(), hit.index(), hit.x(), hit.y() - scrollY, hit.maxWidth(),
                             hit.bottom() - scrollY, hit.avatarX(), hit.avatarY() - scrollY, hit.avatarSize(),
-                            hit.bubbleX(), hit.bubbleWidth(), hit.bubbleBottom() - scrollY));
+                            hit.bubbleY() - scrollY, hit.bubbleX(), hit.bubbleWidth(), hit.bubbleBottom() - scrollY));
                 }
-                cursorY += h + 10.0F;
+                cursorY += h + UiTokens.LIST_GAP;
             }
         } finally {
             canvas.restore();
@@ -660,17 +774,17 @@ public class AtomChatScreen extends ChatScreen {
                 pokeIndex = -1;
             }
         }
-        SkiaDraw.drawRoundedRect(canvas, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE / 2.0F, Color.makeARGB(255, 120, 130, 145));
-        drawAvatarTexture(canvas, msg, avatarX, avatarY);
+        drawAvatar(canvas, msg, avatarX, avatarY);
 
         if (hasQuote) {
             drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
         }
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.BUBBLE_RADIUS, msg.isOwn() ? ownBubble() : otherBubble());
+        drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
         SkiaFontRenderer.drawLines(canvas, font, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, textPrimary());
 
         float bottom = bubbleTop + bubbleHeight;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleX, bubbleWidth, bottom);
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, bubbleWidth, bottom);
     }
 
     /**
@@ -692,9 +806,10 @@ public class AtomChatScreen extends ChatScreen {
         float bubbleX = x + (maxWidth - bubbleWidth) / 2.0F;
         float bubbleTop = y + s(2);
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, s(10), Color.makeARGB(150, 35, 39, 47));
+        drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
         SkiaFontRenderer.drawLines(canvas, font, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, textSecondary());
         float bottom = bubbleTop + bubbleHeight;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, 0.0F, 0.0F, 0.0F, bubbleX, bubbleWidth, bottom);
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, 0.0F, 0.0F, 0.0F, bubbleTop, bubbleX, bubbleWidth, bottom);
     }
 
     /**
@@ -707,14 +822,17 @@ public class AtomChatScreen extends ChatScreen {
         float capW = maxWidth - UiTokens.AVATAR_SIZE - s(18);
         float barW = s(3);
         float textMaxW = capW - UiTokens.QUOTE_PAD_X * 2.0F - barW - s(4);
-        String quote = msg.getQuoteName() + ": " + msg.getQuoteText();
+        String name = msg.getQuoteName().startsWith("@") ? msg.getQuoteName() : "@" + msg.getQuoteName();
+        String quote = name + ": " + msg.getQuoteText();
         String display = truncateToWidth(quoteFont, quote, textMaxW);
         float pillW = Math.min(capW, SkiaFontRenderer.getStringWidth(quoteFont, display) + UiTokens.QUOTE_PAD_X * 2.0F + barW + s(4));
         float pillX = own ? x + maxWidth - UiTokens.AVATAR_SIZE - s(6) - pillW : x + UiTokens.AVATAR_SIZE + s(6);
-        SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), Color.makeARGB(70, 120, 130, 145));
+        // Quote pill shares the same light gray-white fill as the header/input
+        // cards (translucent white over the panel), so it reads as one family.
+        SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), Color.makeARGB(60, 255, 255, 255));
         SkiaDraw.drawRoundedRect(canvas, pillX + UiTokens.QUOTE_PAD_X, pillY + s(3), barW, UiTokens.QUOTE_HEIGHT - s(6), barW / 2.0F, accent());
         SkiaFontRenderer.drawText(canvas, quoteFont, display, pillX + UiTokens.QUOTE_PAD_X + barW + s(4),
-                SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F), textSecondary());
+                SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F), textPrimary());
     }
 
     private static String truncateToWidth(Font font, String text, float maxW) {
@@ -737,15 +855,14 @@ public class AtomChatScreen extends ChatScreen {
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
-        SkiaDraw.drawRoundedRect(canvas, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE / 2.0F, Color.makeARGB(255, 120, 130, 145));
-        drawAvatarTexture(canvas, msg, avatarX, avatarY);
+        drawAvatar(canvas, msg, avatarX, avatarY);
 
         boolean hasQuote = msg.getQuoteName() != null;
         float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
         float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
 
         float imageW = Math.min(s(220), maxWidth - UiTokens.BUBBLE_RETRACT - s(30));
-        float imageH = s(140);
+        float imageH = UiTokens.IMAGE_HEIGHT;
         float bubbleX = msg.isOwn() ? x + maxWidth - imageW - nameOffset : x + nameOffset;
         if (hasQuote) {
             drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
@@ -764,7 +881,7 @@ public class AtomChatScreen extends ChatScreen {
         }
 
         float bottom = bubbleTop + imageH;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleX, imageW, bottom);
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, imageW, bottom);
     }
 
     private void recomputeMaxScroll(List<ChatMessage> messages, float width, float top, float height) {
@@ -790,7 +907,7 @@ public class AtomChatScreen extends ChatScreen {
         }
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
         if (extractImageUrl(msg.getRawText()) != null) {
-            return UiTokens.NAME_BAND + quoteH + s(158);
+            return UiTokens.NAME_BAND + quoteH + UiTokens.IMAGE_HEIGHT;
         }
         Font font = FontManager.font(UiTokens.FONT_BODY);
         float lineHeight = SkiaFontRenderer.getHeight(font);
@@ -941,10 +1058,165 @@ public class AtomChatScreen extends ChatScreen {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
+    // ---------------------------------------------------------------- message text selection
+
+    private void clearTextSelection() {
+        selectionMessage = null;
+        selectionAnchorLine = -1;
+        selectionAnchorChar = -1;
+        selectionFocusLine = -1;
+        selectionFocusChar = -1;
+        selecting = false;
+        selectionMoved = false;
+        selectionMessageLines = List.of();
+    }
+
+    private boolean hasTextSelection() {
+        if (selectionMessage == null || selectionAnchorLine < 0 || selectionFocusLine < 0) {
+            return false;
+        }
+        return selectionAnchorLine != selectionFocusLine || selectionAnchorChar != selectionFocusChar;
+    }
+
+    private List<MessageTextLine> textLinesForHit(MessageHit hit) {
+        List<MessageTextLine> out = new ArrayList<>();
+        ChatMessage msg = hit.message();
+        if (extractImageUrl(msg.getRawText()) != null) {
+            return out;
+        }
+        Font font = FontManager.font(msg.isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);
+        float textMax = Math.max(s(20), hit.bubbleWidth() - UiTokens.BUBBLE_PAD * 2.0F);
+        List<String> lines = SkiaFontRenderer.wrap(font, msg.getDisplayText(), textMax);
+        if (lines.isEmpty()) {
+            return out;
+        }
+        float lineH = SkiaFontRenderer.getHeight(font);
+        float bubbleH = hit.bubbleBottom() - hit.bubbleY();
+        float centerY = hit.bubbleY() + bubbleH / 2.0F;
+        float blockTop = centerY - lines.size() * lineH / 2.0F;
+        float textX = hit.bubbleX() + UiTokens.BUBBLE_PAD;
+        for (int i = 0; i < lines.size(); i++) {
+            out.add(new MessageTextLine(msg, i, lines.get(i), textX, blockTop + i * lineH, lineH));
+        }
+        return out;
+    }
+
+    private int charAtLine(MessageTextLine line, float mx) {
+        String text = line.text();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        Font font = FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);
+        float x = line.x();
+        for (int i = 0; i < text.length(); i++) {
+            float w = SkiaFontRenderer.getStringWidth(font, text.substring(i, i + 1));
+            if (mx < x + w / 2.0F) {
+                return i;
+            }
+            x += w;
+        }
+        return text.length();
+    }
+
+    /**
+     * Draws the active selection highlight for one message before its text is
+     * drawn, so the glyphs stay readable above the blue block.
+     */
+    private void drawMessageSelection(Canvas canvas, ChatMessage msg, List<String> lines, float textX,
+                                      float centerY, float lineHeight, Font font) {
+        if (selectionMessage != msg || !hasTextSelection()) {
+            return;
+        }
+        int aLine = selectionAnchorLine;
+        int aChar = selectionAnchorChar;
+        int fLine = selectionFocusLine;
+        int fChar = selectionFocusChar;
+        if (aLine > fLine || (aLine == fLine && aChar > fChar)) {
+            int tmpLine = aLine;
+            aLine = fLine;
+            fLine = tmpLine;
+            int tmpChar = aChar;
+            aChar = fChar;
+            fChar = tmpChar;
+        }
+        float totalH = lines.size() * lineHeight;
+        float blockTop = centerY - totalH / 2.0F;
+        for (int i = 0; i < lines.size(); i++) {
+            if (i < aLine || i > fLine) {
+                continue;
+            }
+            int start;
+            int end;
+            if (aLine == fLine) {
+                start = aChar;
+                end = fChar;
+            } else if (i == aLine) {
+                start = aChar;
+                end = lines.get(i).length();
+            } else if (i == fLine) {
+                start = 0;
+                end = fChar;
+            } else {
+                start = 0;
+                end = lines.get(i).length();
+            }
+            start = Math.max(0, Math.min(start, lines.get(i).length()));
+            end = Math.max(0, Math.min(end, lines.get(i).length()));
+            if (start >= end) {
+                continue;
+            }
+            String line = lines.get(i);
+            float x0 = textX + SkiaFontRenderer.getStringWidth(font, line.substring(0, start));
+            float x1 = textX + SkiaFontRenderer.getStringWidth(font, line.substring(0, end));
+            float y = blockTop + i * lineHeight;
+            SkiaDraw.drawRoundedRect(canvas, x0, y, Math.max(1.0F, x1 - x0), lineHeight, s(1), 0xE02D6FD6);
+        }
+    }
+
+    private String copySelectedText() {
+        if (!hasTextSelection()) {
+            return "";
+        }
+        List<String> lines = selectionMessageLines;
+        if (lines.isEmpty()) {
+            return "";
+        }
+        int aLine = Math.max(0, Math.min(selectionAnchorLine, lines.size() - 1));
+        int aChar = selectionAnchorChar;
+        int fLine = Math.max(0, Math.min(selectionFocusLine, lines.size() - 1));
+        int fChar = selectionFocusChar;
+        if (aLine > fLine || (aLine == fLine && aChar > fChar)) {
+            int tmpLine = aLine;
+            aLine = fLine;
+            fLine = tmpLine;
+            int tmpChar = aChar;
+            aChar = fChar;
+            fChar = tmpChar;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = aLine; i <= fLine; i++) {
+            String line = lines.get(i);
+            int start = i == aLine ? aChar : 0;
+            int end = i == fLine ? fChar : line.length();
+            start = Math.max(0, Math.min(start, line.length()));
+            end = Math.max(0, Math.min(end, line.length()));
+            if (start < end) {
+                if (sb.length() > 0) {
+                    sb.append('\n');
+                }
+                sb.append(line, start, end);
+            }
+        }
+        return sb.toString();
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (closing) {
             return true;
+        }
+        if (hasTextSelection() || selecting) {
+            clearTextSelection();
         }
         // Vanilla suggestion layer gets first pick on clicks too (prevents click-through).
         if (chatInputSuggestor != null && chatInputSuggestor.mouseClicked((int) mouseX, (int) mouseY, button)) {
@@ -1047,41 +1319,98 @@ public class AtomChatScreen extends ChatScreen {
             return true;
         }
 
-        // Message interactions
+        // Message interactions. Right-click only opens the bubble menu when the
+        // pointer is actually on the bubble, not on the name band or avatar.
         for (MessageHit hit : hits) {
-            if (my >= hit.y() && my <= hit.bottom()) {
-                if (button == 1) {
-                    // Right-clicking the bubble the menu is already on closes it.
-                    if (menuBefore == hit.message()) {
+            if (my < hit.y() || my > hit.bottom()) {
+                continue;
+            }
+            if (button == 1 && !hit.message().isSystem()
+                    && mx >= hit.bubbleX() && mx <= hit.bubbleX() + hit.bubbleWidth()
+                    && my >= hit.bubbleY() && my <= hit.bubbleBottom()) {
+                // Right-clicking the bubble the menu is already on closes it.
+                if (menuBefore == hit.message()) {
+                    return true;
+                }
+                contextMessage = hit.message();
+                contextX = mx;
+                contextY = my;
+                return true;
+            }
+            if (button == 0) {
+                List<MessageTextLine> textLines = textLinesForHit(hit);
+                for (MessageTextLine line : textLines) {
+                    float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
+                            FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
+                            line.text());
+                    if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
+                        selectionMessage = hit.message();
+                        selectionMessageLines = textLines.stream().map(MessageTextLine::text).toList();
+                        selectionAnchorLine = selectionFocusLine = line.line();
+                        selectionAnchorChar = selectionFocusChar = charAtLine(line, mx);
+                        selecting = true;
+                        selectionMoved = false;
                         return true;
                     }
-                    contextMessage = hit.message();
-                    contextX = mx;
-                    contextY = my;
-                    return true;
                 }
-                if (button == 0 && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
-                        && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()) {
-                    long now = System.currentTimeMillis();
-                    if (now - lastAvatarClickTime < 350 && lastAvatarClickIndex == hit.index()) {
-                        pokeIndex = hit.index();
-                        pokeStartTime = now;
-                        lastAvatarClickTime = 0;
-                    } else {
-                        lastAvatarClickTime = now;
-                        lastAvatarClickIndex = hit.index();
-                        inputAppend("@" + (hit.message().isOwn() ? ownName() : "玩家") + " ");
-                        inputFocused = true;
-                    }
-                    return true;
+            }
+            if (button == 0 && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
+                    && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()) {
+                long now = System.currentTimeMillis();
+                if (now - lastAvatarClickTime < 350 && lastAvatarClickIndex == hit.index()) {
+                    pokeIndex = hit.index();
+                    pokeStartTime = now;
+                    lastAvatarClickTime = 0;
+                } else {
+                    lastAvatarClickTime = now;
+                    lastAvatarClickIndex = hit.index();
+                    inputAppend("@" + (hit.message().isOwn() ? ownName() : "玩家") + " ");
+                    inputFocused = true;
                 }
+                return true;
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (selecting && button == 0 && selectionMessage != null) {
+            float mx = toVirtualX(mouseX);
+            float my = toVirtualY(mouseY);
+            for (MessageHit hit : hits) {
+                if (my < hit.y() || my > hit.bottom() || hit.message() != selectionMessage) {
+                    continue;
+                }
+                for (MessageTextLine line : textLinesForHit(hit)) {
+                    float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
+                            FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
+                            line.text());
+                    if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
+                        int ch = charAtLine(line, mx);
+                        if (ch != selectionFocusChar || line.line() != selectionFocusLine) {
+                            selectionFocusLine = line.line();
+                            selectionFocusChar = ch;
+                            selectionMoved = true;
+                        }
+                        return true;
+                    }
+                }
+            }
+            return true; // drag outside text keeps current selection active
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (selecting && button == 0) {
+            selecting = false;
+            if (!selectionMoved) {
+                clearTextSelection();
+            }
+            return true;
+        }
         if (draggingScrollbar && button == 0) {
             draggingScrollbar = false;
             return true;
@@ -1099,6 +1428,15 @@ public class AtomChatScreen extends ChatScreen {
         if (closing) {
             return true;
         }
+        // Copy selected message text before the vanilla field/suggestion layer
+        // consumes Ctrl+C.
+        if (keyCode == 67 && (modifiers & 2) != 0 && hasTextSelection()) {
+            String copied = copySelectedText();
+            if (!copied.isEmpty()) {
+                this.client.keyboard.setClipboard(copied);
+            }
+            return true;
+        }
         // Vanilla suggestion layer gets first pick (Tab/arrows over the popup).
         if (chatInputSuggestor != null && chatInputSuggestor.keyPressed(keyCode, scanCode, modifiers)) {
             return true;
@@ -1110,8 +1448,8 @@ public class AtomChatScreen extends ChatScreen {
             return true;
         }
         // Up/Down become caret navigation as soon as the text wraps onto a second
-        // line (>= INPUT_MAX_LINES). Vanilla history cycling only takes over on
-        // the edge lines, so a single-line draft still behaves exactly as before.
+        // line (>= INPUT_MAX_LINES). Once multiline, Up/Down never fall back to
+        // vanilla chat history — that remains a single-line behaviour.
         if (inputFocused && chatField != null && (keyCode == 265 || keyCode == 264)) {
             List<String> lines = wrappedInput(layout().inputTextMaxWidth());
             if (lines.size() >= UiTokens.INPUT_MAX_LINES) {
@@ -1119,18 +1457,21 @@ public class AtomChatScreen extends ChatScreen {
                 int row = caretLine(lines, caret);
                 int target = (keyCode == 265) ? row - 1 : row + 1;
                 if (target >= 0 && target < lines.size()) {
-                    int pos = 0;
+                    int rowStart = 0;
+                    for (int i = 0; i < row; i++) {
+                        rowStart += lines.get(i).length();
+                    }
+                    int targetStart = 0;
                     for (int i = 0; i < target; i++) {
-                        pos += lines.get(i).length();
+                        targetStart += lines.get(i).length();
                     }
-                    // Up = end of target line; Down = start of target line.
-                    if (keyCode == 265) {
-                        pos += lines.get(target).length();
-                    }
+                    // Move straight up/down at the same visual column, clamped to
+                    // the target line's length (standard text-editor behaviour).
+                    int col = MathHelper.clamp(caret - rowStart, 0, lines.get(row).length());
+                    int pos = targetStart + Math.min(col, lines.get(target).length());
                     chatField.setCursor(pos, false);
-                    return true;
                 }
-                // Caret is already on the edge line: fall through to super for history.
+                return true;
             }
         }
         if (inputFocused && AtomChatConfig.get().debug) {
@@ -1297,7 +1638,8 @@ public class AtomChatScreen extends ChatScreen {
      * from what was drawn.
      */
     private UiLayout layout() {
-        return UiLayout.of(panelX(), panelY(), panelWidth(), panelHeight(), inputExtraH);
+        float replyH = replyTarget != null ? s(34) : 0.0F;
+        return UiLayout.of(panelX(), panelY(), panelWidth(), panelHeight(), inputExtraH, replyH);
     }
 
     // ---------------------------------------------------------------- input box
@@ -1406,7 +1748,11 @@ public class AtomChatScreen extends ChatScreen {
         return false;
     }
 
+    private record MessageTextLine(ChatMessage message, int line, String text, float x, float y, float height) {
+    }
+
     private record MessageHit(ChatMessage message, int index, float x, float y, float maxWidth, float bottom,
-                              float avatarX, float avatarY, float avatarSize, float bubbleX, float bubbleWidth, float bubbleBottom) {
+                              float avatarX, float avatarY, float avatarSize, float bubbleY, float bubbleX,
+                              float bubbleWidth, float bubbleBottom) {
     }
 }
