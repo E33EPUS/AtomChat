@@ -79,9 +79,11 @@ public final class UiTokens {
     public static final float MENU_H = s(64);
 
     // Panel background blur (gated by AtomChatConfig.blurEnabled). The tint sits
-    // on top of the blurred snapshot so text stays legible without smothering it.
+    // on top of the blurred snapshot so text stays legible without smothering
+    // it — 0x66 read as a bare oil film over the world, 0x99 keeps the panel's
+    // blue-grey character while still letting the blur show through.
     public static final float PANEL_BLUR_SIGMA = 30.0F;
-    public static final int PANEL_BLUR_TINT = 0x6616191F;
+    public static final int PANEL_BLUR_TINT = 0x9916191F;
 
     private UiTokens() {
     }

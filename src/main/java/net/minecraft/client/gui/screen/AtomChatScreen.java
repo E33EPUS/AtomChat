@@ -247,6 +247,13 @@ public class AtomChatScreen extends ChatScreen {
         }
     }
 
+    @Override
+    public void removed() {
+        // Give back the GPU texture the panel blur was sampling.
+        graphics.releaseWorldSnapshot();
+        super.removed();
+    }
+
     private void drawPanel(Canvas canvas, float x, float y, Image worldSnapshot, int mouseX, int mouseY, float delta) {
         inputFocused = chatField != null && chatField.isFocused();
         long nowMs = System.currentTimeMillis();
@@ -260,14 +267,21 @@ public class AtomChatScreen extends ChatScreen {
         // bleed outside; the white ring itself is drawn LAST (see end of method)
         // so every component sits beneath a clean edge.
         float strokeWidth = s(3);
-        boolean blur = AtomChatConfig.get().blurEnabled;
-        if (blur && worldSnapshot != null) {
-            SkiaDraw.drawBlurredBackground(canvas, worldSnapshot,
-                    panel.x() + strokeWidth, panel.y() + strokeWidth,
-                    panel.w() - strokeWidth * 2.0F, panel.h() - strokeWidth * 2.0F,
-                    UiTokens.PANEL_RADIUS - strokeWidth, UiTokens.PANEL_BLUR_SIGMA);
+        // A blur failure must never strip the panel of its background: fall back
+        // to the solid panelBg() (which the tint below then uses at full strength).
+        boolean blurred = false;
+        if (AtomChatConfig.get().blurEnabled && worldSnapshot != null) {
+            try {
+                SkiaDraw.drawBlurredBackground(canvas, worldSnapshot,
+                        panel.x() + strokeWidth, panel.y() + strokeWidth,
+                        panel.w() - strokeWidth * 2.0F, panel.h() - strokeWidth * 2.0F,
+                        UiTokens.PANEL_RADIUS - strokeWidth, UiTokens.PANEL_BLUR_SIGMA);
+                blurred = true;
+            } catch (Throwable t) {
+                AtomChat.LOGGER.warn("Panel blur failed, falling back to the solid background", t);
+            }
         }
-        int tint = blur ? UiTokens.PANEL_BLUR_TINT : panelBg();
+        int tint = blurred ? UiTokens.PANEL_BLUR_TINT : panelBg();
         try (Paint bg = new Paint().setColor(tint)) {
             canvas.drawRRect(RRect.makeXYWH(panel.x() + strokeWidth, panel.y() + strokeWidth,
                     panel.w() - strokeWidth * 2.0F, panel.h() - strokeWidth * 2.0F, UiTokens.PANEL_RADIUS - strokeWidth), bg);
