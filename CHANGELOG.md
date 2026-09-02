@@ -56,6 +56,20 @@
   `messageHeight()`, so layout, clipping and scrolling cannot drift apart.
 - **Removed the avatar bezel ring.**
 - **Pure white labels** for the image button, emoji button and header clock.
+- **Player names are pure white** in bubbles and image messages.
+
+### Fixed
+
+- **Chat screen could hang the GPU and kill the window** while the blur was
+  active: the background snapshot adopted the framebuffer copy into Skia, but
+  the Skia-on-FBO pipeline calls `context.resetAll()` every frame, which
+  abandons all Skia GPU resources — so the next frame drew a resource that
+  had already been destroyed. The blur is disabled for now
+  (`snapshotWorld()` returns null, `blurEnabled` defaults to false) and the
+  panel falls back to its solid `panelBg()`. `SkiaGraphics.snapshotWorld()`
+  documents the three failed Skia-side approaches and the working route
+  (Tuui's `BlurProgram`: glBlitFramebuffer + an MC post-chain blur shader,
+  kept outside Skia).
 
 ### Added
 
