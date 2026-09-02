@@ -15,7 +15,8 @@ public class AtomChatConfig {
 
     public float panelWidth = 480.0F;
     public float panelHeight = 780.0F;
-    public boolean blurEnabled = true;
+    /** Reserved for the panel background blur. Currently a no-op — see SkiaGraphics.snapshotWorld(). */
+    public boolean blurEnabled = false;
     public boolean animationEnabled = true;
     /** Dumps avatar sampling PNGs to the config dir for color debugging. */
     public boolean debug = false;

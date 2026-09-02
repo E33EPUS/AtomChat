@@ -5,7 +5,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import io.github.humbleui.skija.BackendRenderTarget;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ColorSpace;
-import io.github.humbleui.skija.ColorType;
 import io.github.humbleui.skija.DirectContext;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.PixelGeometry;
@@ -15,10 +14,7 @@ import io.github.humbleui.skija.SurfaceOrigin;
 import io.github.humbleui.skija.SurfaceProps;
 import net.minecraft.client.MinecraftClient;
 import org.lwjgl.opengl.GL11C;
-import org.lwjgl.opengl.GL30C;
 import org.lwjgl.opengl.GL33C;
-
-import java.nio.ByteBuffer;
 
 /**
  * Skia rendering bridge that draws directly onto Minecraft's main framebuffer.
@@ -31,15 +27,9 @@ public class SkiaGraphics {
     private BackendRenderTarget renderTarget;
     private int lastFrameBufferId = -1;
     /**
-     * GPU-side copy of the world, used as the panel's blurred background.
-     *
-     * <p>The texture is adopted by Skia once and kept alive across frames; each
-     * frame only refreshes its contents with glCopyTexSubImage2D. Everything
-     * stays on the GPU — no readback, no pipeline stall, no per-frame upload.</p>
+     * Reserved for the panel background blur. Currently always null — see
+     * snapshotWorld() for why the blur is disabled.
      */
-    private Image worldImage;
-    private int worldTexId = -1;
-    private int worldTexW = -1, worldTexH = -1;
 
     public void checkFrameBufferId() {
         int current = MinecraftClient.getInstance().getFramebuffer().fbo;
@@ -108,94 +98,40 @@ public class SkiaGraphics {
     }
 
     /**
-     * Captures the world as a GPU texture the panel can blur.
+     * Returns the world image the panel can blur, or null when unavailable.
      *
-     * <p>Two approaches were tried and rejected before this one:</p>
-     * <ul>
-     *   <li>{@code surface.makeImageSnapshot()} — on a fresh
-     *       wrapBackendRenderTarget surface Skia has not drawn yet this frame,
-     *       so it treats the backing FBO as empty and hands back a fully
-     *       transparent image. The "blur" then draws nothing and only the tint
-     *       shows, which reads as an oil film.</li>
-     *   <li>{@code glReadPixels} into a Skia bitmap — correct pixels, but the
-     *       required glFinish stalls the pipeline and the 8&nbsp;MB readback plus
-     *       row flip costs tens of ms per frame.</li>
-     * </ul>
+     * <p><b>Currently always null: the blur is disabled.</b> Three Skia-side
+     * approaches were tried and all failed. Do not re-attempt them:</p>
+     * <ol>
+     *   <li>{@code surface.makeImageSnapshot()} — on a wrapBackendRenderTarget
+     *       surface Skia has not drawn on yet this frame it reports the backing
+     *       FBO as empty and returns a fully transparent image. The blur drew
+     *       nothing and only the tint showed (read as an oil film).</li>
+     *   <li>{@code glReadPixels} into a Skia bitmap — correct pixels, but needs
+     *       glFinish plus an 8&nbsp;MB readback, row flip and per-frame upload:
+     *       tens of ms per frame.</li>
+     *   <li>{@code glCopyTexSubImage2D} + {@code Image.adoptGLTextureFrom} —
+     *       fatally broken. {@code context.resetAll()} runs every frame in this
+     *       pipeline (it is required: MC mutates GL state between draws) and it
+     *       abandons <i>all</i> Skia GPU resources. An adopted texture image is
+     *       such a resource, so frame 2 draws a resource frame 1's resetAll
+     *       already destroyed → GPU hang, no Java stack trace, window killed.
+     *       Any persistent Skia GPU resource is incompatible with resetAll().</li>
+     * </ol>
      *
-     * <p>This version keeps the copy entirely on the GPU (Tuui's BlurProgram
-     * pattern): one texture, adopted by Skia once, refreshed each frame with
-     * glCopyTexSubImage2D. glCopyTexSubImage2D is an ordered GL command, so it
-     * reads the framebuffer as of its position in the stream — no glFinish.</p>
+     * <p>The working approach is Tuui's {@code BlurProgram}: blit the main
+     * framebuffer to an offscreen target with glBlitFramebuffer and blur it
+     * with an MC post-chain shader ({@code assets/tuui/shaders/core/blur.fsh}),
+     * i.e. keep the blur outside Skia entirely. See the Tuui decompilation
+     * notes before attempting this again.</p>
      */
     private Image snapshotWorld() {
-        var fb = MinecraftClient.getInstance().getFramebuffer();
-        int width = fb.textureWidth;
-        int height = fb.textureHeight;
-        if (width <= 0 || height <= 0 || context == null) {
-            return null;
-        }
-
-        if (worldTexW != width || worldTexH != height || worldImage == null) {
-            releaseWorldSnapshot();
-            worldTexW = width;
-            worldTexH = height;
-            worldTexId = createTexture(width, height);
-            // We must not render to the main FBO while sampling it, so the blur
-            // samples this private copy instead of the live framebuffer.
-            // Adopting transfers ownership: closing the image frees the texture.
-            worldImage = Image.adoptGLTextureFrom(context, width, height, worldTexId,
-                    GL11C.GL_TEXTURE_2D, GL_RGBA8,
-                    SurfaceOrigin.BOTTOM_LEFT, ColorType.RGBA_8888);
-        }
-        if (worldImage == null) {
-            return null;
-        }
-
-        int prevRead = GL11C.glGetInteger(GL30C.GL_READ_FRAMEBUFFER_BINDING);
-        int prevTex = GL11C.glGetInteger(GL11C.GL_TEXTURE_BINDING_2D);
-        try {
-            GL30C.glBindFramebuffer(GL30C.GL_READ_FRAMEBUFFER, fb.fbo);
-            GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, worldTexId);
-            GL11C.glCopyTexSubImage2D(GL11C.GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
-        } finally {
-            GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, prevTex);
-            GL30C.glBindFramebuffer(GL30C.GL_READ_FRAMEBUFFER, prevRead);
-        }
-        return worldImage;
+        return null;
     }
 
-    private static int createTexture(int width, int height) {
-        int tex = GL11C.glGenTextures();
-        GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, tex);
-        GL11C.glTexImage2D(GL11C.GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
-                GL11C.GL_RGBA, GL11C.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-        GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_LINEAR);
-        GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_LINEAR);
-        GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, 0);
-        return tex;
-    }
-
-    /** Frees the world-copy texture. Safe to call repeatedly. */
+    /** No-op while the blur is disabled; kept so callers need no change. */
     public void releaseWorldSnapshot() {
-        if (worldImage != null) {
-            // Closing the adopted image deletes the GL texture behind it.
-            worldImage.close();
-            worldImage = null;
-            worldTexId = -1;
-        } else if (worldTexId >= 0) {
-            GL11C.glDeleteTextures(worldTexId);
-            worldTexId = -1;
-        }
-        worldTexW = -1;
-        worldTexH = -1;
     }
-
-    /** GL_RGBA8 = 0x8058 (same value createSurface passes to makeGL). */
-    private static final int GL_RGBA8 = 32856;
-    /** GL_CLAMP_TO_EDGE = 0x812F. */
-    private static final int GL_CLAMP_TO_EDGE = 33071;
 
     private void glStorePixel() {
         GL33C.glBindBuffer(GL33C.GL_PIXEL_UNPACK_BUFFER, 0);
