@@ -1,34 +1,25 @@
 # AtomChat
 
-A Fabric 1.21.1 Minecraft mod that replaces the vanilla chat screen with a phone-app-style chat UI, powered by [Skija](https://github.com/HumbleUI/skija) (Java bindings for Skia).
+Fabric 1.21.1 客户端聊天模组：用 Skija 渲染的手机 App 风格聊天面板。
 
-> Status: MVP / work in progress. The project is intentionally a clean rewrite rather than an E33Chat fork.
+> 本分支 `master` 是**源码分支**。完整用户文档（中文 / English）位于默认分支 [Master/README.md](https://github.com/E33EPUS/atomchat/blob/Master/README.md)。
 
-## Features (MVP)
-
-- Press the chat key to open a phone-sized chat panel; the vanilla chat HUD is hidden while open.
-- Rounded chat bubbles, avatars, player names and timestamps.
-- Click an avatar to insert `@玩家 `; double-click to trigger a QQ-style poke shake animation.
-- Right-click a message to copy or quote it.
-- Built-in emoji panel.
-- Send image URLs directly (auto-wrapped into CICode) and render inline images via CICode.
-- Click the image button to pick a local file and upload to uguu.se.
-- JSON config file at `config/atomchat.json`.
-
-## Roadmap / not yet implemented
-
-- Real player-name parsing and server-side avatar upload/sync.
-- More animations and theme presets.
-
-## Building
+## 构建
 
 ```bash
 ./gradlew.bat build
 ```
 
-The built jar is at `build/libs/atomchat-Fabric-1.21.1-<version>.jar`.
+产物：`build/libs/atomchat-Fabric-1.21.1-<version>.jar`
 
-## Dependencies
+## 测试
 
-- Fabric API
-- Skija `0.116.8` (bundled into the jar, including Windows x64 native)
+```bash
+./gradlew.bat test
+```
+
+## 依赖
+
+- Minecraft 1.21.1 + Fabric Loader + Fabric API
+- Java 21+
+- Skija `0.116.8` / FlatLaf `3.7.2`（构建时打入 JAR）
