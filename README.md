@@ -11,13 +11,13 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.0-informational">
+  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.0%20MVP-informational">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
 AtomChat 是一个 Fabric 1.21.1 客户端模组，把原版聊天屏替换成「手机 App」风格的独立聊天面板：圆角气泡、头像、真实玩家名、表情 / 颜文字 / 表情包、图片消息、复制引用、多行输入与 QQ 式动效。渲染层使用 [Skija](https://github.com/HumbleUI/skija)（Skia 的 Java 绑定），所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：MVP / 持续迭代中。项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**0.1.0-MVP / 尚未发布正式 Release**。当前版本需自行构建（见 [开发与构建](#开发与构建)）；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 
@@ -34,6 +34,7 @@ AtomChat 是一个 Fabric 1.21.1 客户端模组，把原版聊天屏替换成�
 - [常见问题](#常见问题)
 - [开发与构建](#开发与构建)
 - [更新日志](#更新日志)
+- [第三方许可证](#第三方许可证)
 - [许可证](#许可证)
 
 ---
@@ -47,8 +48,8 @@ AtomChat 是一个 Fabric 1.21.1 客户端模组，把原版聊天屏替换成�
 | Fabric API | 必需 | 任意兼容 1.21.1 的版本 |
 | Java | 必需 | 21+ |
 
-1. 从 [Releases](https://github.com/E33EPUS/atomchat/releases) 下载 JAR
-2. 放入 `.minecraft/mods/`
+1. 当前为 MVP 开发版：按 [开发与构建](#开发与构建) 自行构建 JAR（正式 Release 发布后可改为从 [Releases](https://github.com/E33EPUS/atomchat/releases) 下载）
+2. 将 JAR 放入 `.minecraft/mods/`
 3. 启动游戏，按聊天键（默认 `T` / `/`）打开 AtomChat
 
 ---
@@ -178,7 +179,7 @@ AtomChat 是一个 Fabric 1.21.1 客户端模组，把原版聊天屏替换成�
 
 **怎么改颜色 / 大小？** 编辑 `.minecraft/config/atomchat.json` 后重启游戏。
 
-**可以放进整合包吗？** 可以，MIT 许可证，无需额外授权。
+**可以放进整合包吗？** 可以。AtomChat 代码为 MIT，无需额外授权；若整合包分发 JAR，请保留 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 中的第三方声明。
 
 ---
 
@@ -208,7 +209,22 @@ AtomChat 是一个 Fabric 1.21.1 客户端模组，把原版聊天屏替换成�
 
 ## 更新日志
 
-完整变更见 [CHANGELOG.md](CHANGELOG.md)（当前工作区源码分支 `master`）。
+完整变更见源码分支 [master/CHANGELOG.md](https://github.com/E33EPUS/atomchat/blob/master/CHANGELOG.md)。
+
+---
+
+## 第三方许可证
+
+AtomChat 自身代码以 [MIT](LICENSE) 发布，但分发的 JAR 中捆绑了以下第三方组件，各自保留其许可证：
+
+| 组件 | 许可证 |
+|---|---|
+| Skija（Java 绑定） | Apache License 2.0 |
+| HumbleUI types | Apache License 2.0 |
+| FlatLaf | Apache License 2.0 |
+| Skia（原生库） | BSD 3-Clause |
+
+完整版权与许可证文本见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ---
 

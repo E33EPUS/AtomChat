@@ -11,13 +11,13 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.0-informational">
+  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.0%20MVP-informational">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
 AtomChat is a Fabric 1.21.1 client mod that replaces the vanilla chat screen with a standalone "phone app" style panel: rounded bubbles, avatars, real player names, emoji / kaomoji / sticker packs, image messages, copy and quote, multi-line input, and QQ-style motion. It renders through [Skija](https://github.com/HumbleUI/skija) (Java bindings for Skia), so the whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: MVP / actively iterating. This is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **0.1.0-MVP / no formal release yet**. Current builds require self-building (see [Development & Building](#development--building)); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -34,6 +34,7 @@ AtomChat is a Fabric 1.21.1 client mod that replaces the vanilla chat screen wit
 - [FAQ](#faq)
 - [Development & Building](#development--building)
 - [Changelog](#changelog)
+- [Third-Party Licenses](#third-party-licenses)
 - [License](#license)
 
 ---
@@ -47,8 +48,8 @@ AtomChat is a Fabric 1.21.1 client mod that replaces the vanilla chat screen wit
 | Fabric API | Required | any 1.21.1 compatible version |
 | Java | Required | 21+ |
 
-1. Download the JAR from [Releases](https://github.com/E33EPUS/atomchat/releases)
-2. Put it in `.minecraft/mods/`
+1. This is an MVP development build: build the JAR yourself under [Development & Building](#development--building) (once a formal Release exists, download it from [Releases](https://github.com/E33EPUS/atomchat/releases) instead)
+2. Put the JAR in `.minecraft/mods/`
 3. Launch the game and press the chat key (default `T` / `/`) to open AtomChat
 
 ---
@@ -178,7 +179,7 @@ Config file: `.minecraft/config/atomchat.json` (auto-generated on first launch; 
 
 **How do I change colors / sizes?** Edit `.minecraft/config/atomchat.json` and restart the game.
 
-**Can I include this in a modpack?** Yes. MIT license, no extra permission needed.
+**Can I include this in a modpack?** Yes. AtomChat's code is MIT and needs no extra permission; if your modpack redistributes the JAR, keep the third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
@@ -208,7 +209,22 @@ Main modules:
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the full history (current source lives on the `master` branch).
+See [master/CHANGELOG.md](https://github.com/E33EPUS/atomchat/blob/master/CHANGELOG.md) for the full history.
+
+---
+
+## Third-Party Licenses
+
+AtomChat's own code is released under [MIT](LICENSE), but the distributed JAR bundles third-party components that keep their own licenses:
+
+| Component | License |
+|---|---|
+| Skija (Java bindings) | Apache License 2.0 |
+| HumbleUI types | Apache License 2.0 |
+| FlatLaf | Apache License 2.0 |
+| Skia (native library) | BSD 3-Clause |
+
+Full copyright and license texts live in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
