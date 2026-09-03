@@ -903,14 +903,7 @@ public class AtomChatScreen extends ChatScreen {
         float bubbleX = msg.isOwn() ? x + maxWidth - bubbleWidth - nameOffset : x + nameOffset;
 
         // Name hugs the bubble's outer edge: right-aligned for own, left for others.
-        String name = messageSenderName(msg);
-        Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        float nameCenterY = y + UiTokens.NAME_BAND / 2.0F;
-        if (msg.isOwn()) {
-            SkiaFontRenderer.drawTextRight(canvas, nameFont, name, bubbleX + bubbleWidth, nameCenterY, textPrimary());
-        } else {
-            SkiaFontRenderer.drawText(canvas, nameFont, name, bubbleX, nameCenterY, textPrimary());
-        }
+        drawMessageName(canvas, msg, y, bubbleX, bubbleX + bubbleWidth);
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
@@ -997,6 +990,23 @@ public class AtomChatScreen extends ChatScreen {
         return t + "…";
     }
 
+    /**
+     * Draws a message's name hugging its bubble's outer edge. One helper for
+     * text and image bubbles so their spacing can never drift apart: the image
+     * path centred the name in the band while the text path drew it from the raw
+     * baseline, which put the two a cap-height apart.
+     */
+    private void drawMessageName(Canvas canvas, ChatMessage msg, float rowY, float leftX, float rightX) {
+        String name = messageSenderName(msg);
+        Font nameFont = FontManager.font(UiTokens.FONT_NAME);
+        float baseline = rowY + UiTokens.NAME_BAND / 2.0F;
+        if (msg.isOwn()) {
+            SkiaFontRenderer.drawTextRight(canvas, nameFont, name, rightX, baseline, textPrimary());
+        } else {
+            SkiaFontRenderer.drawText(canvas, nameFont, name, leftX, baseline, textPrimary());
+        }
+    }
+
     private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
         float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
         boolean hasQuote = msg.getQuoteName() != null;
@@ -1011,14 +1021,7 @@ public class AtomChatScreen extends ChatScreen {
         // Anchoring it to the row instead (the old behaviour) left the name
         // drifting away from the bubble as soon as the bubble width changed —
         // image bubbles are always wider than a short text bubble.
-        String name = messageSenderName(msg);
-        Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        float nameCenterY = SkiaFontRenderer.centerBaselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F);
-        if (msg.isOwn()) {
-            SkiaFontRenderer.drawTextRight(canvas, nameFont, name, bubbleX + imageW, nameCenterY, textPrimary());
-        } else {
-            SkiaFontRenderer.drawText(canvas, nameFont, name, bubbleX, nameCenterY, textPrimary());
-        }
+        drawMessageName(canvas, msg, y, bubbleX, bubbleX + imageW);
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
@@ -1037,8 +1040,8 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.drawRoundedImage(canvas, image, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS);
         } else {
             Font loadingFont = FontManager.font(UiTokens.FONT_QUOTE);
-            SkiaFontRenderer.drawText(canvas, loadingFont, "图片加载中…", bubbleX + UiTokens.QUOTE_PAD_X,
-                    SkiaFontRenderer.baselineY(loadingFont, bubbleTop + imageH / 2.0F), textSecondary());
+            SkiaFontRenderer.drawTextCentered(canvas, loadingFont, "图片加载中…",
+                    bubbleX + imageW / 2.0F, bubbleTop + imageH / 2.0F, textSecondary());
         }
 
         float bottom = bubbleTop + imageH;
@@ -1786,7 +1789,7 @@ public class AtomChatScreen extends ChatScreen {
             ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
         }
         Thread worker = new Thread(() -> {
-            Path file = FilePicker.pickImage(this::suspendForPicker, this::resumeAfterPicker);
+            Path file = FilePicker.pickImage(this::suppressAutoIconify, this::restoreAutoIconify);
             // The dialog owned OS focus while it was open; hand it back to the
             // game or the first click after picking lands on nothing.
             refocusWindow();
@@ -1847,34 +1850,26 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     /**
-     * Escape hatch for the picker's z-order fight. GLFW pins a fullscreen window
-     * to HWND_TOPMOST, and on some setups no amount of AWT top-most trickery
-     * gets the native dialog above it. Hiding the window is the only
-     * mode-independent guarantee, which is why it exists as a config switch
-     * rather than the default: it costs the player the view of the game.
+     * GLFW iconifies a fullscreen window as soon as it loses focus
+     * (GLFW_AUTO_ICONIFY defaults to true and Minecraft leaves it there), so a
+     * picker that takes focus would minimise the game every time. Suspension
+     * lasts exactly as long as the picker is open.
      */
-    private void suspendForPicker() {
-        if (!AtomChatConfig.get().minimizeWhilePicking) {
-            return;
-        }
-        runOnRender(() -> {
-            try {
-                GLFW.glfwIconifyWindow(this.client.getWindow().getHandle());
-            } catch (Throwable t) {
-                AtomChat.LOGGER.warn("Failed to minimize the window for the image picker", t);
-            }
-        });
+    private void suppressAutoIconify() {
+        setAutoIconify(false);
     }
 
-    private void resumeAfterPicker() {
-        if (!AtomChatConfig.get().minimizeWhilePicking) {
-            return;
-        }
+    private void restoreAutoIconify() {
+        setAutoIconify(true);
+    }
+
+    private void setAutoIconify(boolean value) {
         runOnRender(() -> {
             try {
-                GLFW.glfwRestoreWindow(this.client.getWindow().getHandle());
+                GLFW.glfwSetWindowAttrib(this.client.getWindow().getHandle(),
+                        GLFW.GLFW_AUTO_ICONIFY, value ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
             } catch (Throwable t) {
-                AtomChat.LOGGER.warn("Failed to restore the window after the image picker", t);
+                AtomChat.LOGGER.warn("Failed to toggle GLFW_AUTO_ICONIFY for the image picker", t);
             }
         });
     }

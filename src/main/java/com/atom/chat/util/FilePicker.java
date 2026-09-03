@@ -1,8 +1,12 @@
 package com.atom.chat.util;
 
+import com.atom.chat.AtomChat;
+import com.formdev.flatlaf.FlatLightLaf;
+
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.filechooser.FileFilter;
 import java.awt.BorderLayout;
 import java.io.File;
@@ -11,24 +15,27 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Image picker hosted in a plain Swing {@link JFrame}.
+ * Image picker: a {@link JFileChooser} in a plain {@link JFrame}, skinned with
+ * FlatLaf.
  *
- * <p>This deliberately is not the native file dialog any more. Four rounds of
- * owner games proved the native one unusable here: an AWT {@code FileDialog} is
- * created by {@code GetOpenFileName}, which ignores AWT's always-on-top state
- * and inherits the z-band of its owner — and in practice that owner's band was
- * the bottom of the z-order, so the dialog surfaced below <em>every</em> window
- * including the desktop and had no taskbar entry to rescue it with.
+ * <p>It took a while to get here, so the constraint is worth writing down: any
+ * window <em>we</em> create can be made topmost and will then float above
+ * Minecraft's topmost fullscreen window — that is proven. What cannot be done
+ * is lifting a native {@code GetOpenFileName} dialog, which inherits neither
+ * {@code WS_EX_TOPMOST} nor any hint we set, and sits at the bottom of the
+ * z-order below the desktop. So the dialog is ours, and the look comes from
+ * FlatLaf instead of Windows.
  *
- * <p>A {@code JFrame} sidesteps that whole class of problems: it is a top-level
- * window we own outright, so it lands in the taskbar, can be activated, and
- * honours {@code setAlwaysOnTop} once it is visible. Being visible and
- * focusable is the part the old hidden owner frame could never offer.
+ * <p>The look and feel is process-global: it has to be installed before any
+ * Swing component exists, and it also affects the rest of the JVM. Minecraft
+ * barely uses Swing, so that costs nothing in practice.
  *
  * <p>Runs on the EDT; the calling worker thread waits on a latch, so the render
  * thread keeps running and the game does not freeze.
  */
 public final class FilePicker {
+    private static boolean lookAndFeelInstalled;
+
     private FilePicker() {
     }
 
@@ -46,7 +53,7 @@ public final class FilePicker {
                 }
                 result.set(showChooser());
             } catch (Throwable t) {
-                com.atom.chat.AtomChat.LOGGER.warn("Image picker failed", t);
+                AtomChat.LOGGER.warn("Image picker failed", t);
             } finally {
                 try {
                     if (afterShow != null) {
@@ -67,6 +74,8 @@ public final class FilePicker {
     }
 
     private static Path showChooser() {
+        installLookAndFeel();
+
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("AtomChat - 选择图片");
         chooser.setAcceptAllFileFilterUsed(false);
@@ -81,6 +90,9 @@ public final class FilePicker {
                 return "图片 (png, jpg, jpeg, gif, webp, bmp)";
             }
         });
+        chooser.setCurrentDirectory(defaultDirectory());
+        // The native dialog's preview pane, rebuilt as a chooser accessory.
+        chooser.setAccessory(ImagePreview.attachTo(chooser, 220, 280));
 
         JFrame frame = new JFrame("AtomChat - 选择图片");
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -106,5 +118,43 @@ public final class FilePicker {
             frame.dispose();
         }
         return result;
+    }
+
+    /**
+     * FlatLaf is what makes the chooser look modern; without it Swing falls
+     * back to Metal, the grey Java look. The system look and feel is the
+     * fallback so a FlatLaf failure degrades rather than breaks.
+     */
+    private static void installLookAndFeel() {
+        if (lookAndFeelInstalled) {
+            return;
+        }
+        lookAndFeelInstalled = true;
+        try {
+            UIManager.setLookAndFeel(new FlatLightLaf());
+            AtomChat.LOGGER.info("Image picker look and feel: FlatLaf");
+        } catch (Throwable t) {
+            AtomChat.LOGGER.warn("FlatLaf unavailable, falling back to the system look and feel", t);
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Throwable t2) {
+                AtomChat.LOGGER.warn("System look and feel unavailable too, keeping the Swing default", t2);
+            }
+        }
+    }
+
+    /** Starts in the folder people actually keep pictures in. */
+    private static File defaultDirectory() {
+        String home = System.getProperty("user.home");
+        File pictures = new File(home, "Pictures");
+        if (pictures.isDirectory()) {
+            return pictures;
+        }
+        // Chinese Windows names the shell folder 图片 instead.
+        File localized = new File(home, "图片");
+        if (localized.isDirectory()) {
+            return localized;
+        }
+        return new File(home);
     }
 }

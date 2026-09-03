@@ -201,16 +201,22 @@
   message row instead of the bubble edge, and because an image bubble is always
   wider than a short text bubble the name ended up floating away from it. It
   now uses the same edge-anchoring rule as text bubbles.
-- **The image picker is a real window, not a native dialog**: five rounds of
-  owner games on the AWT `FileDialog` all failed the same way — the dialog
-  surfaced at the very bottom of the z-order, below every window including the
-  desktop, with no taskbar entry to rescue it. `GetOpenFileName` inherits its
-  owner's z-band and ignores AWT's always-on-top state, so no amount of owner
-  tuning could lift it. The picker is now a `JFileChooser` in a plain
-  `JFrame`: a top-level window we control outright, so it lands in the taskbar,
-  can be activated, and honours `setAlwaysOnTop` once visible. Trade-off: it is
-  the Swing chooser, not Windows Explorer. `minimizeWhilePicking` is now only a
-  backstop and can stay `false`.
+- **The image picker is a FlatLaf-skinned Swing chooser**: six attempts to lift
+  the native `GetOpenFileName` dialog above Minecraft all failed, including
+  writing `WS_EX_TOPMOST` straight onto the dialog window from a watchdog
+  thread. Windows orders the z-order in two bands — every topmost window above
+  every non-topmost one — and ownership only ranks windows inside a band, so a
+  native dialog is below a topmost fullscreen game no matter whose owner it is.
+  The picker is now a `JFileChooser` in a plain `JFrame`, which can be made
+  topmost and does float above the game, and it is skinned with FlatLaf
+  (bundled, Apache 2.0) because Swing's default Metal look was the reason it
+  was ugly in the first place. It opens in the Pictures folder.
+- **Going fullscreen no longer minimises the game while picking**: GLFW
+  iconifies a fullscreen window as soon as it loses focus
+  (`GLFW_AUTO_ICONIFY` defaults to true and Minecraft leaves it there).
+  The flag is suspended for exactly as long as the picker is open. The
+  `minimizeWhilePicking` config is gone — it worked around the z-order bug
+  rather than the cause.
 
 - `UiMotion`: single source of truth for transition durations plus the
   `approach()` helper that guarantees a transition lands exactly on its target.
