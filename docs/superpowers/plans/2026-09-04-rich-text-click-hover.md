@@ -13,7 +13,7 @@
 - 只在 AtomChat 聊天面板打开时生效；原版 HUD 不动。
 - 本轮只实现颜色、下划线、ClickEvent、HoverEvent；粗体/斜体/删除线/混淆码不做。
 - 有 ClickEvent 的 run 自动补下划线；有显式色的 run 尊重原色，无显式色沿用 AtomChat 白/灰。
-- 裸 `http://`/`https://` 自动补 `OPEN_URL` + `SHOW_TEXT`。
+- 裸 `http://`/`https://` 自动补 `OPEN_URL`；URL 的 `SHOW_TEXT` hover 由客户端渲染层补（纯 JUnit 下不构造 HoverEvent）。
 - 点击行为：建议类填输入框、执行类直接执行、其余走原版；按下不触发，松开且未拖动才触发。
 - 任何 HoverEvent 都显示 tooltip。
 - 兜底文本解析要求名字能解析到当前在线玩家（profile + tab 名），否则系统灰字。
