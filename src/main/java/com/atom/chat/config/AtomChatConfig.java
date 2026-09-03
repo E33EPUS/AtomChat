@@ -51,6 +51,12 @@ public class AtomChatConfig {
                 String json = Files.readString(path, StandardCharsets.UTF_8);
                 AtomChatConfig config = GSON.fromJson(json, AtomChatConfig.class);
                 if (config != null) {
+                    // Write the merged instance straight back: options added in
+                    // newer builds are absent from an older file, and Gson drops
+                    // unknown keys — so without this a new option could never be
+                    // switched on by editing the file, it simply would not be
+                    // there. Existing values are preserved by the round trip.
+                    save(config);
                     return config;
                 }
             } catch (Exception e) {

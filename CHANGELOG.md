@@ -122,7 +122,8 @@
   enters the viewport.
 - **Fullscreen image picker uses the native AWT file dialog**: the Swing
   chooser stayed hidden behind Minecraft's exclusive-fullscreen window. MC's
-  held keys/buttons are released while the dialog owns input.
+  held keys/buttons are released while the dialog owns input. *Superseded — see
+  the picker entry under Fixed.*
 - **Emoji panel is more compact and scrollable**: the 24 oversized cells are
   replaced by e33chat's larger emoji set plus a kaomoji tab, both with
   scrollable grids and smaller cells.
@@ -174,10 +175,42 @@
   system clipboard through AWT (Minecraft's clipboard API only exposes strings,
   so it cannot see them), written to a temp PNG and uploaded; copied image files
   are uploaded in place. Plain text still falls through to the vanilla paste.
+- **Dragging an image file onto the game window uploads it**: a GLFW drop
+  callback is installed while the chat screen is open and removed on close.
+  Minecraft registers none — the Win32 backend already calls `DragAcceptFiles`,
+  so the events were arriving and being discarded. GLFW has no drag-enter
+  callback, so there is no hover feedback; the input placeholder doubles as the
+  "uploading…" readout instead. Window-wide: the drop event carries no cursor
+  position to hit-test with.
 - `minimizeWhilePicking` config (default `false`): minimizes the game window
   while the native image picker is open. GLFW pins a fullscreen window to
   `HWND_TOPMOST`, and where no AWT z-order trick wins, this is the only
   mode-independent guarantee — off by default because it hides the game.
+
+### Fixed
+
+- **Image bubbles no longer stretch**: the box used to be a fixed 275x175 with
+  the height clamped rather than scaled, so anything more square than 1.57:1
+  was squashed into it. Uploaded codes now carry the intrinsic `w=`/`h=` so the
+  receiver can lay the bubble out at the right aspect ratio before the download
+  lands (no height jump on arrival). The bubble hugs the scaled image, the
+  background no longer draws a letterbox frame, and codes without a size —
+  older messages, or formats ImageIO cannot size — fall back to the placeholder
+  box. Images are never upscaled.
+- **Image bubble names sat in the wrong place**: the name was anchored to the
+  message row instead of the bubble edge, and because an image bubble is always
+  wider than a short text bubble the name ended up floating away from it. It
+  now uses the same edge-anchoring rule as text bubbles.
+- **The image picker is a real window, not a native dialog**: five rounds of
+  owner games on the AWT `FileDialog` all failed the same way — the dialog
+  surfaced at the very bottom of the z-order, below every window including the
+  desktop, with no taskbar entry to rescue it. `GetOpenFileName` inherits its
+  owner's z-band and ignores AWT's always-on-top state, so no amount of owner
+  tuning could lift it. The picker is now a `JFileChooser` in a plain
+  `JFrame`: a top-level window we control outright, so it lands in the taskbar,
+  can be activated, and honours `setAlwaysOnTop` once visible. Trade-off: it is
+  the Swing chooser, not Windows Explorer. `minimizeWhilePicking` is now only a
+  backstop and can stay `false`.
 
 - `UiMotion`: single source of truth for transition durations plus the
   `approach()` helper that guarantees a transition lands exactly on its target.

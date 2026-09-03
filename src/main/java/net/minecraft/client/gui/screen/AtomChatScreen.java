@@ -22,6 +22,7 @@ import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
 import com.atom.chat.util.ClipboardImages;
 import com.atom.chat.util.FilePicker;
+import com.atom.chat.util.ImageFiles;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Font;
@@ -40,7 +41,10 @@ import net.minecraft.util.StringHelper;
 import net.minecraft.util.math.MathHelper;
 import org.apache.commons.lang3.StringUtils;
 
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.glfw.GLFWDropCallback;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.system.MemoryUtil;
 
 import java.awt.datatransfer.DataFlavor;
 import java.nio.file.Path;
@@ -54,6 +58,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class AtomChatScreen extends ChatScreen {
     private final String originalChatText;
@@ -81,7 +87,9 @@ public class AtomChatScreen extends ChatScreen {
     private static final long SCROLL_ANIM_MS = UiMotion.SCROLL_SNAP_MS;
     private static final long WHEEL_ANIM_MS = UiMotion.SCROLL_WHEEL_MS;
     /** Input placeholder: shown whenever the draft is empty, focused or not. */
-    private static final String INPUT_PLACEHOLDER = "说点什么…";
+    private static final String INPUT_PLACEHOLDER = "请输入文本或拖动图片...";
+    private static final Pattern CICODE = Pattern.compile(
+            "\\[\\[CICode,url=([^,\\]]+),name=([^,\\]]*)(?:,w=(\\d+),h=(\\d+))?\\]\\]");
     private static final int GLFW_KEY_V = 86;
     private final long openStart = System.currentTimeMillis();
     private boolean closing;
@@ -130,6 +138,11 @@ public class AtomChatScreen extends ChatScreen {
     private String inputWrapText;
     private float inputWrapWidth = -1.0F;
     private List<String> inputWrapCache;
+
+    /** Set while an upload is in flight; the input placeholder reads it. */
+    private volatile boolean imageUploading;
+    /** GLFW drop callback, installed while this screen is open (MC sets none). */
+    private GLFWDropCallback dropCallback;
 
     private long lastAvatarClickTime;
     private int lastAvatarClickIndex = -1;
@@ -289,6 +302,8 @@ public class AtomChatScreen extends ChatScreen {
                 this::anchorInputTopY, this::anchorInputLeftX);
         this.chatInputSuggestor.setCanLeave(false);
         this.chatInputSuggestor.setWindowActive(false);
+        // init() also runs on every resize, hence the guard inside.
+        installDropCallback();
     }
 
     private String inputGetText() {
@@ -338,8 +353,59 @@ public class AtomChatScreen extends ChatScreen {
         }
     }
 
+    /**
+     * GLFW only hands file drops to whoever is listening, and Minecraft
+     * registers no drop callback at all — the Win32 backend already calls
+     * DragAcceptFiles, so the events have been arriving and being discarded.
+     * The callback fires on the render thread, from inside glfwPollEvents.
+     */
+    private void installDropCallback() {
+        if (dropCallback != null) {
+            return;
+        }
+        try {
+            dropCallback = GLFW.glfwSetDropCallback(this.client.getWindow().getHandle(),
+                    (win, count, names) -> onFilesDropped(count, names));
+        } catch (Throwable t) {
+            AtomChat.LOGGER.warn("Failed to install the file drop callback", t);
+        }
+    }
+
+    private void uninstallDropCallback() {
+        if (dropCallback == null) {
+            return;
+        }
+        try {
+            GLFW.glfwSetDropCallback(this.client.getWindow().getHandle(), null);
+            dropCallback.free();
+        } catch (Throwable t) {
+            AtomChat.LOGGER.warn("Failed to remove the file drop callback", t);
+        }
+        dropCallback = null;
+    }
+
+    /** Window-wide: the drop event carries no cursor position we could hit-test with. */
+    private void onFilesDropped(int count, long names) {
+        try {
+            PointerBuffer buffer = MemoryUtil.memPointerBuffer(names, count);
+            for (int i = 0; i < count; i++) {
+                Path file = Path.of(MemoryUtil.memUTF8(buffer.get(i)));
+                if (ImageFiles.isImage(file)) {
+                    uploadAndAppend(file);
+                    return;
+                }
+            }
+            if (count > 0) {
+                AtomChat.LOGGER.info("Ignored {} dropped file(s): none was an image", count);
+            }
+        } catch (Throwable t) {
+            AtomChat.LOGGER.warn("Failed to handle dropped files", t);
+        }
+    }
+
     @Override
     public void removed() {
+        uninstallDropCallback();
         // Give back the GPU texture the panel blur was sampling.
         graphics.releaseWorldSnapshot();
         messageEnterStart.clear();
@@ -433,9 +499,12 @@ public class AtomChatScreen extends ChatScreen {
         SkiaDraw.clip(canvas, textX, clipTop, layout.inputTextMaxWidth(), Math.max(0.0F, clipBottom - clipTop), 0.0F);
         // Placeholder stays visible while the field is focused: ChatScreen
         // focuses the chat field the moment the screen opens, so a hint gated
-        // on "not focused" was literally never on screen.
+        // on "not focused" was literally never on screen. It doubles as the
+        // upload progress readout, which is the only feedback a file drop can
+        // give — GLFW reports the drop itself but has no drag-enter to react to.
         if (current.isEmpty()) {
-            String hint = truncateToWidth(inputFont, INPUT_PLACEHOLDER, layout.inputTextMaxWidth());
+            String hint = truncateToWidth(inputFont,
+                    imageUploading ? "图片上传中…" : INPUT_PLACEHOLDER, layout.inputTextMaxWidth());
             SkiaFontRenderer.drawText(canvas, inputFont, hint, textX,
                     SkiaFontRenderer.centerBaselineY(inputFont, layout.inputTextCenterY), textSecondary());
         } else {
@@ -930,22 +999,30 @@ public class AtomChatScreen extends ChatScreen {
 
     private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
         float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
+        boolean hasQuote = msg.getQuoteName() != null;
+        float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
+        float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
+        float[] size = imageBubbleSize(parseImageMeta(raw), maxWidth);
+        float imageW = size[0];
+        float imageH = size[1];
+        float bubbleX = msg.isOwn() ? x + maxWidth - imageW - nameOffset : x + nameOffset;
+
+        // Name hugs the bubble's outer edge, exactly like a text bubble.
+        // Anchoring it to the row instead (the old behaviour) left the name
+        // drifting away from the bubble as soon as the bubble width changed —
+        // image bubbles are always wider than a short text bubble.
         String name = messageSenderName(msg);
-        float nameX = msg.isOwn() ? x + maxWidth - UiTokens.BUBBLE_RETRACT : x + nameOffset;
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.centerBaselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F), textPrimary());
+        float nameCenterY = SkiaFontRenderer.centerBaselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F);
+        if (msg.isOwn()) {
+            SkiaFontRenderer.drawTextRight(canvas, nameFont, name, bubbleX + imageW, nameCenterY, textPrimary());
+        } else {
+            SkiaFontRenderer.drawText(canvas, nameFont, name, bubbleX, nameCenterY, textPrimary());
+        }
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
         drawAvatar(canvas, msg, avatarX, avatarY);
-
-        boolean hasQuote = msg.getQuoteName() != null;
-        float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
-
-        float imageW = Math.min(s(220), maxWidth - UiTokens.BUBBLE_RETRACT - s(30));
-        float imageH = UiTokens.IMAGE_HEIGHT;
-        float bubbleX = msg.isOwn() ? x + maxWidth - imageW - nameOffset : x + nameOffset;
         if (hasQuote) {
             drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
         }
@@ -953,9 +1030,11 @@ public class AtomChatScreen extends ChatScreen {
 
         Image image = ImageLoader.get().get(imageUrl);
         if (image != null) {
-            float aspect = (float) image.getWidth() / Math.max(1, image.getHeight());
-            float drawH = Math.min(imageH, imageW / aspect);
-            SkiaDraw.drawRoundedImage(canvas, image, bubbleX, bubbleTop + (imageH - drawH) / 2.0F, imageW, drawH, UiTokens.BUBBLE_RADIUS);
+            // No aspect fix-up here: the CICode carries the intrinsic size, so
+            // the bubble already has the image's proportions and the bitmap is
+            // simply fitted to it. Stretching only happened because the box used
+            // to be a fixed 275x175 with the height clamped rather than scaled.
+            SkiaDraw.drawRoundedImage(canvas, image, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS);
         } else {
             Font loadingFont = FontManager.font(UiTokens.FONT_QUOTE);
             SkiaFontRenderer.drawText(canvas, loadingFont, "图片加载中…", bubbleX + UiTokens.QUOTE_PAD_X,
@@ -988,8 +1067,9 @@ public class AtomChatScreen extends ChatScreen {
             return s(2) + Math.max(lineHeight, lines * lineHeight) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         }
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        if (extractImageUrl(msg.getRawText()) != null) {
-            return UiTokens.NAME_BAND + quoteH + UiTokens.IMAGE_HEIGHT;
+        ImageMeta imageMeta = parseImageMeta(msg.getRawText());
+        if (imageMeta != null) {
+            return UiTokens.NAME_BAND + quoteH + imageBubbleSize(imageMeta, maxWidth)[1];
         }
         Font font = FontManager.font(UiTokens.FONT_BODY);
         float lineHeight = SkiaFontRenderer.getHeight(font);
@@ -1724,12 +1804,28 @@ public class AtomChatScreen extends ChatScreen {
      * picker and by Ctrl+V pastes.
      */
     private void uploadAndAppend(Path file) {
+        int[] size = ImageFiles.dimensions(file);
+        imageUploading = true;
         imageUploader.upload(file, url -> {
-            String code = "[[CICode,url=" + url + ",name=" + file.getFileName().toString() + "]]";
+            StringBuilder code = new StringBuilder("[[CICode,url=").append(url)
+                    .append(",name=").append(file.getFileName());
+            // Carry the intrinsic size so any client receiving this can lay the
+            // bubble out at the right aspect ratio before the download lands —
+            // that is what keeps the height from jumping when it arrives.
+            if (size != null) {
+                code.append(",w=").append(size[0]).append(",h=").append(size[1]);
+            }
+            code.append("]]");
             // The upload callback runs on the uploader's thread; the chat field
             // is only safe to touch from the render thread.
-            this.client.execute(() -> inputAppend(inputGetText().isEmpty() ? code : " " + code));
-        }, error -> AtomChat.LOGGER.warn("Image upload failed: {}", error));
+            this.client.execute(() -> {
+                imageUploading = false;
+                inputAppend(inputGetText().isEmpty() ? code.toString() : " " + code);
+            });
+        }, error -> {
+            AtomChat.LOGGER.warn("Image upload failed: {}", error);
+            this.client.execute(() -> imageUploading = false);
+        });
     }
 
     /**
@@ -1857,6 +1953,48 @@ public class AtomChatScreen extends ChatScreen {
 
     private static String normalizeInput(String text) {
         return StringHelper.truncateChat(StringUtils.normalizeSpace(text.trim()));
+    }
+
+    /** url / name / intrinsic size carried by a CICode. width and height are 0 in codes written before they existed. */
+    private record ImageMeta(String url, String name, int width, int height) {
+    }
+
+    private static ImageMeta parseImageMeta(String text) {
+        if (text == null) {
+            return null;
+        }
+        Matcher m = CICODE.matcher(text);
+        if (!m.find()) {
+            return null;
+        }
+        int w = 0;
+        int h = 0;
+        if (m.group(3) != null) {
+            try {
+                w = Integer.parseInt(m.group(3));
+                h = Integer.parseInt(m.group(4));
+            } catch (NumberFormatException ignored) {
+                // Malformed size: fall back to the placeholder box.
+            }
+        }
+        return new ImageMeta(m.group(1), m.group(2), w, h);
+    }
+
+    /**
+     * On-screen size of an image bubble: the intrinsic size scaled down to fit
+     * IMAGE_MAX_W x IMAGE_MAX_H, never upscaled, so a small picture is never
+     * blown up into a blur. Messages with no usable size — codes written before
+     * w/h existed, or images whose header ImageIO cannot read — fall back to the
+     * placeholder box, which is also what is drawn until the image downloads.
+     */
+    private static float[] imageBubbleSize(ImageMeta meta, float maxWidth) {
+        float maxW = Math.min(UiTokens.IMAGE_MAX_W, maxWidth - UiTokens.BUBBLE_RETRACT - s(30));
+        float maxH = UiTokens.IMAGE_MAX_H;
+        if (meta == null || meta.width() <= 0 || meta.height() <= 0) {
+            return new float[]{maxW, maxH};
+        }
+        float scale = Math.min(1.0F, Math.min(maxW / meta.width(), maxH / meta.height()));
+        return new float[]{Math.max(1.0F, meta.width() * scale), Math.max(1.0F, meta.height() * scale)};
     }
 
     private static String extractImageUrl(String text) {

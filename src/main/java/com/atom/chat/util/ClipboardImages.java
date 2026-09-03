@@ -13,7 +13,6 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Reads an image out of the system clipboard so Ctrl+V can paste one.
@@ -24,8 +23,6 @@ import java.util.Locale;
  * looked. AWT is the only view that carries the image and file-list flavours.
  */
 public final class ClipboardImages {
-    private static final String[] IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"};
-
     private ClipboardImages() {
     }
 
@@ -68,7 +65,7 @@ public final class ClipboardImages {
             }
             if (DataFlavor.javaFileListFlavor.equals(flavor) && data instanceof List<?> list) {
                 for (Object entry : list) {
-                    if (entry instanceof File file && file.isFile() && isImage(file.getName())) {
+                    if (entry instanceof File file && ImageFiles.isImage(file.toPath())) {
                         return file.toPath();
                     }
                 }
@@ -98,15 +95,5 @@ public final class ClipboardImages {
             g.dispose();
         }
         return buffered;
-    }
-
-    private static boolean isImage(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        for (String ext : IMAGE_EXTENSIONS) {
-            if (lower.endsWith(ext)) {
-                return true;
-            }
-        }
-        return false;
     }
 }

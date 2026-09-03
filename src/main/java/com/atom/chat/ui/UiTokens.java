@@ -66,8 +66,13 @@ public final class UiTokens {
     public static final float SYSTEM_BUBBLE_PAD_Y = s(6);
     public static final float BUBBLE_MIN_W = s(24);
     public static final float BUBBLE_RETRACT = s(106);
-    /** Image card height (also mirrored in messageHeight()). */
-    public static final float IMAGE_HEIGHT = s(140);
+    /**
+     * Image messages are scaled to fit this box and the bubble then hugs the
+     * result, so there is no stretching, cropping or letterboxing. Also the
+     * fallback size while the image is still downloading.
+     */
+    public static final float IMAGE_MAX_W = s(220);
+    public static final float IMAGE_MAX_H = s(140);
     /**
      * Horizontal QQ-style entrance slide distance (own from right, other from
      * left). Kept small on purpose: a long travel dominates the fade and the
