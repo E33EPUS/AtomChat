@@ -380,12 +380,14 @@ git commit -m "Slice styled sender and content from decorated chat lines"
 
 **Interfaces:**
 - Produces:
-  - `enum Route { PLAYER, SYSTEM, UNKNOWN }`
+  - `enum Route { PLAYER, SYSTEM, PRIVATE, UNKNOWN }` — `PRIVATE` 先留接口，本轮不做私聊 UI
   - `static Route classifyByKey(Text message)`
+  - `isVanillaBroadcast` 改为委托 `classifyByKey(message) == SYSTEM`，且不再把 `chat.type.team.text/sent` 当系统
 
-规则：
-- `PLAYER` 正键：`chat.type.text`、`commands.message.display.incoming`、`commands.message.display.outgoing`、`chat.type.team.text`、`chat.type.team.sent`
-- `SYSTEM` 负键：沿用现有 `isVanillaBroadcast` 集合 + `chat.type.announcement` 等
+规则（2026-09-04 用户拍板）：
+- `PLAYER` 正键：`chat.type.text`、`chat.type.team.text`、`chat.type.team.sent`
+- `PRIVATE` 预留键：`commands.message.display.incoming`、`commands.message.display.outgoing`
+- `SYSTEM` 负键：沿用现有 `isVanillaBroadcast` 集合，但**排除** `chat.type.team.text/sent`
 - 其它返回 `UNKNOWN`
 
 - [ ] **Step 1: 写失败测试**
@@ -394,14 +396,16 @@ git commit -m "Slice styled sender and content from decorated chat lines"
 @Test
 void classifiesVanillaPlayerAndSystemKeys() {
     assertEquals(Route.PLAYER, ChatClassifier.classifyByKey(Text.translatable("chat.type.text", "Alice", "hi")));
+    assertEquals(Route.PLAYER, ChatClassifier.classifyByKey(Text.translatable("chat.type.team.text", "Alice", "hi")));
     assertEquals(Route.SYSTEM, ChatClassifier.classifyByKey(Text.translatable("multiplayer.player.joined", "Alice")));
+    assertEquals(Route.PRIVATE, ChatClassifier.classifyByKey(Text.translatable("commands.message.display.incoming", "Alice", "hi")));
     assertEquals(Route.UNKNOWN, ChatClassifier.classifyByKey(Text.literal("plain")));
 }
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
 - [ ] **Step 3: 实现 `classifyByKey`**，并让 `isVanillaBroadcast` 调用它保持兼容。
-- [ ] **Step 4: 在 `ChatHudMixin` fallback 入口接入**：无 capture 且 `classifyByKey(message) == SYSTEM` 直接系统；`== PLAYER` 才允许文本守卫尝试；`UNKNOWN` 走现有文本守卫。
+- [ ] **Step 4: 在 `ChatHudMixin` fallback 入口接入**：无 capture 且 `classifyByKey(message) == SYSTEM` 直接系统；`== PLAYER/PRIVATE` 才允许文本守卫尝试；`UNKNOWN` 走现有文本守卫。`PRIVATE` 本轮不建私聊 UI，只保留路由分类供未来 `/msg`、`/tell` 使用。
 - [ ] **Step 5: 运行测试确认通过**
 - [ ] **Step 6: Commit**
 
