@@ -158,8 +158,17 @@ public final class SkiaFontRenderer {
                 if (isEmojiCodepoint(codepoint)) {
                     match = mgr.matchFamilyStyle("Segoe UI Emoji", io.github.humbleui.skija.FontStyle.NORMAL);
                 } else {
+                    // The bundled font is a GB2312 subset, so kaomoji lean on
+                    // exotic ranges (kana, Thai, Hangul, phonetic, symbols). A
+                    // narrow list leaves tofu even though Windows has the glyphs:
+                    // DengXian/MS Gothic cover kana, Malgun Gothic covers Hangul,
+                    // Leelawadee UI covers Thai, Cambria/Calibri cover symbols.
                     match = mgr.matchFamiliesStyleCharacter(
-                            new String[]{"Microsoft YaHei", "Segoe UI", "Noto Sans CJK SC", "Arial"},
+                            new String[]{
+                                    "Microsoft YaHei", "DengXian", "Segoe UI", "Segoe UI Symbol",
+                                    "MS Gothic", "Yu Gothic UI", "Malgun Gothic", "Leelawadee UI",
+                                    "Cambria", "Calibri", "Arial", "Noto Sans CJK SC"
+                            },
                             io.github.humbleui.skija.FontStyle.NORMAL, null, codepoint);
                 }
                 if (match != null) {

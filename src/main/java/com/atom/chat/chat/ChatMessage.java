@@ -81,12 +81,18 @@ public class ChatMessage {
      */
     public String getContentText() {
         String text = contentText != null ? contentText : rawText;
-        while (text.startsWith("<")) {
-            int end = text.indexOf("> ");
-            if (end > 0 && end + 2 < text.length()) {
-                text = text.substring(end + 2);
-            } else {
-                break;
+        // The vanilla "<sender> " prefix only exists on the final HUD line.
+        // contentText is captured before decoration, so a message that really
+        // starts with "<Alice> hi" must keep that text — only the raw fallback
+        // needs the prefix stripped.
+        if (contentText == null) {
+            while (text.startsWith("<")) {
+                int end = text.indexOf("> ");
+                if (end > 0 && end + 2 < text.length()) {
+                    text = text.substring(end + 2);
+                } else {
+                    break;
+                }
             }
         }
         while (text.startsWith("「引用")) {

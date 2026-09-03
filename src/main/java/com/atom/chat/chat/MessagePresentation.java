@@ -113,7 +113,11 @@ public final class MessagePresentation {
                 int openAngle = text.lastIndexOf('<', idx);
                 int closeAngle = text.indexOf('>', idx + cleanName.length());
                 if (openAngle >= 0 && closeAngle >= 0 && closeAngle - openAngle <= 64) {
-                    // inside angle brackets like <[VIP]Steve>
+                    // A letter immediately before the name inside <...> means the
+                    // candidate is a suffix of a longer word (<Notch> matching
+                    // "tch"), not a real sender. Decorated names are handled by
+                    // the "prev is ']'" path above, not this branch.
+                    return Optional.empty();
                 } else {
                     int bracketClose = text.lastIndexOf(']', idx);
                     if (bracketClose >= 0) {
@@ -131,7 +135,7 @@ public final class MessagePresentation {
         int after = idx + cleanName.length();
         if (after < text.length()) {
             char next = text.charAt(after);
-            if (Character.isLetterOrDigit(next) || next == '_') {
+            if (Character.isLetterOrDigit(next) || next == '_' || next == '-') {
                 return Optional.empty();
             }
         }

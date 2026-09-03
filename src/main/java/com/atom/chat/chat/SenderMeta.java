@@ -19,10 +19,13 @@ import java.util.UUID;
 public record SenderMeta(UUID senderUuid, String senderName, String profileName,
                          String contentText, boolean system) {
     public SenderMeta {
+        senderUuid = senderUuid != null && senderUuid.equals(NIL_UUID) ? null : senderUuid;
         senderName = clean(senderName);
         profileName = clean(profileName);
         contentText = clean(contentText);
     }
+
+    private static final UUID NIL_UUID = new UUID(0L, 0L);
 
     public static SenderMeta systemMeta() {
         return new SenderMeta(null, null, null, null, true);

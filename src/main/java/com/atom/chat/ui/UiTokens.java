@@ -95,6 +95,13 @@ public final class UiTokens {
     /** Kaomoji rows hold long strings, so they get their own (taller) row height. */
     public static final float EMOJI_KAOMOJI_ROW_H = s(24);
 
+    // Emote (sticker) grid: bigger cells than emoji so the images read clearly.
+    // The pack cap of 10 fills two rows of six, so the grid never needs to scroll.
+    public static final int EMOTE_COLS = 6;
+    public static final float EMOTE_CELL = s(44);
+    /** Corner remove button shown on a hovered emote cell. */
+    public static final float EMOTE_REMOVE_SIZE = s(14);
+
     // Context menu
     public static final float MENU_W = s(110);
     public static final float MENU_H = s(64);

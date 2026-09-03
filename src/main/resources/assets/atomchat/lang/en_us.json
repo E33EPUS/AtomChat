@@ -1,3 +1,20 @@
 {
-  "atomchat.screen.title": "AtomChat"
+  "atomchat.screen.title": "AtomChat",
+  "atomchat.channel.world": "World Channel",
+  "atomchat.reply.to": "Reply to @%s: %s",
+  "atomchat.input.placeholder": "Type a message or drag an image here...",
+  "atomchat.input.uploading": "Uploading image…",
+  "atomchat.image.loading": "Loading image…",
+  "atomchat.emoji.tab.emoji": "Emoji",
+  "atomchat.emoji.tab.kaomoji": "Kaomoji",
+  "atomchat.emoji.tab.emote": "Stickers",
+  "atomchat.context.copy": "Copy",
+  "atomchat.context.quote": "Quote",
+  "atomchat.sender.me": "Me",
+  "atomchat.sender.player": "Player",
+  "atomchat.picker.title": "AtomChat - Choose Image",
+  "atomchat.picker.filter.image": "Images (png, jpg, jpeg, gif, webp, bmp)",
+  "atomchat.picker.filter.emote": "Stickers (png, jpg, jpeg)",
+  "atomchat.picker.preview.none": "No preview",
+  "atomchat.picker.preview.loading": "Loading…"
 }

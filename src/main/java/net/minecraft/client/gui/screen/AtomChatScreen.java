@@ -4,10 +4,11 @@ import com.atom.chat.AtomChat;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
+import com.atom.chat.emote.EmoteImageCache;
+import com.atom.chat.emote.EmoteStore;
 import com.atom.chat.image.AvatarRenderer;
 import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.SkinResolver;
-import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.mixin.MouseHandlerAccessor;
@@ -29,10 +30,11 @@ import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
+import io.github.humbleui.skija.PaintStrokeCap;
+import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.types.Rect;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.skija.SamplingMode;
-import io.github.humbleui.skija.Image;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.text.Text;
@@ -40,6 +42,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.StringHelper;
 import net.minecraft.util.math.MathHelper;
 import org.apache.commons.lang3.StringUtils;
+import net.fabricmc.loader.api.FabricLoader;
 
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFWDropCallback;
@@ -47,11 +50,13 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryUtil;
 
 import java.awt.datatransfer.DataFlavor;
+import java.io.File;
 import java.nio.file.Path;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -66,11 +71,17 @@ public class AtomChatScreen extends ChatScreen {
     private final SkiaGraphics graphics = new SkiaGraphics();
     private final ImageUploader imageUploader = new ImageUploader();
     private final List<MessageHit> hits = new ArrayList<>();
+    /** Local emote pack; see {@link EmoteStore} for the persistence rules. */
+    private final EmoteStore emoteStore = new EmoteStore(
+            FabricLoader.getInstance().getConfigDir().resolve("atomchat/emotes"));
+    private final EmoteImageCache emoteImageCache = new EmoteImageCache();
 
     private boolean inputFocused = true;
     /** Vanilla command completion over ChatScreen's chatField, anchored to our input row. */
     private float scrollY;
     private float maxScroll;
+    /** List viewport height from the previous frame; detects input-bar growth. */
+    private float lastListHeight = -1.0F;
     private ChatMessage replyTarget;
     private boolean emojiOpen;
     private int emojiTab;
@@ -79,15 +90,48 @@ public class AtomChatScreen extends ChatScreen {
     private float contextX;
     private float contextY;
 
+    // Per-cell hover fade shared by the emoji / kaomoji / emote grids.
+    private final Map<Integer, Float> cellHover = new HashMap<>();
+    private final float[] contextMenuHover = {0.0F, 0.0F};
+    // Emoji tab transition: double-layer content slide + sliding indicator.
+    private final Animator tabContentAnim = new Animator(Easing::easeInOutCubic);
+    private final Animator tabIndicatorAnim = new Animator(Easing::easeInOutCubic);
+    private int tabAnimFrom = -1;
+    private int tabAnimTo = -1;
+
 
     // Animation state — durations live in UiMotion so every transition is tuned
     // in one place and none of them can drift back to a sluggish value.
     private static final long OPEN_ANIM_MS = UiMotion.PANEL_MS;
     private static final long MESSAGE_ANIM_MS = UiMotion.MESSAGE_MS;
+    /**
+     * Once a message has been visible this long it is considered settled by
+     * time alone, so the settled set never needs to hold it — that keeps the
+     * "never replay an entrance" guarantee bounded to recent messages.
+     */
+    private static final long ENTRANCE_SETTLE_GUARD_MS = 5000L;
     private static final long SCROLL_ANIM_MS = UiMotion.SCROLL_SNAP_MS;
     private static final long WHEEL_ANIM_MS = UiMotion.SCROLL_WHEEL_MS;
-    /** Input placeholder: shown whenever the draft is empty, focused or not. */
-    private static final String INPUT_PLACEHOLDER = "请输入文本或拖动图片...";
+    // Toolbar icons are kept as inline SVG path data (not assets): three tiny
+    // paths are cheaper than a resource pipeline, stay crisp at every scale,
+    // and are trivial to recolour for hover/pressed/theme states. The paths use
+    // a 20x20 logical space; drawIcon() fits them into the button bounds.
+    private static final String ICON_IMAGE_SVG = "M5.5 3 C4.7 3 4 3.7 4 4.5 L4 15.5 C4 16.3 4.7 17 5.5 17 L14.5 17 C15.3 17 16 16.3 16 15.5 L16 4.5 C16 3.7 15.3 3 14.5 3 Z"
+            + " M7.5 6.5 m-1.3 0 a1.3 1.3 0 1 0 2.6 0 a1.3 1.3 0 1 0 -2.6 0"
+            + " M4.3 15.7 L8 11.6 L10.6 14.1 L13.8 10.4 L15.7 12.3";
+    private static final String ICON_EMOJI_SVG = "M10 3 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14"
+            + " M7 8.6 v1.3 M13 8.6 v1.3"
+            + " M6.8 12.2 C8.5 14.3 11.5 14.3 13.2 12.2";
+    // Feather-style send: one diagonal fold + the paper-plane outline.
+    private static final String ICON_SEND_SVG = "M18 2.5 L9.5 11"
+            + " M18 2.5 L13.5 18.5 L9.5 11 L2.5 7.5 Z";
+    private static final io.github.humbleui.skija.Path ICON_IMAGE_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_IMAGE_SVG);
+    private static final io.github.humbleui.skija.Path ICON_EMOJI_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_EMOJI_SVG);
+    private static final io.github.humbleui.skija.Path ICON_SEND_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_SEND_SVG);
+
     private static final Pattern CICODE = Pattern.compile(
             "\\[\\[CICode,url=([^,\\]]+),name=([^,\\]]*)(?:,w=(\\d+),h=(\\d+))?\\]\\]");
     private static final int GLFW_KEY_V = 86;
@@ -172,10 +216,13 @@ public class AtomChatScreen extends ChatScreen {
      * missing entry as "first visible frame" and would re-stamp the timestamp,
      * so the 140ms animation restarted on the very next frame — an endless loop
      * that only stopped when the screen was reopened and openStart moved past
-     * the message. Entries are dropped only once the message leaves the
-     * viewport, which also keeps both collections bounded.
+     * the message. Once a message settles it must NEVER replay while this screen
+     * is open, even after it scrolls out of view and back — scrolling through
+     * history should be silent. The set is pruned by
+     * {@link #ENTRANCE_SETTLE_GUARD_MS} so it stays bounded to recent arrivals.
      */
     private final Set<ChatMessage> messageEnterSettled = new HashSet<>();
+    private long lastEntrancePrune;
 
     public AtomChatScreen(String originalChatText) {
         super(originalChatText);
@@ -443,7 +490,7 @@ public class AtomChatScreen extends ChatScreen {
         // Channel name is centered in the card (both axes); the clock stays
         // pinned to the right edge.
         Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
-        SkiaFontRenderer.drawTextCentered(canvas, titleFont, "世界频道",
+        SkiaFontRenderer.drawTextCentered(canvas, titleFont, tr("atomchat.channel.world"),
                 layout.header.x() + layout.header.w() / 2.0F,
                 layout.header.y() + layout.header.h() / 2.0F, textPrimary());
         LocalTime now = LocalTime.now();
@@ -465,16 +512,19 @@ public class AtomChatScreen extends ChatScreen {
             float replyH = s(26);
             SkiaDraw.drawRoundedRect(canvas, reply.x(), reply.y(), reply.w(), replyH, s(8), Color.makeARGB(90, 74, 144, 226));
             Font replyFont = FontManager.font(UiTokens.FONT_NAME);
-            String replyLabel = "回复 @" + messageSenderName(replyTarget) + ": " + abbreviate(replyTarget.getContentText(), 26);
+            String replyLabel = tr("atomchat.reply.to", messageSenderName(replyTarget),
+                    abbreviate(replyTarget.getContentText(), 26));
             SkiaFontRenderer.drawText(canvas, replyFont, replyLabel, reply.x() + UiTokens.QUOTE_PAD_X,
                     SkiaFontRenderer.centerBaselineY(replyFont, reply.y() + s(13)), textPrimary());
         }
 
-        // Input bar: one button row (image / emoji … send), text row below
+        // Input bar: one button row (image / emoji … send), text row below.
+        // The list layout already ends at this bar's top, so the translucent
+        // card never has message content underneath it.
         UiLayout.Rect bar = layout.inputBar;
         SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), s(18), Color.makeARGB(60, 255, 255, 255));
-        drawIconButton(canvas, "图片", layout.imageBtn.x(), layout.imageBtn.y(), 0, mouseX, mouseY);
-        drawIconButton(canvas, "表情", layout.emojiBtn.x(), layout.emojiBtn.y(), 1, mouseX, mouseY);
+        drawIconButton(canvas, layout.imageBtn.x(), layout.imageBtn.y(), 0, mouseX, mouseY);
+        drawIconButton(canvas, layout.emojiBtn.x(), layout.emojiBtn.y(), 1, mouseX, mouseY);
         drawSendButton(canvas, layout.sendBtn.x(), layout.sendBtn.y(), mouseX, mouseY);
 
         // Input text: rendered by Skia at fixed density; the hidden EditBox is the
@@ -504,7 +554,7 @@ public class AtomChatScreen extends ChatScreen {
         // give — GLFW reports the drop itself but has no drag-enter to react to.
         if (current.isEmpty()) {
             String hint = truncateToWidth(inputFont,
-                    imageUploading ? "图片上传中…" : INPUT_PLACEHOLDER, layout.inputTextMaxWidth());
+                    imageUploading ? tr("atomchat.input.uploading") : tr("atomchat.input.placeholder"), layout.inputTextMaxWidth());
             SkiaFontRenderer.drawText(canvas, inputFont, hint, textX,
                     SkiaFontRenderer.centerBaselineY(inputFont, layout.inputTextCenterY), textSecondary());
         } else {
@@ -541,8 +591,8 @@ public class AtomChatScreen extends ChatScreen {
         // Scrollbar (e33chat style): fades in near/hinting scroll, draggable, highlights.
         drawScrollbar(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY));
 
-        drawEmojiPanel(canvas);
-        drawContextMenu(canvas);
+        drawEmojiPanel(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
+        drawContextMenu(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
 
         // Bezel ring last: nothing at the panel edge can sit on top of it.
         try (Paint border = new Paint().setMode(PaintMode.STROKE).setStrokeWidth(strokeWidth).setColor(0xFFFFFFFF)) {
@@ -555,15 +605,19 @@ public class AtomChatScreen extends ChatScreen {
         return UiTokens.s(v);
     }
 
-    private void drawIconButton(Canvas canvas, String label, float bx, float by, int id, int mouseX, int mouseY) {
+    /** Minecraft language lookup for all AtomChat UI copy. */
+    private static String tr(String key, Object... args) {
+        return Text.translatable(key, args).getString();
+    }
+
+    private void drawIconButton(Canvas canvas, float bx, float by, int id, int mouseX, int mouseY) {
         float vmx = toVirtualX(mouseX);
         float vmy = toVirtualY(mouseY);
         boolean hover = vmx >= bx && vmx <= bx + UiTokens.BUTTON_W && vmy >= by && vmy <= by + UiTokens.BUTTON_H;
         buttonHover[id] = UiMotion.approach(buttonHover[id], hover ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
         int fill = Math.min(255, (int) (70 + buttonHover[id] * 45.0F + (buttonPressed(id) ? 50 : 0)));
         SkiaDraw.drawRoundedRect(canvas, bx, by, UiTokens.BUTTON_W, UiTokens.BUTTON_H, UiTokens.BUTTON_RADIUS, Color.makeARGB(fill, 255, 255, 255));
-        Font buttonFont = FontManager.font(UiTokens.FONT_BUTTON);
-        SkiaFontRenderer.drawTextCentered(canvas, buttonFont, label, bx + UiTokens.BUTTON_W / 2.0F, by + UiTokens.BUTTON_H / 2.0F, textPrimary());
+        drawIcon(canvas, id == 0 ? ICON_IMAGE_PATH : ICON_EMOJI_PATH, bx, by, textPrimary());
     }
 
     private void drawSendButton(Canvas canvas, float bx, float by, int mouseX, int mouseY) {
@@ -577,8 +631,39 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.drawRoundedRect(canvas, bx, by, UiTokens.BUTTON_W, UiTokens.BUTTON_H, UiTokens.BUTTON_RADIUS,
                     Color.makeARGB((int) Math.min(160, overlay), 255, 255, 255));
         }
-        Font sendFont = FontManager.font(UiTokens.FONT_BUTTON);
-        SkiaFontRenderer.drawTextCentered(canvas, sendFont, "发送", bx + UiTokens.BUTTON_W / 2.0F, by + UiTokens.BUTTON_H / 2.0F, textPrimary());
+        drawIcon(canvas, ICON_SEND_PATH, bx, by, textPrimary());
+    }
+
+    /**
+     * Draws one of the inline SVG-path toolbar icons, centered in its button
+     * and scaled to fit an {@code ICON_SIZE} box. Stroke width is divided by the
+     * path scale so the rendered line stays a constant UI thickness no matter
+     * how the icon's own path bounds differ.
+     */
+    private void drawIcon(Canvas canvas, io.github.humbleui.skija.Path icon, float bx, float by, int color) {
+        float size = s(18);
+        Rect b = icon.getBounds();
+        if (b == null || b.isEmpty()) {
+            return;
+        }
+        float scale = size / Math.max(b.getWidth(), b.getHeight());
+        float cx = bx + UiTokens.BUTTON_W / 2.0F;
+        float cy = by + UiTokens.BUTTON_H / 2.0F;
+        canvas.save();
+        try {
+            canvas.translate(cx - (b.getLeft() + b.getRight()) / 2.0F * scale,
+                    cy - (b.getTop() + b.getBottom()) / 2.0F * scale);
+            canvas.scale(scale, scale);
+            try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
+                    .setMode(PaintMode.STROKE)
+                    .setStrokeWidth(s(1.5F) / scale)
+                    .setStrokeCap(PaintStrokeCap.ROUND)
+                    .setStrokeJoin(PaintStrokeJoin.ROUND)) {
+                canvas.drawPath(icon, paint);
+            }
+        } finally {
+            canvas.restore();
+        }
     }
 
     /**
@@ -726,9 +811,23 @@ public class AtomChatScreen extends ChatScreen {
         // arrive the old target is no longer near the new max, so comparing after
         // recompute would make us miss the follow and leave a growing gap.
         boolean wasAtBottom = scrollToBottom || scrollTarget >= maxScroll - 3.0F;
+        boolean viewportChanged = lastListHeight >= 0.0F && Math.abs(lastListHeight - height) > 0.01F;
+        lastListHeight = height;
         recomputeMaxScroll(messages, width, y, height);
         if (wasAtBottom) {
-            scrollToBottom = true;
+            if (viewportChanged) {
+                // The list is shrinking/growing in lockstep with the animated
+                // input bar. Keep the bottom pinned directly: chasing the moving
+                // maxScroll with an eased scroll restarts every frame and visibly
+                // lags behind the bar, which is why growing felt desynced while
+                // shrinking (a plain clamp) felt fine.
+                scrollToBottom = false;
+                scrollY = maxScroll;
+                scrollTarget = maxScroll;
+                scrollAnimActive = false;
+            } else {
+                scrollToBottom = true;
+            }
         }
         updateScrollAnimation();
         canvas.save();
@@ -736,6 +835,7 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.clip(canvas, x, y, width, height, 0.0F);
             canvas.translate(0.0F, -scrollY);
             long now = System.currentTimeMillis();
+            pruneEntranceSettled(now);
             float cursorY = y;
             for (ChatMessage msg : messages) {
                 float h = messageHeight(msg, width);
@@ -785,11 +885,11 @@ public class AtomChatScreen extends ChatScreen {
                             hit.bottom() - scrollY, hit.avatarX(), hit.avatarY() - scrollY, hit.avatarSize(),
                             hit.bubbleY() - scrollY, hit.bubbleX(), hit.bubbleWidth(), hit.bubbleBottom() - scrollY));
                 } else {
-                    // Left the viewport: drop the entrance state so the maps stay
-                    // bounded and the message replays its entrance when it is
-                    // scrolled back into view.
+                    // Left the viewport: drop the start timestamp only. The
+                    // settled marker is deliberately kept so scrolling back up
+                    // through history never replays an entrance; the set is
+                    // bounded by pruneEntranceSettled's time guard.
                     messageEnterStart.remove(msg);
-                    messageEnterSettled.remove(msg);
                 }
                 cursorY += h + UiTokens.LIST_GAP;
             }
@@ -810,7 +910,9 @@ public class AtomChatScreen extends ChatScreen {
      * opacity ramp in ~70ms, far too fast to read as a fade.
      */
     private float entranceProgress(ChatMessage msg, long now) {
-        if (msg.getTimestamp() < openStart || messageEnterSettled.contains(msg)) {
+        if (msg.getTimestamp() < openStart
+                || messageEnterSettled.contains(msg)
+                || now - msg.getTimestamp() > ENTRANCE_SETTLE_GUARD_MS) {
             return 1.0F;
         }
         Long start = messageEnterStart.get(msg);
@@ -819,6 +921,20 @@ public class AtomChatScreen extends ChatScreen {
             messageEnterStart.put(msg, start);
         }
         return Math.min(1.0F, (now - start) / (float) MESSAGE_ANIM_MS);
+    }
+
+    /**
+     * Bounded housekeeping for the never-replay guarantee: once a message is
+     * older than the guard window it is settled by time alone, so its entry can
+     * leave the set. Runs at most once a second.
+     */
+    private void pruneEntranceSettled(long now) {
+        if (messageEnterSettled.isEmpty() || now - lastEntrancePrune < 1000L) {
+            return;
+        }
+        lastEntrancePrune = now;
+        long cutoff = now - ENTRANCE_SETTLE_GUARD_MS;
+        messageEnterSettled.removeIf(m -> m.getTimestamp() < cutoff);
     }
 
     /**
@@ -1040,7 +1156,7 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.drawRoundedImage(canvas, image, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS);
         } else {
             Font loadingFont = FontManager.font(UiTokens.FONT_QUOTE);
-            SkiaFontRenderer.drawTextCentered(canvas, loadingFont, "图片加载中…",
+            SkiaFontRenderer.drawTextCentered(canvas, loadingFont, tr("atomchat.image.loading"),
                     bubbleX + imageW / 2.0F, bubbleTop + imageH / 2.0F, textSecondary());
         }
 
@@ -1093,6 +1209,20 @@ public class AtomChatScreen extends ChatScreen {
         return UiTokens.EMOJI_TAB_H + emojiContentH() + UiTokens.EMOJI_PANEL_PAD;
     }
 
+    private static final String[] EMOJI_TAB_KEYS = {
+            "atomchat.emoji.tab.emoji",
+            "atomchat.emoji.tab.kaomoji",
+            "atomchat.emoji.tab.emote"
+    };
+
+    private static String[] emojiTabLabels() {
+        String[] labels = new String[EMOJI_TAB_KEYS.length];
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = tr(EMOJI_TAB_KEYS[i]);
+        }
+        return labels;
+    }
+
     private static final String[] EMOJIS = {
             "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂",
             "🙂", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘",
@@ -1143,6 +1273,11 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     private int emojiMaxScroll() {
+        if (emojiTab == 2) {
+            // 10 emotes in six columns fill two rows and never exceed the fixed
+            // content height, so the emote grid never scrolls.
+            return 0;
+        }
         String[] items = emojiTabItems();
         int cols = emojiTab == 1 ? 2 : UiTokens.EMOJI_COLS;
         float itemH = emojiTab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
@@ -1158,16 +1293,32 @@ public class AtomChatScreen extends ChatScreen {
         if (!overEmojiPanel(mx, my)) {
             return null;
         }
-        // Tab bar.
+        // Tab bar. The strip is inset by EMOJI_PANEL_PAD so it aligns with the
+        // content grid below; the active pill then keeps a uniform s(4) inside it.
         if (my < py + UiTokens.EMOJI_TAB_H) {
-            String[] labels = {"表情", "颜文字"};
-            float tabW = pw / labels.length;
-            int t = (int) ((mx - px) / tabW);
-            if (t >= 0 && t < labels.length) {
+            String[] labels = emojiTabLabels();
+            float tabInset = UiTokens.EMOJI_PANEL_PAD;
+            float tabStripX = px + tabInset;
+            float tabStripW = pw - tabInset * 2.0F;
+            float tabW = tabStripW / labels.length;
+            int t = (int) ((mx - tabStripX) / tabW);
+            if (t >= 0 && t < labels.length && t != emojiTab) {
+                int from = emojiTab;
                 emojiTab = t;
                 emojiScroll = 0;
+                cellHover.clear();
+                if (t == 2) {
+                    // Rescan so files dropped into the emote dir by hand show up.
+                    emoteStore.refresh();
+                }
+                startTabTransition(from, t);
             }
             return "";
+        }
+        // The emote (sticker) tab has its own grid — images, an add slot and a
+        // per-cell remove button. It does its work inline and never inserts text.
+        if (emojiTab == 2) {
+            return emotePanelClick(mx, my);
         }
         // Content grid.
         String[] items = emojiTabItems();
@@ -1195,7 +1346,7 @@ public class AtomChatScreen extends ChatScreen {
         return "";
     }
 
-    private void drawEmojiPanel(Canvas canvas) {
+    private void drawEmojiPanel(Canvas canvas, float vmx, float vmy) {
         if (emojiAnim < 0.01F) {
             return;
         }
@@ -1218,40 +1369,57 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.drawRoundedRect(canvas, panelX, panelY, panelW, panelH, s(14), Color.makeARGB(245, 35, 39, 47));
             SkiaDraw.drawRoundedShadow(canvas, panelX, panelY, panelW, panelH, s(14), s(8), Color.makeARGB(100, 0, 0, 0));
 
-            // Tabs.
+            // Tabs: the active pill slides between slots when the tab changes.
+            tabIndicatorAnim.update(frameDt);
+            tabContentAnim.update(frameDt);
+            if (tabContentAnim.isDone()) {
+                tabAnimFrom = -1;
+            }
             Font tabFont = FontManager.font(UiTokens.FONT_BUTTON);
-            String[] labels = {"表情", "颜文字"};
-            float tabW = panelW / labels.length;
+            String[] labels = emojiTabLabels();
+            float tabInset = UiTokens.EMOJI_PANEL_PAD;
+            float tabStripX = panelX + tabInset;
+            float tabStripW = panelW - tabInset * 2.0F;
+            float tabW = tabStripW / labels.length;
+            float indicator = tabIndicatorAnim.getValue();
+            // The active pill keeps a uniform s(4) inset on every side of its tab
+            // slot, and the whole strip is inset so it never crowds the panel's
+            // rounded border (Apple-style calculated spacing).
+            // The active pill leaves s(6) above and only s(2) below: the extra
+            // bottom length makes the label's visual centre line up with the
+            // pill's centre (the text baseline is drawn slightly low).
+            SkiaDraw.drawRoundedRect(canvas, tabStripX + indicator * tabW + s(4), panelY + s(6),
+                    tabW - s(8), UiTokens.EMOJI_TAB_H - s(8), s(8), Color.makeARGB(90, 255, 255, 255));
             for (int t = 0; t < labels.length; t++) {
-                float tx = panelX + t * tabW;
-                if (t == emojiTab) {
-                    SkiaDraw.drawRoundedRect(canvas, tx + s(2), panelY + s(4), tabW - s(4), UiTokens.EMOJI_TAB_H - s(6), s(8), Color.makeARGB(90, 255, 255, 255));
-                }
+                float tx = tabStripX + t * tabW;
                 SkiaFontRenderer.drawTextCentered(canvas, tabFont, labels[t],
                         tx + tabW / 2.0F, panelY + UiTokens.EMOJI_TAB_H / 2.0F + s(2), textPrimary());
             }
 
-            // Content area (clipped, scrollable).
+            // Content area (clipped, scrollable). Switching tabs plays an opaque
+            // push, like moving from one screen to the next: the outgoing tab is
+            // pushed out as the incoming one slides in from the same direction,
+            // both fully opaque and covering the full content width. A short
+            // faded slide reads as a jitter, not a screen change.
             float contentX = panelX + UiTokens.EMOJI_PANEL_PAD;
             float contentY = panelY + UiTokens.EMOJI_TAB_H + s(2);
             float contentW = panelW - UiTokens.EMOJI_PANEL_PAD * 2.0F;
             float contentH = emojiContentH();
+            updateGridHover(vmx, vmy);
             canvas.save();
             SkiaDraw.clip(canvas, contentX, contentY, contentW, contentH, 0.0F);
-            String[] items = emojiTabItems();
-            Font itemFont = FontManager.font(emojiTab == 1 ? UiTokens.FONT_KAOMOJI : UiTokens.FONT_EMOJI);
-            float itemH = emojiTab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
-            int cols = emojiTab == 1 ? 2 : UiTokens.EMOJI_COLS;
-            for (int i = 0; i < items.length; i++) {
-                int col = i % cols;
-                int row = i / cols;
-                float ex = contentX + col * (contentW / cols);
-                float ey = contentY - emojiScroll + row * itemH;
-                if (ey + itemH < contentY || ey > contentY + contentH) {
-                    continue;
-                }
-                SkiaFontRenderer.drawText(canvas, itemFont, items[i], ex + s(2),
-                        SkiaFontRenderer.centerBaselineY(itemFont, ey + itemH / 2.0F), textPrimary());
+            boolean transitioning = tabAnimFrom >= 0 && tabAnimFrom != emojiTab && !tabContentAnim.isDone();
+            float tp = transitioning ? tabContentAnim.getValue() : 1.0F;
+            if (transitioning) {
+                float travel = contentW;
+                float inSign = tabAnimTo > tabAnimFrom ? 1.0F : -1.0F;
+                drawEmojiTabContent(canvas, tabAnimFrom, contentX, contentY, contentW, contentH,
+                        -inSign * travel * tp, 1.0F, false);
+                drawEmojiTabContent(canvas, emojiTab, contentX, contentY, contentW, contentH,
+                        inSign * travel * (1.0F - tp), 1.0F, true);
+            } else {
+                drawEmojiTabContent(canvas, emojiTab, contentX, contentY, contentW, contentH,
+                        0.0F, 1.0F, true);
             }
             canvas.restore();
             canvas.restore();
@@ -1259,7 +1427,329 @@ public class AtomChatScreen extends ChatScreen {
         canvas.restore();
     }
 
-    private void drawContextMenu(Canvas canvas) {
+    private void startTabTransition(int from, int to) {
+        tabAnimFrom = from;
+        tabAnimTo = to;
+        tabContentAnim.setValue(0.0F);
+        tabContentAnim.animateTo(UiMotion.TAB_MS, 1.0F);
+        tabIndicatorAnim.animateTo(UiMotion.TAB_MS, to);
+    }
+
+    private int gridHoverKey(int tab, int index) {
+        return tab * 1000 + index;
+    }
+
+    /**
+     * Hovered cell index for the active text tab (emoji/kaomoji), or -1 when the
+     * pointer is over the tab bar, a gutter or outside the content area. Matches
+     * emojiPanelClick's geometry so highlight and hit-test never drift.
+     */
+    private int textGridHoveredIndex(int tab, float mx, float my) {
+        String[] items = tab == 1 ? KAOMOJI : EMOJIS;
+        float px = emojiPanelX();
+        float py = emojiPanelY();
+        float pw = emojiPanelW();
+        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
+        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
+        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
+        float contentH = emojiContentH();
+        if (my < py + UiTokens.EMOJI_TAB_H
+                || mx < contentX || mx > contentX + contentW
+                || my < contentY || my > contentY + contentH) {
+            return -1;
+        }
+        int cols = tab == 1 ? 2 : UiTokens.EMOJI_COLS;
+        float itemH = tab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
+        int col = (int) ((mx - contentX) / (contentW / cols));
+        int row = (int) ((my - contentY + emojiScroll) / itemH);
+        if (col < 0 || col >= cols) {
+            return -1;
+        }
+        int idx = row * cols + col;
+        return idx >= 0 && idx < items.length ? idx : -1;
+    }
+
+    /**
+     * Hovered cell index for the emote tab (0..count, count = the "+" add slot),
+     * or -1 outside the content area / tab bar / gutters.
+     */
+    private int emoteGridHoveredIndex(float mx, float my) {
+        float px = emojiPanelX();
+        float py = emojiPanelY();
+        float pw = emojiPanelW();
+        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
+        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
+        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
+        float contentH = emojiContentH();
+        if (my < py + UiTokens.EMOJI_TAB_H
+                || mx < contentX || mx > contentX + contentW
+                || my < contentY || my > contentY + contentH) {
+            return -1;
+        }
+        float colW = contentW / UiTokens.EMOTE_COLS;
+        int col = (int) ((mx - contentX) / colW);
+        int row = (int) ((my - contentY) / UiTokens.EMOTE_CELL);
+        if (col < 0 || col >= UiTokens.EMOTE_COLS) {
+            return -1;
+        }
+        int idx = row * UiTokens.EMOTE_COLS + col;
+        int total = emoteStore.count() + 1;
+        return idx >= 0 && idx < total ? idx : -1;
+    }
+
+    /**
+     * Fades every tracked cell highlight toward its target — the pointer can only
+     * hover one cell, but every other cell must still decay when the mouse moves
+     * away. Called once per frame before the content layers are drawn, so both the
+     * outgoing and incoming tab layers read the same per-cell state.
+     */
+    private void updateGridHover(float vmx, float vmy) {
+        int hovered = -1;
+        if (emojiOpen && overEmojiPanel(vmx, vmy) && vmy >= emojiPanelY() + UiTokens.EMOJI_TAB_H) {
+            hovered = emojiTab == 2 ? emoteGridHoveredIndex(vmx, vmy) : textGridHoveredIndex(emojiTab, vmx, vmy);
+        }
+        int hoveredKey = hovered < 0 ? -1 : gridHoverKey(emojiTab, hovered);
+        Iterator<Map.Entry<Integer, Float>> it = cellHover.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, Float> e = it.next();
+            boolean isHovered = e.getKey() == hoveredKey;
+            float next = UiMotion.approach(e.getValue(), isHovered ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
+            if (!isHovered && next <= 0.001F) {
+                it.remove();
+            } else {
+                e.setValue(next);
+            }
+        }
+        if (hoveredKey >= 0 && !cellHover.containsKey(hoveredKey)) {
+            cellHover.put(hoveredKey, 0.0F);
+        }
+    }
+
+    /**
+     * Draws one tab's content layer, optionally slid by dx and faded by alpha
+     * during a tab switch. The old layer is non-interactive (no hover highlights)
+     * because the pointer already targets the new tab.
+     */
+    private void drawEmojiTabContent(Canvas canvas, int tab, float contentX, float contentY, float contentW, float contentH,
+                                     float dx, float alpha, boolean interactive) {
+        if (alpha <= 0.005F) {
+            return;
+        }
+        boolean layered = alpha < 0.995F;
+        canvas.save();
+        canvas.translate(dx, 0.0F);
+        if (layered) {
+            try (Paint layer = new Paint()) {
+                layer.setColor(Color.makeARGB((int) (255.0F * alpha), 0, 0, 0));
+                // Cover the slide travel as well, or content leaving the layer's
+                // bounds would be cut out of the fade.
+                canvas.saveLayer(Rect.makeXYWH(contentX - s(24), contentY - s(8),
+                        contentW + s(48), contentH + s(16)), layer);
+                drawTabGrid(canvas, tab, contentX, contentY, contentW, contentH, interactive);
+            }
+        } else {
+            drawTabGrid(canvas, tab, contentX, contentY, contentW, contentH, interactive);
+        }
+        if (layered) {
+            canvas.restore();
+        }
+        canvas.restore();
+    }
+
+    private void drawTabGrid(Canvas canvas, int tab, float contentX, float contentY, float contentW, float contentH,
+                             boolean interactive) {
+        if (tab == 2) {
+            drawEmoteGrid(canvas, contentX, contentY, contentW, contentH, interactive);
+        } else {
+            drawEmojiTextGrid(canvas, tab, contentX, contentY, contentW, contentH, interactive);
+        }
+    }
+
+    /**
+     * Emoji/kaomoji text grid with a per-cell hover highlight that fades in and
+     * out (UiMotion.HOVER_MS), the same language as the buttons and emote cells.
+     * The capsule leaves a uniform s(2) margin from the cell; emoji glyphs are
+     * centred inside it while kaomoji rows keep a deliberate left padding so the
+     * text never touches the capsule edge.
+     */
+    private void drawEmojiTextGrid(Canvas canvas, int tab, float contentX, float contentY, float contentW, float contentH,
+                                   boolean interactive) {
+        String[] items = tab == 1 ? KAOMOJI : EMOJIS;
+        Font itemFont = FontManager.font(tab == 1 ? UiTokens.FONT_KAOMOJI : UiTokens.FONT_EMOJI);
+        float itemH = tab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
+        int cols = tab == 1 ? 2 : UiTokens.EMOJI_COLS;
+        float cellW = contentW / cols;
+        for (int i = 0; i < items.length; i++) {
+            int col = i % cols;
+            int row = i / cols;
+            float ex = contentX + col * cellW;
+            float ey = contentY - emojiScroll + row * itemH;
+            if (ey + itemH < contentY || ey > contentY + contentH) {
+                continue;
+            }
+            if (interactive) {
+                float hov = cellHover.getOrDefault(gridHoverKey(tab, i), 0.0F);
+                if (hov > 0.01F) {
+                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), cellW - s(4), itemH - s(4), s(6),
+                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
+                }
+            }
+            if (tab == 1) {
+                SkiaFontRenderer.drawText(canvas, itemFont, items[i], ex + s(8),
+                        SkiaFontRenderer.centerBaselineY(itemFont, ey + itemH / 2.0F), textPrimary());
+            } else {
+                SkiaFontRenderer.drawTextCentered(canvas, itemFont, items[i],
+                        ex + cellW / 2.0F, ey + itemH / 2.0F, textPrimary());
+            }
+        }
+    }
+
+    /**
+     * Click handling for the emote (sticker) tab: tapping an emote sends it —
+     * upload the local file, drop its CICode into the draft — and closes the
+     * panel so the user cannot accidentally fire several uploads. The trailing
+     * "+" slot opens the picker; the hovered × deletes. Always returns "" because
+     * nothing here is inserted as plain text.
+     */
+    private String emotePanelClick(float mx, float my) {
+        float px = emojiPanelX();
+        float py = emojiPanelY();
+        float pw = emojiPanelW();
+        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
+        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
+        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
+        float contentH = emojiContentH();
+        float colW = contentW / UiTokens.EMOTE_COLS;
+        if (mx < contentX || mx > contentX + contentW
+                || my < contentY || my > contentY + contentH) {
+            return "";
+        }
+        int col = Math.max(0, Math.min(UiTokens.EMOTE_COLS - 1, (int) ((mx - contentX) / colW)));
+        int row = (int) ((my - contentY) / UiTokens.EMOTE_CELL);
+        int idx = row * UiTokens.EMOTE_COLS + col;
+        List<File> emotes = emoteStore.list();
+        if (idx < emotes.size()) {
+            File emote = emotes.get(idx);
+            float ex = contentX + col * colW;
+            float ey = contentY + row * UiTokens.EMOTE_CELL;
+            float rs = UiTokens.EMOTE_REMOVE_SIZE;
+            // Remove button (top-right corner of the cell), hit before send.
+            if (mx >= ex + colW - rs - s(2) && mx <= ex + colW - s(2)
+                    && my >= ey + s(2) && my <= ey + s(2) + rs) {
+                emoteStore.remove(emote);
+                emoteImageCache.invalidate(emote);
+                cellHover.clear();
+                return "";
+            }
+            // Send: upload and close the panel (one sticker per tap).
+            emojiOpen = false;
+            uploadAndAppend(emote.toPath());
+            return "";
+        }
+        // The trailing "+" add slot, disabled once the pack is full.
+        if (idx == emotes.size() && !emoteStore.isFull()) {
+            pickEmoteFile();
+        }
+        return "";
+    }
+
+    /**
+     * Opens the FlatLaf image picker (same one as the image button) and copies
+     * the chosen file into the emote store. The picker blocks its own worker
+     * thread; the store mutation hops back to the render thread.
+     */
+    private void pickEmoteFile() {
+        KeyBinding.unpressAll();
+        if (this.client.mouse != null) {
+            ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+        }
+        Thread worker = new Thread(() -> {
+            Path file = FilePicker.pickImage(this::suppressAutoIconify, this::restoreAutoIconify,
+                    EmoteStore::isSupportedName);
+            refocusWindow();
+            if (file == null) {
+                return;
+            }
+            this.client.execute(() -> {
+                if (emoteStore.add(file.toFile())) {
+                    // Adding may have overwritten an existing file of the same
+                    // name, so clear the decode cache rather than guess which
+                    // entry went stale. Ten entries, so it is cheap.
+                    emoteImageCache.clear();
+                    cellHover.clear();
+                }
+            });
+        }, "AtomChat-EmotePicker");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /**
+     * Emote (sticker) grid: six columns of {@code s(44)} cells. Each emote is
+     * fitted (never upscaled) into its cell; hovering highlights the cell and
+     * shows the × remove button; the last cell is the "+" add slot, grayed out
+     * when the pack is full.
+     */
+    private void drawEmoteGrid(Canvas canvas, float contentX, float contentY, float contentW, float contentH,
+                               boolean interactive) {
+        List<File> emotes = emoteStore.list();
+        float cell = UiTokens.EMOTE_CELL;
+        float colW = contentW / UiTokens.EMOTE_COLS;
+        float pad = s(4);
+        int total = emotes.size() + 1; // trailing "+" add slot
+        for (int i = 0; i < total; i++) {
+            int col = i % UiTokens.EMOTE_COLS;
+            int row = i / UiTokens.EMOTE_COLS;
+            float ex = contentX + col * colW;
+            float ey = contentY + row * cell;
+            if (ey + cell < contentY || ey > contentY + contentH) {
+                continue;
+            }
+            float hov = interactive ? cellHover.getOrDefault(gridHoverKey(2, i), 0.0F) : 0.0F;
+            if (i < emotes.size()) {
+                File emote = emotes.get(i);
+                // Image first, then the hover wash and remove button on top, so
+                // the × can never be buried under the picture.
+                Image img = emoteImageCache.image(emote);
+                float avail = cell - pad * 2.0F;
+                if (img != null) {
+                    // Fit into the cell, never upscale, centred.
+                    float scale = Math.min(1.0F, Math.min(avail / img.getWidth(), avail / img.getHeight()));
+                    float dw = Math.max(1.0F, img.getWidth() * scale);
+                    float dh = Math.max(1.0F, img.getHeight() * scale);
+                    SkiaDraw.drawRoundedImage(canvas, img,
+                            ex + (colW - dw) / 2.0F, ey + (cell - dh) / 2.0F, dw, dh, s(6));
+                } else {
+                    Font qFont = FontManager.font(UiTokens.FONT_QUOTE);
+                    SkiaFontRenderer.drawTextCentered(canvas, qFont, "?", ex + colW / 2.0F, ey + cell / 2.0F,
+                            textSecondary());
+                }
+                if (hov > 0.01F) {
+                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
+                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
+                    // Remove button.
+                    float rs = UiTokens.EMOTE_REMOVE_SIZE;
+                    SkiaDraw.drawRoundedRect(canvas, ex + colW - rs - s(2), ey + s(2), rs, rs, s(4),
+                            Color.makeARGB((int) (200.0F * hov), 214, 48, 48));
+                    Font xFont = FontManager.font(UiTokens.FONT_QUOTE);
+                    SkiaFontRenderer.drawTextCentered(canvas, xFont, "×",
+                            ex + colW - rs / 2.0F - s(2), ey + s(2) + rs / 2.0F,
+                            Color.makeARGB((int) (255.0F * hov), 255, 255, 255));
+                }
+            } else {
+                boolean disabled = emoteStore.isFull();
+                if (hov > 0.01F && !disabled) {
+                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
+                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
+                }
+                Font addFont = FontManager.font(UiTokens.FONT_EMOJI);
+                SkiaFontRenderer.drawTextCentered(canvas, addFont, "+", ex + colW / 2.0F, ey + cell / 2.0F,
+                        disabled ? Color.makeARGB(90, 255, 255, 255) : textPrimary());
+            }
+        }
+    }
+
+    private void drawContextMenu(Canvas canvas, float vmx, float vmy) {
         ChatMessage shown = contextMessage != null ? contextMessage : lastContextMessage;
         if (shown == null) {
             contextAnim = 0.0F;
@@ -1278,6 +1768,10 @@ public class AtomChatScreen extends ChatScreen {
         float menuH = UiTokens.MENU_H;
         float menuX = Math.min(contextX, panelX() + panelWidth() - menuW - s(8));
         float menuY = Math.min(contextY, panelY() + panelHeight() - menuH - s(8));
+        boolean overTop = vmx >= menuX && vmx <= menuX + menuW && vmy >= menuY && vmy <= menuY + menuH / 2.0F;
+        boolean overBottom = vmx >= menuX && vmx <= menuX + menuW && vmy >= menuY + menuH / 2.0F && vmy <= menuY + menuH;
+        contextMenuHover[0] = UiMotion.approach(contextMenuHover[0], overTop ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
+        contextMenuHover[1] = UiMotion.approach(contextMenuHover[1], overBottom ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
         canvas.save();
         try (Paint layer = new Paint()) {
             layer.setColor(Color.makeARGB((int) (255.0F * contextAnim), 0, 0, 0));
@@ -1289,8 +1783,18 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.drawRoundedRect(canvas, menuX, menuY, menuW, menuH, s(10), Color.makeARGB(245, 35, 39, 47));
             SkiaDraw.drawRoundedShadow(canvas, menuX, menuY, menuW, menuH, s(10), s(8), Color.makeARGB(100, 0, 0, 0));
             Font menuFont = FontManager.font(UiTokens.FONT_BUTTON);
-            SkiaFontRenderer.drawText(canvas, menuFont, "复制", menuX + s(12), SkiaFontRenderer.centerBaselineY(menuFont, menuY + menuH * 0.25F), textPrimary());
-            SkiaFontRenderer.drawText(canvas, menuFont, "引用", menuX + s(12), SkiaFontRenderer.centerBaselineY(menuFont, menuY + menuH * 0.75F), textPrimary());
+            for (int row = 0; row < 2; row++) {
+                float rowY = menuY + row * menuH / 2.0F;
+                float hov = contextMenuHover[row];
+                if (hov > 0.01F) {
+                    // Uniform s(4) inset on every side of the row capsule so it
+                    // never looks top-heavy against the menu edges.
+                    SkiaDraw.drawRoundedRect(canvas, menuX + s(4), rowY + s(4), menuW - s(8), menuH / 2.0F - s(8),
+                            s(6), Color.makeARGB((int) (55.0F * hov), 255, 255, 255));
+                }
+                SkiaFontRenderer.drawText(canvas, menuFont, tr(row == 0 ? "atomchat.context.copy" : "atomchat.context.quote"),
+                        menuX + s(12), SkiaFontRenderer.centerBaselineY(menuFont, rowY + menuH * 0.25F), textPrimary());
+            }
             canvas.restore();
         }
         canvas.restore();
@@ -1518,6 +2022,11 @@ public class AtomChatScreen extends ChatScreen {
             pressButton(1);
             inputFocused = true;
             emojiOpen = !emojiOpen;
+            if (emojiOpen) {
+                // Rescan on open: files dropped into the emote dir by hand appear.
+                emoteStore.refresh();
+                cellHover.clear();
+            }
             return true;
         }
 
@@ -2012,7 +2521,7 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     private String ownName() {
-        return this.client.player != null ? this.client.player.getName().getString() : "我";
+        return this.client.player != null ? this.client.player.getName().getString() : tr("atomchat.sender.me");
     }
 
     /**
@@ -2028,7 +2537,7 @@ public class AtomChatScreen extends ChatScreen {
         if (name != null && !name.isBlank()) {
             return name;
         }
-        return "玩家";
+        return tr("atomchat.sender.player");
     }
 
     private static String abbreviate(String text, int maxChars) {

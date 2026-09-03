@@ -64,4 +64,16 @@ class MessagePresentationTest {
     void unknownNameIsNotParsed() {
         assertTrue(MessagePresentation.parseDecoratedPlayerLine("Alice: hi", List.of("Steve")).isEmpty());
     }
+
+    @Test
+    void hyphenatedLongerNameDoesNotMatchShortCandidate() {
+        assertTrue(MessagePresentation.parseDecoratedPlayerLine(
+                "Steve-Master: hi", List.of("Steve")).isEmpty());
+    }
+
+    @Test
+    void suffixInsideAngleBracketsDoesNotMatchShortCandidate() {
+        assertTrue(MessagePresentation.parseDecoratedPlayerLine(
+                "<Notch> hi", List.of("tch")).isEmpty());
+    }
 }

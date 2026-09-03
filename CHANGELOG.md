@@ -4,6 +4,23 @@
 
 ### Added
 
+- **SVG toolbar icons**: the image / emoji / send buttons now draw inline SVG
+  path icons instead of Chinese text labels. The icons are line-style at a
+  constant 1.5px stroke, centered in each button and recoloured with the theme,
+  so they stay crisp at every UI scale with no image assets.
+- **Localized UI copy**: all AtomChat surface text now goes through Minecraft's
+  language files. New keys in `en_us.json` / `zh_cn.json` cover the world
+  channel title, reply banner, input placeholder/upload status, image loading
+  text, emoji tab labels, context menu, sender fallbacks, and the Swing image
+  picker title/filter/preview strings.
+- **Message capture hardening**: structured chat identity is captured right
+  before the real `ChatHud.addMessage` call (inside MessageHandler) instead of
+  at the public channel method's HEAD. This keeps the single-slot handoff
+  correct when vanilla queues messages via accessibility chat delay, and
+  prevents filtered/blocked messages from leaking their identity onto the next
+  HUD line. MessageCapture timestamps now travel with each per-thread entry,
+  nil UUIDs are normalized to null in `SenderMeta`, and the profileless fallback
+  parses the decorated line rather than the raw body.
 - **Multi-line input box**: the bar grows upward by one line height once the
   draft text wraps, eased over 110ms, and caps at two lines. Longer drafts
   scroll vertically inside the fixed box, following the caret. The bar is
@@ -14,9 +31,76 @@
   of target line). Pressing Up on the first line or Down on the last line
   falls back to vanilla chat-history cycling; a single-line draft is
   unchanged.
+- **Emote pack tab**: a third "表情包" tab beside 表情 / 颜文字. Tapping an
+  emote uploads the local image and drops its CICode into the draft, then
+  closes the panel (one sticker per tap). The trailing "+" cell opens the
+  FlatLaf picker to add images; hovered cells show a × to delete. Persisted as
+  copied files in `<config>/atomchat/emotes/` (png/jpg/jpeg, name-sorted, cap
+  of 10; the add cell greys out when full). Emotes render fitted, never
+  upscaled, in a 6-column grid that never scrolls.
+- **Unified hover feedback**: emoji / kaomoji / emote cells and the context
+  menu's 复制/引用 rows now share the button language — a translucent white
+  highlight that fades in and out over 90ms. Emote cells draw the image first
+  and the hover wash + × remove button on top, so the delete control can never
+  be buried under a picture.
+- **Emoji tab transition**: switching between 表情 / 颜文字 / 表情包 is an
+  opaque full-width push, like moving from one screen to the next — the
+  outgoing tab is pushed out as the incoming tab slides in from the same
+  direction, and the active pill glides to the new tab. Both run at 200ms with
+  easeInOutCubic, via `UiMotion.TAB_MS`.
+- **Calculated highlight spacing**: the emoji tab strip is now inset by
+  `EMOJI_PANEL_PAD` so it aligns with the content grid; the active pill keeps
+  s(4) side margins, s(6) above and s(2) below — the extra bottom length
+  centres the label inside the pill. It no longer crowds the panel's rounded
+  border. The context menu row capsule keeps a uniform s(4), and the
+  emoji/kaomoji cell capsules keep a uniform s(2) outer margin. Emoji glyphs
+  are centred in their capsule; kaomoji rows keep s(6) of internal left padding
+  so text never touches the capsule edge.
 
 ### Fixed
 
+- **Chat identity could be attached to the wrong HUD line**: the channel-level
+  capture previously set a single pending meta at the start of
+  `MessageHandler.onChatMessage` / `onProfilelessMessage` / `onGameMessage`.
+  With vanilla accessibility chat delay, two queued messages overwrote each
+  other; with a filtered/blocked message that never reached the HUD, the stale
+  meta could leak onto the next line. Capture now fires immediately before the
+  real `ChatHud.addMessage` call, after vanilla's delay and skip/filter paths.
+- **Captured body text lost a literal `<name> ` prefix**: `ChatMessage` stripped
+  the vanilla sender prefix even when the body had already been captured before
+  decoration, so a message that really started with `<Alice> hi` was shown as
+  `hi`. The prefix stripper now only runs on the raw-HUD fallback.
+- **Sender-name parsing accepted mid-word matches**: a candidate `Steve` could
+  match `Steve-Master` or the `tch` inside `<Notch>`. MessagePresentation now
+  rejects letter/hyphen continuations and suffix matches inside angle brackets.
+- **List lagged behind the growing input bar**: when the draft wrapped to a
+  second line the input bar grew upward and the list shrank with it, but the
+  bottom-pinned scroll chased the moving `maxScroll` with an eased animation
+  that restarted every frame — so growing looked desynced while shrinking (a
+  plain clamp) felt fine. When the list viewport height changes and the view is
+  pinned to the bottom, `scrollY` is now locked straight to `maxScroll` in
+  lockstep with the bar; new-message arrivals still use the smooth eased
+  follow.
+- **Images ghosted through the grown input bar**: the root cause was not a
+  z-order issue — the message list painted content down to the one-line bar
+  top, and the translucent grown bar sat on top of it, so list images showed
+  through. The list's visible area now ends at the current input bar top (it
+  yields exactly the height the bar gains), so nothing is ever painted
+  underneath the translucent composer and its transparency is preserved.
+- **Message entrance replayed when scrolling through history**: a bubble that
+  had finished its entrance animation was unmarked as soon as it left the
+  viewport, so scrolling back up replayed it. Once an entrance settles it now
+  never replays while the screen is open; the settled set is bounded by a 5s
+  time guard (older messages are settled by time alone), so scrolling through
+  history is silent and memory stays bounded.
+- **Kaomoji rendered as boxes**: the bundled GB2312 font subset lacks most
+  kaomoji characters, and the Skia fallback only searched a narrow set of
+  system families. The fallback list now includes DengXian, Segoe UI Symbol,
+  MS Gothic / Yu Gothic UI, Malgun Gothic, Leelawadee UI, Cambria and Calibri,
+  which cover every glyph used by the kaomoji set on Windows.
+- **Emote remove button was hidden under the picture**: the grid painted the ×
+  before the image, so a sticker filling its cell covered the delete control.
+  The image now draws first and the hover wash + × render on top.
 - **Context menu could never be dismissed**: `closeContextMenu()` called itself
   instead of clearing `contextMessage`, so the menu stayed on screen forever and
   the resulting stack overflow aborted the rest of `mouseClicked` — which is why

@@ -24,6 +24,13 @@ public final class Easing {
         return 1.0F - t * t * t;
     }
 
+    /** Standard ease-in-out for elements gliding between positions on screen. */
+    public static float easeInOutCubic(float t) {
+        return t < 0.5F
+                ? 4.0F * t * t * t
+                : 1.0F - (float) Math.pow(-2.0F * t + 2.0F, 3.0F) / 2.0F;
+    }
+
     /**
      * Gentler than easeOutCubic: the eye needs to see an opacity ramp actually
      * ramping, and cubic spends ~88% of its travel in the first half of the

@@ -39,8 +39,8 @@ class UiLayoutTest {
         assertEquals(panel.bottom() - l.inputBar.bottom(), UiTokens.PANEL_BOTTOM_PAD, EPS, "bottom breathing space");
 
         // The message list stays inside the panel and has room. A grown input
-        // bar may intentionally overlay the list's bottom, so no "above input"
-        // invariant is asserted here.
+        // bar yields the list's bottom, so no list content sits under the
+        // translucent composer.
         assertTrue(panel.contains(l.list), "list inside panel");
         assertTrue(l.list.h() > 0, "list has room");
     }
@@ -51,7 +51,7 @@ class UiLayoutTest {
     }
 
     @Test
-    void grownInputBarOverlaysListInsteadOfMovingIt() {
+    void grownInputBarYieldsListHeight() {
         float lineH = 29.0F; // one wrapped line of the input font
         UiLayout base = UiLayout.of(24, 100, 525, 975);
 
@@ -63,11 +63,13 @@ class UiLayoutTest {
                     "bar bottom stays put, extra " + extra);
             assertEquals(UiTokens.INPUT_HEIGHT + extra, grown.inputBar.h(), EPS,
                     "bar height grows by the requested amount");
-            // The message list does NOT move or shrink; the taller bar overlays it.
+            // The list top stays put and the list gives up exactly the extra
+            // height, so its bottom always meets the grown bar's top — nothing
+            // is ever painted underneath the translucent bar.
             assertEquals(base.list.y(), grown.list.y(), EPS, "list top stays put");
-            assertEquals(base.list.h(), grown.list.h(), EPS, "list keeps its height");
-            assertTrue(grown.inputBar.y() <= grown.list.bottom() + EPS,
-                    "grown input bar may overlap the list bottom");
+            assertEquals(base.list.h() - extra, grown.list.h(), EPS, "list yields the extra height");
+            assertEquals(grown.inputBar.y(), grown.list.bottom(), EPS,
+                    "list bottom meets the grown bar top, no overlap");
             // Buttons ride up with the bar's top edge.
             assertEquals(grown.inputBar.y() + UiTokens.INPUT_ROW_PAD, grown.sendBtn.y(), EPS,
                     "button row pinned to the bar top");

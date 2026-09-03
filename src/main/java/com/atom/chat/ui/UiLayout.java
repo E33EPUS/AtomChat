@@ -39,15 +39,16 @@ public final class UiLayout {
         this.header = new Rect(panelX + UiTokens.LIST_PAD_X, panelY + UiTokens.PANEL_BOTTOM_PAD,
                 panelW - UiTokens.LIST_PAD_X * 2.0F, UiTokens.HEADER_HEIGHT);
         float listTop = this.header.bottom() + UiTokens.PANEL_TOP_GAP;
-        // The message list is anchored to the one-line input bar's top and does
-        // NOT move when the input grows: the composer overlays the bottom of the
-        // list. Reply banners also overlay the list, but are drawn on top of it.
-        float listBottom = panelY + panelH - UiTokens.INPUT_HEIGHT - UiTokens.PANEL_BOTTOM_PAD;
+        // The message list's visible area ends at the CURRENT input bar top, so
+        // when the draft wraps to a second line the list gives up exactly the
+        // height the bar gains. Content is therefore never painted underneath
+        // the translucent composer — no images can ghost through it.
+        float inputH = UiTokens.INPUT_HEIGHT + inputExtraH;
+        float inputY = panelY + panelH - inputH - UiTokens.PANEL_BOTTOM_PAD;
+        float listBottom = inputY;
         this.list = new Rect(panelX + UiTokens.LIST_PAD_X, listTop,
                 panelW - UiTokens.LIST_PAD_X * 2.0F,
                 Math.max(0.0F, listBottom - listTop));
-        float inputH = UiTokens.INPUT_HEIGHT + inputExtraH;
-        float inputY = panelY + panelH - inputH - UiTokens.PANEL_BOTTOM_PAD;
         float replyY = inputY - this.replyH;
         this.replyBar = this.replyH > 0.0F
                 ? new Rect(panelX + UiTokens.LIST_PAD_X, replyY,

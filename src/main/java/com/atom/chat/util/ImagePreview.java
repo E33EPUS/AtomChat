@@ -1,5 +1,7 @@
 package com.atom.chat.util;
 
+import net.minecraft.text.Text;
+
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
@@ -37,16 +39,20 @@ import java.util.concurrent.atomic.AtomicLong;
  * label, so arrowing quickly through a folder can never show a stale preview.
  */
 public final class ImagePreview {
-    private static final String PLACEHOLDER = "无预览";
-    private static final String LOADING = "加载中…";
+    private static final String PLACEHOLDER_KEY = "atomchat.picker.preview.none";
+    private static final String LOADING_KEY = "atomchat.picker.preview.loading";
     private static final AtomicLong REQUEST = new AtomicLong();
 
     private ImagePreview() {
     }
 
+    private static String tr(String key) {
+        return Text.translatable(key).getString();
+    }
+
     /** Builds the pane and wires it to the chooser's selection changes. */
     public static JComponent attachTo(JFileChooser chooser, int width, int height) {
-        JLabel thumbnail = new JLabel(PLACEHOLDER, SwingConstants.CENTER);
+        JLabel thumbnail = new JLabel(tr(PLACEHOLDER_KEY), SwingConstants.CENTER);
         thumbnail.setPreferredSize(new Dimension(width, height));
         thumbnail.setHorizontalAlignment(SwingConstants.CENTER);
         thumbnail.setVerticalAlignment(SwingConstants.CENTER);
@@ -70,10 +76,10 @@ public final class ImagePreview {
         // Bumping the token is what cancels whatever decode is in flight.
         long token = REQUEST.incrementAndGet();
         if (file == null || !file.isFile() || !ImageFiles.isImageName(file.getName())) {
-            placeholder(target, PLACEHOLDER);
+            placeholder(target, tr(PLACEHOLDER_KEY));
             return;
         }
-        placeholder(target, LOADING);
+        placeholder(target, tr(LOADING_KEY));
         Thread loader = new Thread(() -> {
             BufferedImage image = decode(file, width, height);
             SwingUtilities.invokeLater(() -> {
@@ -81,7 +87,7 @@ public final class ImagePreview {
                     return; // the user has already moved on to another file
                 }
                 if (image == null) {
-                    placeholder(target, PLACEHOLDER);
+                    placeholder(target, tr(PLACEHOLDER_KEY));
                 } else {
                     target.setText(null);
                     target.setIcon(new ImageIcon(image));

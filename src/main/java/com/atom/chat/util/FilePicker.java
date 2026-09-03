@@ -2,6 +2,7 @@ package com.atom.chat.util;
 
 import com.atom.chat.AtomChat;
 import com.formdev.flatlaf.FlatLightLaf;
+import net.minecraft.text.Text;
 
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -13,6 +14,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 
 /**
  * Image picker: a {@link JFileChooser} in a plain {@link JFrame}, skinned with
@@ -44,6 +46,18 @@ public final class FilePicker {
      * @param afterShow  runs on the EDT once the chooser is disposed
      */
     public static Path pickImage(Runnable beforeShow, Runnable afterShow) {
+        return pickImage(beforeShow, afterShow, null);
+    }
+
+    /**
+     * @param beforeShow runs on the EDT immediately before the chooser is shown
+     * @param afterShow  runs on the EDT once the chooser is disposed
+     * @param nameFilter optional file-name filter for the chooser; when null every
+     *                   supported image extension is offered. The emote pack passes
+     *                   {@code EmoteStore::isSupportedName} so the user can never
+     *                   pick a file the store will silently refuse.
+     */
+    public static Path pickImage(Runnable beforeShow, Runnable afterShow, Predicate<String> nameFilter) {
         AtomicReference<Path> result = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
         SwingUtilities.invokeLater(() -> {
@@ -51,7 +65,7 @@ public final class FilePicker {
                 if (beforeShow != null) {
                     beforeShow.run();
                 }
-                result.set(showChooser());
+                result.set(showChooser(nameFilter));
             } catch (Throwable t) {
                 AtomChat.LOGGER.warn("Image picker failed", t);
             } finally {
@@ -73,28 +87,36 @@ public final class FilePicker {
         return result.get();
     }
 
-    private static Path showChooser() {
+    private static String tr(String key) {
+        return Text.translatable(key).getString();
+    }
+
+    private static Path showChooser(Predicate<String> nameFilter) {
         installLookAndFeel();
 
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("AtomChat - 选择图片");
+        chooser.setDialogTitle(tr("atomchat.picker.title"));
         chooser.setAcceptAllFileFilterUsed(false);
+        Predicate<String> accept = nameFilter != null ? nameFilter : ImageFiles::isImageName;
+        String desc = nameFilter != null
+                ? tr("atomchat.picker.filter.emote")
+                : tr("atomchat.picker.filter.image");
         chooser.setFileFilter(new FileFilter() {
             @Override
             public boolean accept(File file) {
-                return file.isDirectory() || ImageFiles.isImageName(file.getName());
+                return file.isDirectory() || accept.test(file.getName());
             }
 
             @Override
             public String getDescription() {
-                return "图片 (png, jpg, jpeg, gif, webp, bmp)";
+                return desc;
             }
         });
         chooser.setCurrentDirectory(defaultDirectory());
         // The native dialog's preview pane, rebuilt as a chooser accessory.
         chooser.setAccessory(ImagePreview.attachTo(chooser, 220, 280));
 
-        JFrame frame = new JFrame("AtomChat - 选择图片");
+        JFrame frame = new JFrame(tr("atomchat.picker.title"));
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.getContentPane().add(chooser, BorderLayout.CENTER);
         frame.pack();
