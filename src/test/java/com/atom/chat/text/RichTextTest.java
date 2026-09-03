@@ -66,6 +66,18 @@ class RichTextTest {
     }
 
     @Test
+    void linkifyPreservesOriginalRunStyle() {
+        Style colored = Style.EMPTY.withColor(0x00FF00);
+        RichText rich = RichText.of(Text.literal("see https://example.com/x").setStyle(colored));
+        RichText linked = rich.linkifyUrls();
+        RichText.RichRun link = linked.runs().stream()
+                .filter(r -> r.style().getClickEvent() != null)
+                .findFirst().orElseThrow();
+        assertEquals(0x00FF00, link.style().getColor().getRgb());
+        assertEquals(colored, link.style().withClickEvent(null));
+    }
+
+    @Test
     void emptyAndEmptySlicesReportEmpty() {
         assertTrue(RichText.empty().isEmpty());
         assertTrue(RichText.literal("").isEmpty());

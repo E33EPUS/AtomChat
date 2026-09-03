@@ -112,7 +112,7 @@ public final class RichText {
                     out.add(new RichRun(run.text().substring(last, matcher.start()), run.style()));
                 }
                 String url = matcher.group();
-                Style urlStyle = Style.EMPTY
+                Style urlStyle = run.style()
                         .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url));
                 out.add(new RichRun(url, urlStyle));
                 last = matcher.end();
