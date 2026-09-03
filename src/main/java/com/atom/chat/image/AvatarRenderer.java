@@ -1,6 +1,7 @@
 package com.atom.chat.image;
 
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -118,8 +119,9 @@ public final class AvatarRenderer {
 
     /**
      * Hunt instrumentation (config debug=true, once per launch): writes the raw
-     * GL read and the blended face as PNGs so the color pipeline can be verified
-     * against the real skin without guessing byte orders.
+     * GL read and the blended face as PNGs under {@code <config>/atomchat/debug/}
+     * so the color pipeline can be verified against the real skin without
+     * guessing byte orders.
      */
     private static void maybeDump(ByteBuffer raw, byte[] facePixels) {
         if (dumped || !AtomChatConfig.get().debug) {
@@ -127,7 +129,8 @@ public final class AvatarRenderer {
         }
         dumped = true;
         try {
-            Path dir = FabricLoader.getInstance().getConfigDir();
+            Path dir = FabricLoader.getInstance().getConfigDir().resolve("atomchat/debug");
+            Files.createDirectories(dir);
             NativeImage rawImg = new NativeImage(SKIN_SIZE, SKIN_SIZE, false);
             for (int y = 0; y < SKIN_SIZE; y++) {
                 for (int x = 0; x < SKIN_SIZE; x++) {

@@ -137,9 +137,19 @@ public final class SkiaFontRenderer {
         }
     }
 
+    /** Families probed for glyphs the bundled subset cannot render. */
+    private static final String[] FALLBACK_FAMILIES = {
+            "Microsoft YaHei", "DengXian", "Segoe UI", "Segoe UI Symbol",
+            "MS Gothic", "Yu Gothic UI", "Malgun Gothic", "Leelawadee UI",
+            "Cambria", "Calibri", "Arial", "Noto Sans CJK SC"
+    };
+
     /**
      * Glyph-level fallback: codepoints missing from the primary (bundled subset)
-     * resolve through the system FontMgr, emoji ranges prefer Segoe UI Emoji.
+     * resolve through the system FontMgr. Emoji-range codepoints first try Segoe
+     * UI Emoji, but only when that font actually contains the glyph — many
+     * non-emoji symbols share the 0x2600-0x27BF block (e.g. ✧ U+2727) and would
+     * otherwise render as tofu even though Segoe UI Symbol has them.
      */
     private static Font fontFor(Font primary, int codepoint) {
         if (primary.getUTF32Glyph(codepoint) != 0) {
@@ -154,21 +164,22 @@ public final class SkiaFontRenderer {
         try {
             io.github.humbleui.skija.FontMgr mgr = io.github.humbleui.skija.FontMgr.getDefault();
             if (mgr != null) {
-                io.github.humbleui.skija.Typeface match;
+                io.github.humbleui.skija.Typeface match = null;
                 if (isEmojiCodepoint(codepoint)) {
-                    match = mgr.matchFamilyStyle("Segoe UI Emoji", io.github.humbleui.skija.FontStyle.NORMAL);
-                } else {
+                    io.github.humbleui.skija.Typeface emoji =
+                            mgr.matchFamilyStyle("Segoe UI Emoji", io.github.humbleui.skija.FontStyle.NORMAL);
+                    if (emoji != null && emoji.getUTF32Glyph(codepoint) != 0) {
+                        match = emoji;
+                    }
+                }
+                if (match == null) {
                     // The bundled font is a GB2312 subset, so kaomoji lean on
                     // exotic ranges (kana, Thai, Hangul, phonetic, symbols). A
                     // narrow list leaves tofu even though Windows has the glyphs:
                     // DengXian/MS Gothic cover kana, Malgun Gothic covers Hangul,
                     // Leelawadee UI covers Thai, Cambria/Calibri cover symbols.
                     match = mgr.matchFamiliesStyleCharacter(
-                            new String[]{
-                                    "Microsoft YaHei", "DengXian", "Segoe UI", "Segoe UI Symbol",
-                                    "MS Gothic", "Yu Gothic UI", "Malgun Gothic", "Leelawadee UI",
-                                    "Cambria", "Calibri", "Arial", "Noto Sans CJK SC"
-                            },
+                            FALLBACK_FAMILIES,
                             io.github.humbleui.skija.FontStyle.NORMAL, null, codepoint);
                 }
                 if (match != null) {

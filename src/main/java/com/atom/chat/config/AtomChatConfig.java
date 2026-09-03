@@ -18,7 +18,7 @@ public class AtomChatConfig {
     /** Rounded panel background blur (raw GL + core shader, outside Skia). */
     public boolean blurEnabled = true;
     public boolean animationEnabled = true;
-    /** Dumps avatar sampling PNGs to the config dir for color debugging. */
+    /** Dumps avatar sampling PNGs to {@code <config>/atomchat/debug/} for color debugging. */
     public boolean debug = false;
     public int accentColor = 0xFF4A90E2;
     public int ownBubbleColor = 0xFF4A90E2;
@@ -38,7 +38,7 @@ public class AtomChatConfig {
     }
 
     private static AtomChatConfig load() {
-        Path path = FabricLoader.getInstance().getConfigDir().resolve("atomchat.json");
+        Path path = FabricLoader.getInstance().getConfigDir().resolve("atomchat/atomchat-client.json");
         if (Files.exists(path)) {
             try {
                 String json = Files.readString(path, StandardCharsets.UTF_8);
@@ -62,7 +62,7 @@ public class AtomChatConfig {
     }
 
     public static void save(AtomChatConfig config) {
-        Path path = FabricLoader.getInstance().getConfigDir().resolve("atomchat.json");
+        Path path = FabricLoader.getInstance().getConfigDir().resolve("atomchat/atomchat-client.json");
         try {
             Files.createDirectories(path.getParent());
             Files.writeString(path, GSON.toJson(config), StandardCharsets.UTF_8);

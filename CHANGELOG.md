@@ -96,8 +96,11 @@
 - **Kaomoji rendered as boxes**: the bundled GB2312 font subset lacks most
   kaomoji characters, and the Skia fallback only searched a narrow set of
   system families. The fallback list now includes DengXian, Segoe UI Symbol,
-  MS Gothic / Yu Gothic UI, Malgun Gothic, Leelawadee UI, Cambria and Calibri,
-  which cover every glyph used by the kaomoji set on Windows.
+  MS Gothic / Yu Gothic UI, Malgun Gothic, Leelawadee UI, Cambria and Calibri;
+  emoji-range codepoints also verify that Segoe UI Emoji actually contains the
+  glyph before using it, otherwise they fall through to the symbol-font search
+  (fixes tofu on ✧ U+2727 / ✪ U+272A, which share the emoji block but are not
+  in Segoe UI Emoji).
 - **Emote remove button was hidden under the picture**: the grid painted the ×
   before the image, so a sticker filling its cell covered the delete control.
   The image now draws first and the hover wash + × render on top.
@@ -141,6 +144,10 @@
 - **Removed the avatar bezel ring.**
 - **Pure white labels** for the image button, emoji button and header clock.
 - **Player names are pure white** in bubbles and image messages.
+- **Config file moved under the AtomChat data folder**: JSON settings now live
+  at `<config>/atomchat/atomchat-client.json` (next to `emotes/`); debug avatar
+  PNGs move to `<config>/atomchat/debug/`. No migration is performed — there
+  are no released users yet, so an old `atomchat.json` is simply ignored.
 
 ### Fixed
 
