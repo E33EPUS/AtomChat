@@ -117,7 +117,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 ## 配置
 
-配置文件：`.minecraft/config/atomchat.json`（首次启动自动生成，修改后需重启游戏）
+配置文件：`.minecraft/config/atomchat/atomchat-client.json`（首次启动自动生成，修改后需重启游戏）
 
 | 键 | 默认值 | 说明 |
 |---|---|---|
@@ -125,7 +125,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | `panelHeight` | `780.0` | 面板高度 |
 | `blurEnabled` | `true` | 面板背景高斯模糊（raw GL + core shader） |
 | `animationEnabled` | `true` | 动画总开关 |
-| `debug` | `false` | 调试输出 / 头像采样 PNG |
+| `debug` | `false` | 调试输出 / 头像采样 PNG（写入 `config/atomchat/debug/`） |
 | `accentColor` | `0xFF4A90E2` | 强调色（发送按钮 / 引用条等） |
 | `ownBubbleColor` | `0xFF4A90E2` | 自己气泡颜色 |
 | `otherBubbleColor` | `0xFF343A44` | 他人气泡颜色 |
@@ -151,7 +151,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 ## 已知限制
 
 1. 仅 Fabric 1.21.1，Skija Windows x64 原生库已内置；Linux / macOS 尚未打包
-2. 无 GUI 配置界面，设置需手动编辑 `config/atomchat.json`
+2. 无 GUI 配置界面，设置需手动编辑 `config/atomchat/atomchat-client.json`
 3. 图片默认上传第三方图床 uguu.se，约 3 小时过期；暂无服务端媒体托管
 4. 无 E33Chat 的服务端模板、私聊侧边栏、搜索、通知横幅、聊天历史持久化等能力
 5. 玩家身份解析为尽力而为：tell-click 结构捕获、离线 seen 缓存、ownDisplayName 多级降级、私聊 / whisper 分类尚未实现
@@ -181,7 +181,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 **表情包存在哪里？** `.minecraft/config/atomchat/emotes/`，最多 10 个，支持 png / jpg / jpeg。
 
-**怎么改颜色 / 大小？** 编辑 `.minecraft/config/atomchat.json` 后重启游戏。
+**怎么改颜色 / 大小？** 编辑 `.minecraft/config/atomchat/atomchat-client.json` 后重启游戏。
 
 **可以放进整合包吗？** 可以。AtomChat 代码为 MIT，无需额外授权；若整合包分发 JAR，请保留 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 中的第三方声明。
 

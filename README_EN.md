@@ -3,7 +3,7 @@
 <h1 align="center">AtomChat</h1>
 
 <p align="center">
-  <em>A phone-app style chat UI for Minecraft, powered by Skija</em>
+  <em>A phone-app chat experience for Minecraft's vanilla chat box</em>
 </p>
 
 <p align="center">
@@ -15,7 +15,11 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
-AtomChat is a Fabric 1.21.1 client mod that replaces the vanilla chat screen with a standalone "phone app" style panel: rounded bubbles, avatars, real player names, emoji / kaomoji / sticker packs, image messages, copy and quote, multi-line input, and QQ-style motion. It renders through [Skija](https://github.com/HumbleUI/skija) (Java bindings for Skia), so the whole UI is vector-drawn instead of using vanilla chat textures.
+AtomChat is a brand-new chat beautification mod developed in the spirit of [E33Chat](https://github.com/E33EPUS/E33Chat). It turns the vanilla chat screen into a standalone "phone app" style chat panel: rounded bubbles, avatars, real player names, emoji / kaomoji / sticker packs, image messages, copy and quote, multi-line input, and QQ-style motion.
+
+Rendering uses [Skija](https://github.com/HumbleUI/skija)
+
+The whole UI is vector-drawn instead of using vanilla chat textures.
 
 > Status: **0.1.0-MVP / no formal release yet**. Current builds require self-building (see [Development & Building](#development--building)); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
@@ -56,7 +60,7 @@ AtomChat is a Fabric 1.21.1 client mod that replaces the vanilla chat screen wit
 
 ## Quick Start
 
-1. Open chat to see the phone panel: "World Channel" and the clock at the top, the message list in the middle, and the composer at the bottom
+1. Open chat to see the phone panel: "World Channel" and the system time at the top, the message list in the middle, and the composer at the bottom
 2. Type text and press Enter to send; the composer grows when the text wraps and supports Up/Down caret movement
 3. Click the **image icon** to pick a local image, or **drag an image into the window / Ctrl+V** to paste it; the upload is inserted into the draft automatically
 4. Click the **emoji icon** to open the panel with `Emoji` / `Kaomoji` / `Stickers` tabs
@@ -68,14 +72,14 @@ AtomChat is a Fabric 1.21.1 client mod that replaces the vanilla chat screen wit
 
 - 📱 **Phone-style panel** — the vanilla chat HUD is hidden while AtomChat is open; blurred background plus a translucent glass composer
 - 💬 **Bubbles & avatars** — own messages on the right, others on the left, with avatar and player name; skin faces resolve from online / offline profiles with fallbacks
-- 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with E33Chat / ChatImage), keeps the source aspect ratio, never stretches or upscales; placeholder while loading
+- 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with E33Chat / ChatImage), keeps the source aspect ratio; placeholder while loading
 - 📤 **Local image sending** — FlatLaf-styled modern file picker, drag & drop, and Ctrl+V paste; uploads are converted into CICode automatically
 - 😀 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist in `<config>/atomchat/emotes/` (png/jpg/jpeg, max 10), added through the `+` cell and deleted by hovering `×`
 - 📋 **Copy & quote reply** — right-click a message to copy or quote; quotes travel as `「引用 @name: snippet」` and render as a quote bar on the receiver
 - ✏️ **Multi-line input** — up to two visible lines, then internal scrolling; Up/Down move between lines, single-line drafts keep vanilla history cycling
-- 🎨 **SVG icons & unified motion** — image / emoji / send buttons use inline SVG line icons; buttons, menus, and grid cells share a 90ms hover fade
-- 🌍 **Localization** — UI copy goes through Minecraft language files: Simplified Chinese and English; switch the game language to apply
-- 🧠 **Message capture** — captures real player UUID / profile / decorated names from MessageHandler's three channels, with nick-server support and conservative system-gray fallback; hardened against chat delay and filtered-message mismatches
+- 🎨 **SVG icons & unified motion** — image / emoji / send buttons use inline SVG line icons
+- 🌍 **Localization** — supports Simplified Chinese and English; switch the game language to apply
+- 🧠 **Message capture** — captures real player UUID / profile / decorated names from MessageHandler's three channels, with nick-server support and conservative system-gray fallback
 - 🛠️ **Pure Skia rendering** — rounded corners, shadows, scrolling, and text are vector-drawn; pure animation / layout / token classes ship with JUnit tests
 
 ---
@@ -113,7 +117,7 @@ AtomChat is a Fabric 1.21.1 client mod that replaces the vanilla chat screen wit
 
 ## Configuration
 
-Config file: `.minecraft/config/atomchat.json` (auto-generated on first launch; restart the game after editing)
+Config file: `.minecraft/config/atomchat/atomchat-client.json` (auto-generated on first launch; restart the game after editing)
 
 | Key | Default | Description |
 |---|---|---|
@@ -121,7 +125,7 @@ Config file: `.minecraft/config/atomchat.json` (auto-generated on first launch; 
 | `panelHeight` | `780.0` | Panel height |
 | `blurEnabled` | `true` | Rounded background blur (raw GL + core shader) |
 | `animationEnabled` | `true` | Master animation switch |
-| `debug` | `false` | Debug logging / avatar sampling PNGs |
+| `debug` | `false` | Debug logging / avatar sampling PNGs (written to `config/atomchat/debug/`) |
 | `accentColor` | `0xFF4A90E2` | Accent color (send button, quote bar, etc.) |
 | `ownBubbleColor` | `0xFF4A90E2` | Own bubble color |
 | `otherBubbleColor` | `0xFF343A44` | Other bubble color |
@@ -147,7 +151,7 @@ Config file: `.minecraft/config/atomchat.json` (auto-generated on first launch; 
 ## Known Limitations
 
 1. Fabric 1.21.1 only; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet
-2. No GUI config screen yet; edit `config/atomchat.json` manually
+2. No GUI config screen yet; edit `config/atomchat/atomchat-client.json` manually
 3. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet
 4. No E33Chat server templates, whisper sidebar, search, notification banners, or persistent chat history
 5. Player identity is best effort: tell-click structured capture, offline seen cache, multi-tier ownDisplayName, and whisper classification are not implemented yet
@@ -177,7 +181,7 @@ Config file: `.minecraft/config/atomchat.json` (auto-generated on first launch; 
 
 **Where are sticker packs stored?** `.minecraft/config/atomchat/emotes/`, up to 10 images, png / jpg / jpeg.
 
-**How do I change colors / sizes?** Edit `.minecraft/config/atomchat.json` and restart the game.
+**How do I change colors / sizes?** Edit `.minecraft/config/atomchat/atomchat-client.json` and restart the game.
 
 **Can I include this in a modpack?** Yes. AtomChat's code is MIT and needs no extra permission; if your modpack redistributes the JAR, keep the third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -231,3 +235,5 @@ Full copyright and license texts live in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NO
 ## License
 
 [MIT](LICENSE)
+
+Copyright © 2026 E33EPUS
