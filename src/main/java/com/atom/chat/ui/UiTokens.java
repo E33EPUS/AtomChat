@@ -45,7 +45,8 @@ public final class UiTokens {
     public static final float FONT_BODY = s(18);
     public static final float FONT_INPUT = s(18);
     public static final float FONT_BUTTON = s(16);
-    public static final float FONT_EMOJI = s(26);
+    public static final float FONT_EMOJI = s(22);
+    public static final float FONT_KAOMOJI = s(17);
     public static final float FONT_QUOTE = s(15);
 
     // Messages
@@ -67,17 +68,27 @@ public final class UiTokens {
     public static final float BUBBLE_RETRACT = s(106);
     /** Image card height (also mirrored in messageHeight()). */
     public static final float IMAGE_HEIGHT = s(140);
-    /** Horizontal QQ-style entrance slide distance (own from right, other from left). */
-    public static final float MESSAGE_SLIDE = s(32);
+    /**
+     * Horizontal QQ-style entrance slide distance (own from right, other from
+     * left). Kept small on purpose: a long travel dominates the fade and the
+     * entrance reads as "a bubble flew in" instead of "a bubble appeared".
+     */
+    public static final float MESSAGE_SLIDE = s(14);
 
     // Quote pill (e33chat style: a small capsule above the bubble)
     public static final float QUOTE_HEIGHT = s(24);
     public static final float QUOTE_GAP = s(3);
     public static final float QUOTE_PAD_X = s(8);
 
-    // Emoji panel
-    public static final float EMOJI_CELL = s(38);
-    public static final int EMOJI_COLS = 6;
+    // Emoji panel. Sized so 8 columns fill most of the 420-wide panel:
+    // cell width is (panelW - LIST_PAD_X*2 - PANEL_PAD*2) / EMOJI_COLS.
+    public static final float EMOJI_CELL = s(34);
+    public static final int EMOJI_COLS = 8;
+    public static final int EMOJI_VISIBLE_ROWS = 5;
+    public static final float EMOJI_TAB_H = s(34);
+    public static final float EMOJI_PANEL_PAD = s(12);
+    /** Kaomoji rows hold long strings, so they get their own (taller) row height. */
+    public static final float EMOJI_KAOMOJI_ROW_H = s(24);
 
     // Context menu
     public static final float MENU_W = s(110);

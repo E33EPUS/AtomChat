@@ -24,6 +24,16 @@ public final class Easing {
         return 1.0F - t * t * t;
     }
 
+    /**
+     * Gentler than easeOutCubic: the eye needs to see an opacity ramp actually
+     * ramping, and cubic spends ~88% of its travel in the first half of the
+     * duration — which is why a cubic-driven fade reads as "just a slide".
+     */
+    public static float easeOutQuad(float t) {
+        t = 1.0F - t;
+        return 1.0F - t * t;
+    }
+
     /** Exponential decel (Tuui's EaseOutQuart): long smooth tail for scrolling. */
     public static float easeOutExpo(float t) {
         return t >= 1.0F ? 1.0F : (float) (1.0 - Math.pow(2.0, -10.0 * t));

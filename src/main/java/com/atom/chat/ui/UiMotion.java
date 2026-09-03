@@ -16,8 +16,12 @@ package com.atom.chat.ui;
 public final class UiMotion {
     /** Panel open/close: slide + fade. */
     public static final long PANEL_MS = 150;
-    /** New message entry. */
-    public static final long MESSAGE_MS = 140;
+    /**
+     * New message entry. Deliberately the slowest transition in the UI: this is
+     * a content reveal, not a response to input, and an opacity ramp under
+     * ~200ms is over before the eye registers it as a fade.
+     */
+    public static final long MESSAGE_MS = 220;
     /** Snap back to the bottom after sending. */
     public static final long SCROLL_SNAP_MS = 110;
     /** Wheel scroll glide. */

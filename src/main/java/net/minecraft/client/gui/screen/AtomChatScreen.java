@@ -10,6 +10,7 @@ import com.atom.chat.image.SkinResolver;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.font.FontManager;
+import com.atom.chat.mixin.MouseHandlerAccessor;
 import com.atom.chat.render.Animator;
 import com.atom.chat.render.Easing;
 import com.atom.chat.render.PanelBlurRenderer;
@@ -19,6 +20,7 @@ import com.atom.chat.render.SkiaGraphics;
 import com.atom.chat.ui.UiLayout;
 import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
+import com.atom.chat.util.ClipboardImages;
 import com.atom.chat.util.FilePicker;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
@@ -31,17 +33,27 @@ import io.github.humbleui.types.RRect;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Image;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.StringHelper;
 import net.minecraft.util.math.MathHelper;
 import org.apache.commons.lang3.StringUtils;
 
+import org.lwjgl.glfw.GLFW;
+
+import java.awt.datatransfer.DataFlavor;
 import java.nio.file.Path;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class AtomChatScreen extends ChatScreen {
     private final String originalChatText;
@@ -55,6 +67,8 @@ public class AtomChatScreen extends ChatScreen {
     private float maxScroll;
     private ChatMessage replyTarget;
     private boolean emojiOpen;
+    private int emojiTab;
+    private int emojiScroll;
     private ChatMessage contextMessage;
     private float contextX;
     private float contextY;
@@ -66,6 +80,9 @@ public class AtomChatScreen extends ChatScreen {
     private static final long MESSAGE_ANIM_MS = UiMotion.MESSAGE_MS;
     private static final long SCROLL_ANIM_MS = UiMotion.SCROLL_SNAP_MS;
     private static final long WHEEL_ANIM_MS = UiMotion.SCROLL_WHEEL_MS;
+    /** Input placeholder: shown whenever the draft is empty, focused or not. */
+    private static final String INPUT_PLACEHOLDER = "说点什么…";
+    private static final int GLFW_KEY_V = 86;
     private final long openStart = System.currentTimeMillis();
     private boolean closing;
     private long closeStart;
@@ -128,6 +145,24 @@ public class AtomChatScreen extends ChatScreen {
     private boolean selecting;
     private boolean selectionMoved;
     private List<String> selectionMessageLines = List.of();
+
+    /**
+     * New-message entrance animation starts when the message first becomes
+     * visible, not when it was added. Bursts arriving while auto-scroll is
+     * still moving used to spend most of their 140ms off-screen and looked
+     * like a rushed flash; this map records the first visible frame instead.
+     */
+    private final Map<ChatMessage, Long> messageEnterStart = new HashMap<>();
+    /**
+     * Messages whose entrance animation has already played out. The start entry
+     * must NOT be deleted when the animation finishes: entranceEase() treats a
+     * missing entry as "first visible frame" and would re-stamp the timestamp,
+     * so the 140ms animation restarted on the very next frame — an endless loop
+     * that only stopped when the screen was reopened and openStart moved past
+     * the message. Entries are dropped only once the message leaves the
+     * viewport, which also keeps both collections bounded.
+     */
+    private final Set<ChatMessage> messageEnterSettled = new HashSet<>();
 
     public AtomChatScreen(String originalChatText) {
         super(originalChatText);
@@ -215,12 +250,13 @@ public class AtomChatScreen extends ChatScreen {
         }
     }
 
-    /** Maps the virtual input-text row back to GUI coordinates for the EditBox. */
     /** GUI-space anchor for the suggestion window: bottom edge of the popup. */
     private int anchorInputTopY() {
         double density = uiDensity();
         double scaleFactor = this.client.getWindow().getScaleFactor();
-        return (int) Math.round(caretLineTopY() * density / scaleFactor);
+        // The popup must clear the whole input bar (button row + text row),
+        // not just the caret line; otherwise it overlaps the bar's top half.
+        return (int) Math.round((layout().inputBar.y() - s(4)) * density / scaleFactor);
     }
 
     private int anchorInputLeftX() {
@@ -306,6 +342,8 @@ public class AtomChatScreen extends ChatScreen {
     public void removed() {
         // Give back the GPU texture the panel blur was sampling.
         graphics.releaseWorldSnapshot();
+        messageEnterStart.clear();
+        messageEnterSettled.clear();
         super.removed();
     }
 
@@ -361,7 +399,7 @@ public class AtomChatScreen extends ChatScreen {
             float replyH = s(26);
             SkiaDraw.drawRoundedRect(canvas, reply.x(), reply.y(), reply.w(), replyH, s(8), Color.makeARGB(90, 74, 144, 226));
             Font replyFont = FontManager.font(UiTokens.FONT_NAME);
-            String replyLabel = "回复 @" + (replyTarget.isOwn() ? ownName() : "玩家") + ": " + abbreviate(replyTarget.getContentText(), 26);
+            String replyLabel = "回复 @" + messageSenderName(replyTarget) + ": " + abbreviate(replyTarget.getContentText(), 26);
             SkiaFontRenderer.drawText(canvas, replyFont, replyLabel, reply.x() + UiTokens.QUOTE_PAD_X,
                     SkiaFontRenderer.centerBaselineY(replyFont, reply.y() + s(13)), textPrimary());
         }
@@ -393,8 +431,11 @@ public class AtomChatScreen extends ChatScreen {
         float clipBottom = bar.bottom() - UiTokens.INPUT_ROW_PAD;
         canvas.save();
         SkiaDraw.clip(canvas, textX, clipTop, layout.inputTextMaxWidth(), Math.max(0.0F, clipBottom - clipTop), 0.0F);
-        if (current.isEmpty() && !inputFocused) {
-            String hint = truncateToWidth(inputFont, "输入点什么，可以直接粘贴文件或图片哦~", layout.inputTextMaxWidth());
+        // Placeholder stays visible while the field is focused: ChatScreen
+        // focuses the chat field the moment the screen opens, so a hint gated
+        // on "not focused" was literally never on screen.
+        if (current.isEmpty()) {
+            String hint = truncateToWidth(inputFont, INPUT_PLACEHOLDER, layout.inputTextMaxWidth());
             SkiaFontRenderer.drawText(canvas, inputFont, hint, textX,
                     SkiaFontRenderer.centerBaselineY(inputFont, layout.inputTextCenterY), textSecondary());
         } else {
@@ -521,8 +562,11 @@ public class AtomChatScreen extends ChatScreen {
      * the avatar). Falls back to a flat gray circle while the skin is missing.
      */
     private void drawAvatar(Canvas canvas, ChatMessage msg, float avatarX, float avatarY) {
-        UUID uuid = msg.isOwn() && this.client.player != null ? this.client.player.getUuid() : null;
-        String name = msg.isOwn() ? ownName() : "玩家";
+        UUID uuid = msg.isOwn() ? (this.client.player != null ? this.client.player.getUuid() : null) : msg.getSenderUuid();
+        String name = msg.isOwn() ? ownName() : msg.getProfileName();
+        if (name == null || name.isBlank()) {
+            name = messageSenderName(msg);
+        }
         Image face = AvatarRenderer.face(SkinResolver.getSkin(uuid, name));
         if (face != null) {
             SkiaDraw.drawRoundedImage(canvas, face, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE,
@@ -631,8 +675,11 @@ public class AtomChatScreen extends ChatScreen {
                     break;
                 }
                 if (offset + h >= scrollY - 80.0F) {
-                    float ease = Easing.easeOutCubic(Math.min(1.0F, (now - msg.getTimestamp()) / (float) MESSAGE_ANIM_MS));
-                    boolean layered = ease < 0.999F;
+                    float t = entranceProgress(msg, now);
+                    boolean layered = t < 1.0F;
+                    if (!layered) {
+                        messageEnterSettled.add(msg);
+                    }
                     canvas.save();
                     if (layered) {
                         // QQ-style entrance: own bubbles come in from the right
@@ -640,14 +687,20 @@ public class AtomChatScreen extends ChatScreen {
                         // layer rectangle must cover the full travel so a sliding
                         // bubble is never clipped by its own offscreen layer.
                         float travel = UiTokens.MESSAGE_SLIDE;
+                        // Two curves, one timeline: the slide decelerates hard
+                        // (cubic) while the fade ramps gently across the whole
+                        // entrance (quad), so the opacity change is still
+                        // happening while the bubble is still moving.
+                        float fade = Easing.easeOutQuad(t);
+                        float move = Easing.easeOutCubic(t);
                         // System capsules are centered and have no sender side;
                         // they fade in place rather than pretending to be someone's
                         // bubble.
                         float dx = msg.isSystem() ? 0.0F
-                                : msg.isOwn() ? (1.0F - ease) * travel
-                                : -(1.0F - ease) * travel;
+                                : msg.isOwn() ? (1.0F - move) * travel
+                                : -(1.0F - move) * travel;
                         try (Paint layer = new Paint()) {
-                            layer.setColor(Color.makeARGB((int) (255.0F * ease), 0, 0, 0));
+                            layer.setColor(Color.makeARGB((int) (255.0F * fade), 0, 0, 0));
                             canvas.saveLayer(Rect.makeXYWH(x - travel - 4.0F, cursorY - 4.0F,
                                     width + travel * 2.0F + 8.0F, h + 28.0F), layer);
                             canvas.translate(dx, 0.0F);
@@ -662,12 +715,41 @@ public class AtomChatScreen extends ChatScreen {
                     hits.add(new MessageHit(hit.message(), hit.index(), hit.x(), hit.y() - scrollY, hit.maxWidth(),
                             hit.bottom() - scrollY, hit.avatarX(), hit.avatarY() - scrollY, hit.avatarSize(),
                             hit.bubbleY() - scrollY, hit.bubbleX(), hit.bubbleWidth(), hit.bubbleBottom() - scrollY));
+                } else {
+                    // Left the viewport: drop the entrance state so the maps stay
+                    // bounded and the message replays its entrance when it is
+                    // scrolled back into view.
+                    messageEnterStart.remove(msg);
+                    messageEnterSettled.remove(msg);
                 }
                 cursorY += h + UiTokens.LIST_GAP;
             }
         } finally {
             canvas.restore();
         }
+    }
+
+    /**
+     * Raw 0..1 progress of a message's entrance. Messages that existed before
+     * this screen was opened are already settled; messages arriving while the
+     * screen is open start their animation on the first frame they are actually
+     * drawn inside the viewport.
+     *
+     * <p>Linear on purpose: the caller picks the curve. The fade and the slide
+     * must not share one — easeOutCubic covers ~88% of its distance in the
+     * first half of the duration, which feels right for a slide but spends the
+     * opacity ramp in ~70ms, far too fast to read as a fade.
+     */
+    private float entranceProgress(ChatMessage msg, long now) {
+        if (msg.getTimestamp() < openStart || messageEnterSettled.contains(msg)) {
+            return 1.0F;
+        }
+        Long start = messageEnterStart.get(msg);
+        if (start == null) {
+            start = now;
+            messageEnterStart.put(msg, start);
+        }
+        return Math.min(1.0F, (now - start) / (float) MESSAGE_ANIM_MS);
     }
 
     /**
@@ -752,7 +834,7 @@ public class AtomChatScreen extends ChatScreen {
         float bubbleX = msg.isOwn() ? x + maxWidth - bubbleWidth - nameOffset : x + nameOffset;
 
         // Name hugs the bubble's outer edge: right-aligned for own, left for others.
-        String name = msg.isOwn() ? ownName() : "玩家";
+        String name = messageSenderName(msg);
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
         float nameCenterY = y + UiTokens.NAME_BAND / 2.0F;
         if (msg.isOwn()) {
@@ -848,7 +930,7 @@ public class AtomChatScreen extends ChatScreen {
 
     private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
         float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
-        String name = msg.isOwn() ? ownName() : "玩家";
+        String name = messageSenderName(msg);
         float nameX = msg.isOwn() ? x + maxWidth - UiTokens.BUBBLE_RETRACT : x + nameOffset;
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
         SkiaFontRenderer.drawText(canvas, nameFont, name, nameX, SkiaFontRenderer.centerBaselineY(nameFont, y + UiTokens.NAME_BAND / 2.0F), textPrimary());
@@ -917,19 +999,46 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     private static float emojiPanelW() {
-        return UiTokens.EMOJI_COLS * UiTokens.EMOJI_CELL + s(24);
+        return UiTokens.EMOJI_COLS * UiTokens.EMOJI_CELL + UiTokens.EMOJI_PANEL_PAD * 2.0F;
+    }
+
+    private static float emojiContentH() {
+        return UiTokens.EMOJI_VISIBLE_ROWS * UiTokens.EMOJI_CELL;
+    }
+
+    private static float emojiPanelH() {
+        return UiTokens.EMOJI_TAB_H + emojiContentH() + UiTokens.EMOJI_PANEL_PAD;
     }
 
     private static final String[] EMOJIS = {
-            "👍", "😂", "❤️", "🎉", "🔥", "😮",
-            "😢", "👀", "✨", "💯", "🙏", "🤔",
-            "😭", "😡", "🤡", "🙏", "👻", "🎃",
-            "😎", "🤤", "😴", "🤯", "🥳", "🐱"
+            "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂",
+            "🙂", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘",
+            "😋", "😛", "😜", "🤪", "😎", "🤗", "🤔", "😐",
+            "😢", "😭", "😤", "😡", "🥺", "😴", "😷", "🤒",
+            "🐱", "🐶", "🐼", "🐨", "🐰", "🦊", "🐸", "🐵",
+            "🐭", "🐹", "🐮", "🦁", "🐯", "🐻", "🐧", "🐤",
+            "🐴", "🦄", "🐝", "🐞", "🦋", "🐙", "🦀", "🐠",
+            "🐷", "🐖",
+            "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "💔",
+            "💕", "💖", "💗", "💘", "💝", "💟", "❣️", "💌",
+            "👍", "👎", "👏", "🙌", "💪", "🤝", "👋", "✌️",
+            "🎮", "🎯", "🎨", "🎵", "🎶", "🎤", "🎧", "🎼",
+            "⭐", "🌟", "🔥", "💧", "🌈", "❄️", "🎉", "🎊",
+            "🍕", "🍔", "🌮", "🍩", "🍪", "🎂", "☕", "🍺",
+            "⬆️", "⬇️", "✅", "❌", "❓", "❗", "💤", "💡",
+            "💀", "🗿", "🤡", "👀", "💯", "💢", "💬", "💭",
     };
 
-    private static float emojiPanelH() {
-        return (EMOJIS.length + UiTokens.EMOJI_COLS - 1) / UiTokens.EMOJI_COLS * UiTokens.EMOJI_CELL + s(28);
-    }
+    private static final String[] KAOMOJI = {
+            "(｡•̀ᴗ-)✧", "(๑˃̵ᴗ˂̵)و", "(๑•̀ㅂ•́)و✧", "(◍•ᴗ•◍)",
+            "╰(*°▽°*)╯", "(≧∇≦)ﾉ", "(＾▽＾)", "✧٩(ˊωˋ*)و✧",
+            "ฅ^•ﻌ•^ฅ", "(•ω•)", "(￣▽￣*)", "(⌒▽⌒)☆",
+            "(o゜▽゜)o☆", "＼(￣▽￣)／", "(◔◡◔)", "／(=✪ x ✪=)＼",
+            "¯\\_(ツ)_/¯", "(ー_ー゛)", "(￢_￢)", "(¬_¬)",
+            "(⇀‸↼‶)", "(｡ŏ_ŏ)", "(・∀・)", "_(:з」∠)_",
+            "(╯°□°）╯︵ ┻━┻", "(´;ω;｀)", "Σ(°△°|||)", "(◎ロ◎)",
+            "(∪.∪ )...zzz",
+    };
 
     private float emojiPanelX() {
         return panelX() + UiTokens.LIST_PAD_X;
@@ -946,6 +1055,63 @@ public class AtomChatScreen extends ChatScreen {
         return mx >= px && mx <= px + emojiPanelW() && my >= py && my <= py + emojiPanelH();
     }
 
+    private String[] emojiTabItems() {
+        return emojiTab == 1 ? KAOMOJI : EMOJIS;
+    }
+
+    private int emojiMaxScroll() {
+        String[] items = emojiTabItems();
+        int cols = emojiTab == 1 ? 2 : UiTokens.EMOJI_COLS;
+        float itemH = emojiTab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
+        int rows = (items.length + cols - 1) / cols;
+        float totalH = rows * itemH;
+        return Math.max(0, (int) Math.ceil(totalH - emojiContentH()));
+    }
+
+    private String emojiPanelClick(float mx, float my) {
+        float px = emojiPanelX();
+        float py = emojiPanelY();
+        float pw = emojiPanelW();
+        if (!overEmojiPanel(mx, my)) {
+            return null;
+        }
+        // Tab bar.
+        if (my < py + UiTokens.EMOJI_TAB_H) {
+            String[] labels = {"表情", "颜文字"};
+            float tabW = pw / labels.length;
+            int t = (int) ((mx - px) / tabW);
+            if (t >= 0 && t < labels.length) {
+                emojiTab = t;
+                emojiScroll = 0;
+            }
+            return "";
+        }
+        // Content grid.
+        String[] items = emojiTabItems();
+        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
+        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
+        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
+        float itemH = emojiTab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
+        int cols = emojiTab == 1 ? 2 : UiTokens.EMOJI_COLS;
+        float contentH = emojiContentH();
+        // The padding strips and the strip below the last visible row are dead
+        // space. Unclamped maths used to wrap them around: col -1 landed on the
+        // previous row's last emoji and col == cols on the next row's first, so
+        // a click in the gutter silently inserted a different emoji.
+        if (mx < contentX || mx > contentX + contentW
+                || my < contentY || my > contentY + contentH) {
+            return "";
+        }
+        int col = (int) ((mx - contentX) / (contentW / cols));
+        int row = (int) ((my - contentY + emojiScroll) / itemH);
+        col = Math.max(0, Math.min(cols - 1, col));
+        int idx = row * cols + col;
+        if (idx >= 0 && idx < items.length) {
+            return items[idx];
+        }
+        return "";
+    }
+
     private void drawEmojiPanel(Canvas canvas) {
         if (emojiAnim < 0.01F) {
             return;
@@ -954,6 +1120,7 @@ public class AtomChatScreen extends ChatScreen {
         float panelY = emojiPanelY();
         float panelW = emojiPanelW();
         float panelH = emojiPanelH();
+        emojiScroll = Math.max(0, Math.min(emojiScroll, emojiMaxScroll()));
         canvas.save();
         try (Paint layer = new Paint()) {
             layer.setColor(Color.makeARGB((int) (255.0F * emojiAnim), 0, 0, 0));
@@ -968,14 +1135,42 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.drawRoundedRect(canvas, panelX, panelY, panelW, panelH, s(14), Color.makeARGB(245, 35, 39, 47));
             SkiaDraw.drawRoundedShadow(canvas, panelX, panelY, panelW, panelH, s(14), s(8), Color.makeARGB(100, 0, 0, 0));
 
-            Font emojiFont = FontManager.font(UiTokens.FONT_EMOJI);
-            for (int i = 0; i < EMOJIS.length; i++) {
-                int col = i % UiTokens.EMOJI_COLS;
-                int row = i / UiTokens.EMOJI_COLS;
-                float ex = panelX + s(12) + col * UiTokens.EMOJI_CELL;
-                float ey = panelY + s(16) + row * UiTokens.EMOJI_CELL;
-                SkiaFontRenderer.drawText(canvas, emojiFont, EMOJIS[i], ex, SkiaFontRenderer.centerBaselineY(emojiFont, ey + UiTokens.EMOJI_CELL / 2.0F), textPrimary());
+            // Tabs.
+            Font tabFont = FontManager.font(UiTokens.FONT_BUTTON);
+            String[] labels = {"表情", "颜文字"};
+            float tabW = panelW / labels.length;
+            for (int t = 0; t < labels.length; t++) {
+                float tx = panelX + t * tabW;
+                if (t == emojiTab) {
+                    SkiaDraw.drawRoundedRect(canvas, tx + s(2), panelY + s(4), tabW - s(4), UiTokens.EMOJI_TAB_H - s(6), s(8), Color.makeARGB(90, 255, 255, 255));
+                }
+                SkiaFontRenderer.drawTextCentered(canvas, tabFont, labels[t],
+                        tx + tabW / 2.0F, panelY + UiTokens.EMOJI_TAB_H / 2.0F + s(2), textPrimary());
             }
+
+            // Content area (clipped, scrollable).
+            float contentX = panelX + UiTokens.EMOJI_PANEL_PAD;
+            float contentY = panelY + UiTokens.EMOJI_TAB_H + s(2);
+            float contentW = panelW - UiTokens.EMOJI_PANEL_PAD * 2.0F;
+            float contentH = emojiContentH();
+            canvas.save();
+            SkiaDraw.clip(canvas, contentX, contentY, contentW, contentH, 0.0F);
+            String[] items = emojiTabItems();
+            Font itemFont = FontManager.font(emojiTab == 1 ? UiTokens.FONT_KAOMOJI : UiTokens.FONT_EMOJI);
+            float itemH = emojiTab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
+            int cols = emojiTab == 1 ? 2 : UiTokens.EMOJI_COLS;
+            for (int i = 0; i < items.length; i++) {
+                int col = i % cols;
+                int row = i / cols;
+                float ex = contentX + col * (contentW / cols);
+                float ey = contentY - emojiScroll + row * itemH;
+                if (ey + itemH < contentY || ey > contentY + contentH) {
+                    continue;
+                }
+                SkiaFontRenderer.drawText(canvas, itemFont, items[i], ex + s(2),
+                        SkiaFontRenderer.centerBaselineY(itemFont, ey + itemH / 2.0F), textPrimary());
+            }
+            canvas.restore();
             canvas.restore();
         }
         canvas.restore();
@@ -1048,6 +1243,11 @@ public class AtomChatScreen extends ChatScreen {
         }
         float mx = toVirtualX(mouseX);
         float my = toVirtualY(mouseY);
+        if (emojiOpen && overEmojiPanel(mx, my)) {
+            emojiScroll = Math.max(0, Math.min(
+                    emojiScroll - (int) (verticalAmount * s(18)), emojiMaxScroll()));
+            return true;
+        }
         UiLayout.Rect list = layout().list;
         if (list.contains((float) mx, (float) my)) {
             scrollToBottom = false;
@@ -1238,20 +1438,14 @@ public class AtomChatScreen extends ChatScreen {
             return true;
         }
 
-        // Emoji panel click. Cells must come from EMOJIS — the array that is
-        // actually drawn — not a shorter local copy, or the lower rows are dead.
+        // Emoji panel click: tabs first, then the currently visible grid.
         if (emojiOpen) {
             if (overEmojiPanel((float) mx, (float) my)) {
-                int col = (int) (((float) mx - emojiPanelX() - s(12)) / UiTokens.EMOJI_CELL);
-                int row = (int) (((float) my - emojiPanelY() - s(16)) / UiTokens.EMOJI_CELL);
-                if (col >= 0 && col < UiTokens.EMOJI_COLS && row >= 0) {
-                    int idx = row * UiTokens.EMOJI_COLS + col;
-                    if (idx < EMOJIS.length) {
-                        inputAppend(EMOJIS[idx]);
-                        return true;
-                    }
+                String inserted = emojiPanelClick((float) mx, (float) my);
+                if (inserted != null && !inserted.isEmpty()) {
+                    inputAppend(inserted);
                 }
-                return true; // inside the panel but between cells: swallow, don't fall through
+                return true;
             }
             emojiOpen = false;
         }
@@ -1364,7 +1558,7 @@ public class AtomChatScreen extends ChatScreen {
                 } else {
                     lastAvatarClickTime = now;
                     lastAvatarClickIndex = hit.index();
-                    inputAppend("@" + (hit.message().isOwn() ? ownName() : "玩家") + " ");
+                    inputAppend("@" + messageSenderName(hit.message()) + " ");
                     inputFocused = true;
                 }
                 return true;
@@ -1437,6 +1631,16 @@ public class AtomChatScreen extends ChatScreen {
             }
             return true;
         }
+        // Ctrl+V with a picture on the clipboard. MC's clipboard API only hands
+        // out strings, so the vanilla field would paste nothing at all; that
+        // flavour has to be intercepted before it gets that far.
+        if (keyCode == GLFW_KEY_V && (modifiers & 2) != 0) {
+            DataFlavor flavor = ClipboardImages.peek();
+            if (flavor != null) {
+                pasteFromClipboard(flavor);
+                return true;
+            }
+        }
         // Vanilla suggestion layer gets first pick (Tab/arrows over the popup).
         if (chatInputSuggestor != null && chatInputSuggestor.keyPressed(keyCode, scanCode, modifiers)) {
             return true;
@@ -1495,20 +1699,124 @@ public class AtomChatScreen extends ChatScreen {
     }
 
     private void pickAndUploadImage() {
+        // The native AWT dialog grabs OS input; release MC's held keys/button so
+        // the UI does not think the image button is still pressed when it returns.
+        KeyBinding.unpressAll();
+        if (this.client.mouse != null) {
+            ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+        }
         Thread worker = new Thread(() -> {
-            Path file = FilePicker.pickImage();
+            Path file = FilePicker.pickImage(this::suspendForPicker, this::resumeAfterPicker);
+            // The dialog owned OS focus while it was open; hand it back to the
+            // game or the first click after picking lands on nothing.
+            refocusWindow();
             if (file == null) {
                 return;
             }
-            imageUploader.upload(file, url -> {
-                String code = "[[CICode,url=" + url + ",name=" + file.getFileName().toString() + "]]";
-                inputAppend(inputGetText().isEmpty() ? code : " " + code);
-            }, error -> {
-                AtomChat.LOGGER.warn("Image upload failed: {}", error);
-            });
+            uploadAndAppend(file);
         }, "AtomChat-ImagePicker");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * Uploads an image and drops its CICode into the draft. Shared by the file
+     * picker and by Ctrl+V pastes.
+     */
+    private void uploadAndAppend(Path file) {
+        imageUploader.upload(file, url -> {
+            String code = "[[CICode,url=" + url + ",name=" + file.getFileName().toString() + "]]";
+            // The upload callback runs on the uploader's thread; the chat field
+            // is only safe to touch from the render thread.
+            this.client.execute(() -> inputAppend(inputGetText().isEmpty() ? code : " " + code));
+        }, error -> AtomChat.LOGGER.warn("Image upload failed: {}", error));
+    }
+
+    /**
+     * Ctrl+V with a picture on the clipboard. The payload is read off the render
+     * thread — a screenshot is several megabytes and converting it is not free —
+     * then uploaded and appended.
+     */
+    private void pasteFromClipboard(DataFlavor flavor) {
+        Thread worker = new Thread(() -> {
+            Path file = ClipboardImages.read(flavor);
+            if (file == null) {
+                AtomChat.LOGGER.warn("Clipboard held no usable image; Ctrl+V fell back to a text paste");
+                return;
+            }
+            uploadAndAppend(file);
+        }, "AtomChat-Paste");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /**
+     * Escape hatch for the picker's z-order fight. GLFW pins a fullscreen window
+     * to HWND_TOPMOST, and on some setups no amount of AWT top-most trickery
+     * gets the native dialog above it. Hiding the window is the only
+     * mode-independent guarantee, which is why it exists as a config switch
+     * rather than the default: it costs the player the view of the game.
+     */
+    private void suspendForPicker() {
+        if (!AtomChatConfig.get().minimizeWhilePicking) {
+            return;
+        }
+        runOnRender(() -> {
+            try {
+                GLFW.glfwIconifyWindow(this.client.getWindow().getHandle());
+            } catch (Throwable t) {
+                AtomChat.LOGGER.warn("Failed to minimize the window for the image picker", t);
+            }
+        });
+    }
+
+    private void resumeAfterPicker() {
+        if (!AtomChatConfig.get().minimizeWhilePicking) {
+            return;
+        }
+        runOnRender(() -> {
+            try {
+                GLFW.glfwRestoreWindow(this.client.getWindow().getHandle());
+            } catch (Throwable t) {
+                AtomChat.LOGGER.warn("Failed to restore the window after the image picker", t);
+            }
+        });
+    }
+
+    /** Runs a GLFW call on the render thread and waits for it to land. */
+    private void runOnRender(Runnable task) {
+        CountDownLatch done = new CountDownLatch(1);
+        this.client.execute(() -> {
+            try {
+                task.run();
+            } finally {
+                done.countDown();
+            }
+        });
+        try {
+            done.await(2L, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Returns OS focus to the game window after the native picker closes, and
+     * clears any key/button state the dialog left behind. GLFW window calls are
+     * not thread-safe, so the work hops onto the render thread.
+     */
+    private void refocusWindow() {
+        this.client.execute(() -> {
+            KeyBinding.unpressAll();
+            if (this.client.mouse != null) {
+                ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+            }
+            try {
+                GLFW.glfwFocusWindow(this.client.getWindow().getHandle());
+            } catch (Throwable t) {
+                AtomChat.LOGGER.warn("Failed to refocus the window after the image picker", t);
+            }
+        });
     }
 
     private void sendMessage(String text) {
@@ -1520,7 +1828,7 @@ public class AtomChatScreen extends ChatScreen {
             String quoteName = null;
             String quoteText = null;
             if (replyTarget != null) {
-                quoteName = replyTarget.isOwn() ? ownName() : "玩家";
+                quoteName = messageSenderName(replyTarget);
                 quoteText = abbreviate(replyTarget.getContentText(), 30);
                 // Quote travels with the message so other players can see it too.
                 normalized = "「引用 @" + quoteName + ": " + quoteText + "」" + normalized;
@@ -1536,7 +1844,10 @@ public class AtomChatScreen extends ChatScreen {
                 this.client.player.networkHandler.sendChatMessage(normalized);
             }
             this.client.inGameHud.getChatHud().addToMessageHistory(normalized);
-            ChatStore.get().add(new ChatMessage(Text.literal(normalized), true, quoteName, quoteText));
+            UUID ownUuid = this.client.player.getUuid();
+            String ownProfile = this.client.player.getName().getString();
+            ChatStore.get().add(new ChatMessage(Text.literal(normalized), true, false, quoteName, quoteText,
+                    ownUuid, ownProfile, ownProfile, normalized));
             inputSetText("");
             replyTarget = null;
             inputFocused = true;
@@ -1569,6 +1880,22 @@ public class AtomChatScreen extends ChatScreen {
 
     private String ownName() {
         return this.client.player != null ? this.client.player.getName().getString() : "我";
+    }
+
+    /**
+     * Display name for a message row. Own messages use the local player; other
+     * messages prefer the structured sender name from the capture pipeline and
+     * only fall back to the old hard-coded label when identity is unavailable.
+     */
+    private String messageSenderName(ChatMessage msg) {
+        if (msg.isOwn()) {
+            return ownName();
+        }
+        String name = msg.getSenderName();
+        if (name != null && !name.isBlank()) {
+            return name;
+        }
+        return "玩家";
     }
 
     private static String abbreviate(String text, int maxChars) {

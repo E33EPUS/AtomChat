@@ -6,6 +6,8 @@
   "client": [
     "MinecraftClientMixin",
     "ChatHudMixin",
+    "MessageHandlerMixin",
+    "MouseHandlerAccessor",
     "SuggestionWindowAccessor"
   ],
   "injectors": {

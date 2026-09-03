@@ -18,6 +18,13 @@ public class AtomChatConfig {
     /** Rounded panel background blur (raw GL + core shader, outside Skia). */
     public boolean blurEnabled = true;
     public boolean animationEnabled = true;
+    /**
+     * Minimize the game window while the native image picker is open. GLFW pins
+     * a fullscreen window to HWND_TOPMOST, so on some setups no AWT z-order
+     * trick gets the dialog above it; minimizing is the only mode-independent
+     * guarantee. Off by default because it hides the game.
+     */
+    public boolean minimizeWhilePicking = false;
     /** Dumps avatar sampling PNGs to the config dir for color debugging. */
     public boolean debug = false;
     public int accentColor = 0xFF4A90E2;

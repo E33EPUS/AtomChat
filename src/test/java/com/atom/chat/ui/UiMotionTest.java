@@ -59,14 +59,28 @@ class UiMotionTest {
 
     @Test
     void durationsStaySnappy() {
-        // Any transition slower than this reads as sticky on screen.
+        // Any transition slower than this reads as sticky on screen. This guard
+        // covers *responses to input* only — MESSAGE_MS is a content reveal and
+        // is asserted separately below.
         long[] all = {
-                UiMotion.PANEL_MS, UiMotion.MESSAGE_MS, UiMotion.SCROLL_SNAP_MS,
+                UiMotion.PANEL_MS, UiMotion.SCROLL_SNAP_MS,
                 UiMotion.SCROLL_WHEEL_MS, UiMotion.HOVER_MS, UiMotion.SCROLLBAR_FADE_MS,
-                UiMotion.SCROLLBAR_EMPHASIS_MS, UiMotion.POPUP_MS
+                UiMotion.SCROLLBAR_EMPHASIS_MS, UiMotion.POPUP_MS, UiMotion.INPUT_GROW_MS
         };
         for (long ms : all) {
             assertTrue(ms > 0 && ms <= 200, "duration " + ms + "ms must stay at or under 200ms");
         }
+    }
+
+    @Test
+    void messageEntryIsSlowEnoughToReadAsAFade() {
+        // An opacity ramp needs roughly 200ms before the eye reads it as a fade
+        // rather than a pop. Anything below that and the same easeOutCubic that
+        // looks great on the slide finishes the fade in ~70ms, so the entrance
+        // reads as "it only slid" — which is exactly the complaint we got.
+        assertTrue(UiMotion.MESSAGE_MS >= 200,
+                "message entrance needs >= 200ms to read as a fade, got " + UiMotion.MESSAGE_MS);
+        assertTrue(UiMotion.MESSAGE_MS <= 300,
+                "message entrance must not drag, got " + UiMotion.MESSAGE_MS);
     }
 }

@@ -108,8 +108,76 @@
 - **QQ-style message entrance**: new bubbles slide in horizontally while
   fading — own messages from the right toward the left, others from the left
   toward the right. Centered system capsules fade in place.
+- **Real sender names in bubbles**: messages are now captured at the
+  MessageHandler channel level (signed / unsigned / system) instead of only at
+  `ChatHud.addMessage`, so the structured sender UUID/profile survives into
+  `ChatMessage`. Other players no longer show as the hard-coded “玩家”; the
+  bubble name, avatar, reply banner and quote target use the resolved sender.
+  A short TTL handoff prevents stale metadata from mislabelling later lines,
+  and system-channel NCR/plugin player lines fall back to a structural
+  name+separator parser before being treated as system text.
+- **New-message entrance starts when first visible**: messages arriving in a
+  burst no longer spend most of their animation off-screen while auto-scroll
+  catches up; each bubble plays its full fade/slide from the first frame it
+  enters the viewport.
+- **Fullscreen image picker uses the native AWT file dialog**: the Swing
+  chooser stayed hidden behind Minecraft's exclusive-fullscreen window. MC's
+  held keys/buttons are released while the dialog owns input.
+- **Emoji panel is more compact and scrollable**: the 24 oversized cells are
+  replaced by e33chat's larger emoji set plus a kaomoji tab, both with
+  scrollable grids and smaller cells.
+- **Emoji panel no longer inserts the wrong emoji**: the click handler never
+  clamped the column, so a click in the left gutter computed `col = -1` and
+  inserted the previous row's last entry, the right gutter inserted the next
+  row's first, and a click below the grid hit an item that was scrolled out of
+  view. Clicks outside the content rectangle are now rejected outright and the
+  column is clamped.
+- **Command suggestion popup no longer overlaps the input bar**: the popup
+  anchors above the whole input bar instead of above the caret text line, so
+  it cannot cover the image/emoji/send buttons.
+- **Message entrance animation no longer loops**: the animation deleted its
+  start timestamp as soon as it finished, but the message stayed in the
+  viewport, so `entranceEase()` read the missing entry as "first visible
+  frame" and restarted it — forever, and visibly faster as more messages
+  joined the loop. Reopening the screen only stopped it because `openStart`
+  moved past those messages. A finished message is now marked as settled and
+  keeps its timestamp; the state is discarded only when the message actually
+  leaves the viewport (which also re-arms the entrance if it scrolls back in).
+- **Native image picker now opens above the game in fullscreen**: the AWT
+  file dialog was created with a `null` owner, so Windows placed it at the
+  bottom of the z-order and Minecraft's borderless fullscreen window painted
+  over it. It is now owned by a reused, invisible 1x1 always-on-top frame,
+  which lifts the modal dialog into the same topmost z-band. Focus is handed
+  back to the game window (and held keys/buttons released) once it closes.
+
+### Changed
+
+- **Emoji panel is larger**: cell 26 → 34, visible rows 4 → 5, tab bar 30 →
+  34, panel padding 10 → 12. Kaomoji rows get their own tokens
+  (`EMOJI_KAOMOJI_ROW_H`, `FONT_KAOMOJI`) instead of inline values.
+- **Emoji glyphs no longer fill their cell**: the font dropped back to 22 so a
+  34-wide cell keeps a visible gutter between neighbours — at 28 the glyphs
+  crowded together and made it hard to tell which cell you were aiming at.
+- **Message entrance is slower and fades instead of flying**: 140ms → 220ms and
+  the slide distance drops from 32 to 14, because a 40px travel dominated the
+  animation and the eye never read the fade at all. The fade and the slide now
+  use separate curves on one timeline (`easeOutQuad` for opacity,
+  `easeOutCubic` for the travel) instead of sharing `easeOutCubic`, which spent
+  ~88% of the opacity ramp in the first half of the duration.
+- **Input placeholder is always visible**: it no longer requires the field to be
+  unfocused, which — ChatScreen focusing the field on open — meant it never
+  showed. It now appears whenever the draft is empty, in secondary grey.
 
 ### Added
+
+- **Ctrl+V pastes images**: screenshots and copied pictures are read off the
+  system clipboard through AWT (Minecraft's clipboard API only exposes strings,
+  so it cannot see them), written to a temp PNG and uploaded; copied image files
+  are uploaded in place. Plain text still falls through to the vanilla paste.
+- `minimizeWhilePicking` config (default `false`): minimizes the game window
+  while the native image picker is open. GLFW pins a fullscreen window to
+  `HWND_TOPMOST`, and where no AWT z-order trick wins, this is the only
+  mode-independent guarantee — off by default because it hides the game.
 
 - `UiMotion`: single source of truth for transition durations plus the
   `approach()` helper that guarantees a transition lands exactly on its target.
