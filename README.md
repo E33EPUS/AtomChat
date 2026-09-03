@@ -234,6 +234,6 @@ AtomChat 自身代码以 [MIT](LICENSE) 发布，但分发的 JAR 中捆绑了�
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT License](LICENSE)
 
 Copyright © 2026 E33EPUS
