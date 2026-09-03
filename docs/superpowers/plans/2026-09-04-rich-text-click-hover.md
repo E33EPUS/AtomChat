@@ -160,10 +160,12 @@ public final class RichText {
 
     public RichText linkifyUrls() {
         // 用 Pattern "(?i)\\bhttps?://[^\\s<>\"']+" 扫描每段 run.text；
-        // 命中处拆成 3 段：前置普通文本、URL run（Style.EMPTY
-        //   .withClickEvent(new ClickEvent(OPEN_URL, url))
-        //   .withHoverEvent(new HoverEvent(SHOW_TEXT, Text.literal(url)))）、尾部文本。
+        // 命中处拆成 3 段：前置普通文本、URL run（保留原 run.style 并
+        //   .withClickEvent(new ClickEvent(OPEN_URL, url))）、尾部文本。
         // 只对“当前 run 没有 ClickEvent”的纯文本段做；已有事件保持原样。
+        // HoverEvent 不在 RichText.linkifyUrls 构造：HoverEvent 在纯 JUnit
+        // 下会触发 MC Bootstrap，URL 的 SHOW_TEXT hover 由 Task 7/8 在客户端
+        // 已 bootstrap 的渲染层补（若有需要）。
     }
 }
 ```
