@@ -2174,6 +2174,14 @@ public class AtomChatScreen extends ChatScreen {
             return true;
         }
 
+        // Arm a click candidate for every left press before message interactions.
+        // This covers clickable sender names and any clickable span outside bubble
+        // text; the text-line branch below may overwrite it with the same result.
+        if (button == 0) {
+            pendingClickSpan = findClickableSpan(mx, my);
+            pendingClickMoved = false;
+        }
+
         // Message interactions. Right-click only opens the bubble menu when the
         // pointer is actually on the bubble, not on the name band or avatar.
         for (MessageHit hit : hits) {
@@ -2236,6 +2244,11 @@ public class AtomChatScreen extends ChatScreen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        // Any drag while a click is pending must suppress the click-on-release,
+        // including drags that do not start a text selection (e.g. name bars).
+        if (button == 0 && pendingClickSpan != null) {
+            pendingClickMoved = true;
+        }
         if (selecting && button == 0 && selectionMessage != null) {
             float mx = toVirtualX(mouseX);
             float my = toVirtualY(mouseY);
@@ -2275,9 +2288,10 @@ public class AtomChatScreen extends ChatScreen {
             boolean wasSelecting = selecting;
             ClickableSpan pending = pendingClickSpan;
             pendingClickSpan = null;
+            ClickableSpan released = findClickableSpan(mx, my);
             boolean shouldClick = pending != null && !pendingClickMoved
                     && pending.style().getClickEvent() != null
-                    && findClickableSpan(mx, my) == pending;
+                    && pending.equals(released);
             if (wasSelecting) {
                 selecting = false;
                 if (!selectionMoved) {
