@@ -149,7 +149,8 @@ public final class ChatPipeline {
             return Optional.empty();
         }
 
-        String text = fullLine.getString();
+        RichText full = RichText.of(fullLine);
+        String text = full.getString(); // visible text, no § control pairs
         var parsed = MessagePresentation.parseDecoratedPlayerLine(text, candidates);
         if (parsed.isEmpty()) {
             return Optional.empty();
@@ -160,7 +161,6 @@ public final class ChatPipeline {
             return Optional.empty();
         }
 
-        RichText full = RichText.of(fullLine);
         RichText sender;
         if (pl.nameStart() > 0 && text.charAt(pl.nameStart() - 1) == '<') {
             // Vanilla angle decoration is not part of the displayed sender:

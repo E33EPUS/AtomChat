@@ -90,6 +90,26 @@ class RichChatPartsTest {
     }
 
     @Test
+    void slicesLegacyFormattedAngleLineUsingVisibleOffsets() {
+        Text line = Text.literal("§a<Steve> §bhi");
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "Steve", "Steve", "hi", false))
+                .orElseThrow();
+        assertEquals("Steve", parts.sender().getString());
+        assertEquals("hi", parts.content().getString());
+    }
+
+    @Test
+    void slicesLegacyDecoratedPrefixLineUsingVisibleOffsets() {
+        Text line = Text.literal("§7[VIP]§rSteve>>§ahi");
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "Steve", "Steve", "hi", false))
+                .orElseThrow();
+        assertEquals("[VIP]Steve", parts.sender().getString());
+        assertEquals("hi", parts.content().getString());
+    }
+
+    @Test
     void emptyWhenMetaHasNoUsableName() {
         Text line = Text.literal("[系统]公告: 欢迎");
         assertTrue(ChatPipeline.sliceRichText(line, new SenderMeta(null, null, null, null, true)).isEmpty());
