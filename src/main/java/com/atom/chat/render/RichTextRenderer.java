@@ -1,0 +1,112 @@
+package com.atom.chat.render;
+
+import com.atom.chat.text.RichText;
+import com.atom.chat.text.RichTextLayout;
+import com.atom.chat.text.RichTextLayout.RichLine;
+import com.atom.chat.text.TextMeasurer;
+import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.FontMetrics;
+import io.github.humbleui.skija.Paint;
+import net.minecraft.text.Style;
+
+import java.util.List;
+
+/**
+ * Skia-dependent helper that lays out and draws {@link RichText} runs.
+ *
+ * <p>Wrapping is delegated to {@link RichTextLayout} with
+ * {@link SkiaFontRenderer#getStringWidth} as the text measurer so layout,
+ * drawing and width queries all agree with the existing Skia font renderer.
+ */
+public final class RichTextRenderer {
+    private RichTextRenderer() {
+    }
+
+    /**
+     * Wraps rich text to the given width using the supplied Skia font.
+     */
+    public static List<RichLine> wrapFor(RichText text, Font font, float maxWidth) {
+        TextMeasurer measurer = s -> SkiaFontRenderer.getStringWidth(font, s);
+        return RichTextLayout.wrap(text, measurer, maxWidth);
+    }
+
+    /**
+     * Returns the on-screen width of one already-wrapped rich line.
+     */
+    public static float width(Font font, RichLine line) {
+        float total = 0.0F;
+        for (RichText.RichRun run : line.runs()) {
+            total += SkiaFontRenderer.getStringWidth(font, run.text());
+        }
+        return total;
+    }
+
+    /**
+     * Draws rich lines as one block vertically centered on {@code centerY}.
+     *
+     * <p>Each run uses the run's style color when present, otherwise
+     * {@code fallbackColor}. Underlines are drawn for runs that are underlined
+     * or carry a click event. When {@code addClickable} is true and a run has a
+     * click or hover event, its line-box rectangle is appended to {@code sink}.
+     */
+    public static void drawLines(Canvas canvas, Font font, List<RichLine> lines,
+                                 float x, float centerY, float lineHeight, int fallbackColor,
+                                 List<ClickableSpan> sink, boolean addClickable) {
+        if (lines == null || lines.isEmpty()) {
+            return;
+        }
+        float totalH = lines.size() * lineHeight;
+        float blockTop = centerY - totalH / 2.0F;
+        for (int i = 0; i < lines.size(); i++) {
+            RichLine line = lines.get(i);
+            float lineCenterY = blockTop + (i + 0.5F) * lineHeight;
+            float baseline = SkiaFontRenderer.centerBaselineY(font, lineCenterY);
+            float lineTop = blockTop + i * lineHeight;
+            float runX = x;
+            for (RichText.RichRun run : line.runs()) {
+                String text = run.text();
+                if (text.isEmpty()) {
+                    continue;
+                }
+                int color = effectiveColor(run.style(), fallbackColor);
+                float runWidth = SkiaFontRenderer.getStringWidth(font, text);
+                SkiaFontRenderer.drawText(canvas, font, text, runX, baseline, color);
+                if (run.style().getClickEvent() != null || run.style().isUnderlined()) {
+                    drawUnderline(canvas, font, runX, baseline, runWidth, color);
+                }
+                if (addClickable && sink != null
+                        && (run.style().getClickEvent() != null || run.style().getHoverEvent() != null)) {
+                    sink.add(new ClickableSpan(runX, lineTop, runWidth, lineHeight, run.style()));
+                }
+                runX += runWidth;
+            }
+        }
+    }
+
+    /**
+     * Minecraft {@link Style} colors are 24-bit RGB while Skia paints expect
+     * ARGB. Like vanilla's TextRenderer, a styled run replaces the RGB channels
+     * of the fallback color while keeping its alpha.
+     */
+    private static int effectiveColor(Style style, int fallbackColor) {
+        if (style == null || style.getColor() == null) {
+            return fallbackColor;
+        }
+        return (fallbackColor & 0xFF000000) | (style.getColor().getRgb() & 0xFFFFFF);
+    }
+
+    private static void drawUnderline(Canvas canvas, Font font, float x, float baseline,
+                                      float width, int color) {
+        FontMetrics metrics = font.getMetrics();
+        Float underlinePos = metrics.getUnderlinePosition();
+        Float underlineThickness = metrics.getUnderlineThickness();
+        float y = baseline + (underlinePos != null ? underlinePos : 1.5F);
+        float strokeWidth = underlineThickness != null && underlineThickness > 0.0F
+                ? underlineThickness : Math.max(1.0F, font.getSize() / 14.0F);
+        try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
+                .setStroke(true).setStrokeWidth(strokeWidth)) {
+            canvas.drawLine(x, y, x + width, y, paint);
+        }
+    }
+}

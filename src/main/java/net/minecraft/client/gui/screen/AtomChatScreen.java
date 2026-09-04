@@ -13,11 +13,15 @@ import com.atom.chat.image.ImageUploader;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.mixin.MouseHandlerAccessor;
 import com.atom.chat.render.Animator;
+import com.atom.chat.render.ClickableSpan;
 import com.atom.chat.render.Easing;
 import com.atom.chat.render.PanelBlurRenderer;
+import com.atom.chat.render.RichTextRenderer;
 import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
 import com.atom.chat.render.SkiaGraphics;
+import com.atom.chat.text.RichText;
+import com.atom.chat.text.RichTextLayout.RichLine;
 import com.atom.chat.ui.UiLayout;
 import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
@@ -202,6 +206,12 @@ public class AtomChatScreen extends ChatScreen {
     private boolean selecting;
     private boolean selectionMoved;
     private List<String> selectionMessageLines = List.of();
+
+    /** Clickable/hoverable spans collected while drawing the latest frame. */
+    private final List<ClickableSpan> clickableSpans = new ArrayList<>();
+    /** Pending click candidate used by the click/drag coexistence flow (Task 8). */
+    private ClickableSpan pendingClickSpan;
+    private boolean pendingClickMoved;
 
     /**
      * New-message entrance animation starts when the message first becomes
@@ -807,6 +817,7 @@ public class AtomChatScreen extends ChatScreen {
     private void drawMessages(Canvas canvas, float x, float y, float width, float height) {
         List<ChatMessage> messages = ChatStore.get().snapshot();
         hits.clear();
+        clickableSpans.clear();
         // Snapshot "was at bottom" before maxScroll grows: after new messages
         // arrive the old target is no longer near the new max, so comparing after
         // recompute would make us miss the follow and leave a growing gap.
@@ -996,16 +1007,21 @@ public class AtomChatScreen extends ChatScreen {
         if (imageUrl != null) {
             return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index);
         }
-        String display = msg.getDisplayText();
-        float singleLineWidth = SkiaFontRenderer.getStringWidth(font, display);
+        RichText content = msg.getContentRich();
+        float textMaxWidth = bubbleMaxWidth - UiTokens.BUBBLE_PAD * 2.0F;
+        List<RichLine> richLines = RichTextRenderer.wrapFor(content, font, textMaxWidth);
+        List<String> lines = new ArrayList<>();
+        for (RichLine line : richLines) {
+            lines.add(line.getPlainText());
+        }
+        float singleLineWidth = richLines.size() <= 1
+                ? (richLines.isEmpty() ? 0.0F : RichTextRenderer.width(font, richLines.get(0)))
+                : 0.0F;
         float bubbleWidth;
-        java.util.List<String> lines;
         if (singleLineWidth + UiTokens.BUBBLE_PAD * 2.0F <= bubbleMaxWidth) {
             bubbleWidth = Math.max(UiTokens.BUBBLE_MIN_W, singleLineWidth + UiTokens.BUBBLE_PAD * 2.0F);
-            lines = java.util.List.of(display);
         } else {
             bubbleWidth = bubbleMaxWidth;
-            lines = SkiaFontRenderer.wrap(font, display, bubbleWidth - UiTokens.BUBBLE_PAD * 2.0F);
         }
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float textHeight = Math.max(lineHeight, lines.size() * lineHeight);
@@ -1041,7 +1057,8 @@ public class AtomChatScreen extends ChatScreen {
         }
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.BUBBLE_RADIUS, msg.isOwn() ? ownBubble() : otherBubble());
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
-        SkiaFontRenderer.drawLines(canvas, font, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, textPrimary());
+        RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
+                lineHeight, textPrimary(), clickableSpans, true);
 
         float bottom = bubbleTop + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, bubbleWidth, bottom);
@@ -1053,21 +1070,26 @@ public class AtomChatScreen extends ChatScreen {
      */
     private MessageHit drawSystemMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
         Font font = FontManager.font(UiTokens.FONT_QUOTE);
-        String display = msg.getDisplayText();
-        java.util.List<String> lines = SkiaFontRenderer.wrap(font, display, maxWidth - UiTokens.BUBBLE_PAD * 2.0F);
+        List<RichLine> richLines = RichTextRenderer.wrapFor(msg.getContentRich(), font,
+                maxWidth - UiTokens.BUBBLE_PAD * 2.0F);
+        List<String> lines = new ArrayList<>();
+        for (RichLine line : richLines) {
+            lines.add(line.getPlainText());
+        }
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float textHeight = Math.max(lineHeight, lines.size() * lineHeight);
         float bubbleHeight = textHeight + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         float lineMax = 0.0F;
-        for (String line : lines) {
-            lineMax = Math.max(lineMax, SkiaFontRenderer.getStringWidth(font, line));
+        for (RichLine line : richLines) {
+            lineMax = Math.max(lineMax, RichTextRenderer.width(font, line));
         }
         float bubbleWidth = Math.min(maxWidth, Math.max(s(40), lineMax + UiTokens.BUBBLE_PAD * 2.0F));
         float bubbleX = x + (maxWidth - bubbleWidth) / 2.0F;
         float bubbleTop = y + s(2);
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, s(10), Color.makeARGB(150, 35, 39, 47));
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
-        SkiaFontRenderer.drawLines(canvas, font, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, textSecondary());
+        RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
+                lineHeight, textSecondary(), clickableSpans, true);
         float bottom = bubbleTop + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, 0.0F, 0.0F, 0.0F, bubbleTop, bubbleX, bubbleWidth, bottom);
     }
@@ -1113,14 +1135,31 @@ public class AtomChatScreen extends ChatScreen {
      * baseline, which put the two a cap-height apart.
      */
     private void drawMessageName(Canvas canvas, ChatMessage msg, float rowY, float leftX, float rightX) {
-        String name = messageSenderName(msg);
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        float baseline = rowY + UiTokens.NAME_BAND / 2.0F;
-        if (msg.isOwn()) {
-            SkiaFontRenderer.drawTextRight(canvas, nameFont, name, rightX, baseline, textPrimary());
-        } else {
-            SkiaFontRenderer.drawText(canvas, nameFont, name, leftX, baseline, textPrimary());
+        RichText sender = msg.getSenderRich();
+        if (sender.isEmpty()) {
+            sender = RichText.literal(messageSenderName(msg));
         }
+        List<RichLine> lines = RichTextRenderer.wrapFor(sender, nameFont, Float.MAX_VALUE);
+        if (lines.isEmpty()) {
+            return;
+        }
+        float lineHeight = SkiaFontRenderer.getHeight(nameFont);
+        float nameWidth = 0.0F;
+        for (RichLine line : lines) {
+            nameWidth = Math.max(nameWidth, RichTextRenderer.width(nameFont, line));
+        }
+        float x = msg.isOwn() ? rightX - nameWidth : leftX;
+        // Preserve the old drawText baseline (rowY + NAME_BAND/2) by inverting
+        // RichTextRenderer's centerBaselineY conversion for the one-line block.
+        float baseline = rowY + UiTokens.NAME_BAND / 2.0F;
+        var metrics = nameFont.getMetrics();
+        float capHeight = metrics.getCapHeight();
+        float centerY = capHeight > 0.0F
+                ? baseline - capHeight / 2.0F
+                : baseline + (metrics.getAscent() + metrics.getDescent()) / 2.0F;
+        RichTextRenderer.drawLines(canvas, nameFont, lines, x, centerY, lineHeight, textPrimary(),
+                clickableSpans, true);
     }
 
     private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
@@ -1182,7 +1221,8 @@ public class AtomChatScreen extends ChatScreen {
         if (msg.isSystem()) {
             Font font = FontManager.font(UiTokens.FONT_QUOTE);
             float lineHeight = SkiaFontRenderer.getHeight(font);
-            int lines = SkiaFontRenderer.wrap(font, msg.getDisplayText(), maxWidth - UiTokens.BUBBLE_PAD * 2.0F).size();
+            int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font,
+                    maxWidth - UiTokens.BUBBLE_PAD * 2.0F).size();
             return s(2) + Math.max(lineHeight, lines * lineHeight) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         }
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
@@ -1193,7 +1233,7 @@ public class AtomChatScreen extends ChatScreen {
         Font font = FontManager.font(UiTokens.FONT_BODY);
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float wrapW = Math.max(s(20), maxWidth - UiTokens.BUBBLE_RETRACT - UiTokens.BUBBLE_PAD * 2.0F);
-        int lines = SkiaFontRenderer.wrap(font, msg.getDisplayText(), wrapW).size();
+        int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font, wrapW).size();
         return UiTokens.NAME_BAND + quoteH + UiTokens.BUBBLE_PAD_Y + Math.max(lineHeight, lines * lineHeight);
     }
 
@@ -1873,7 +1913,11 @@ public class AtomChatScreen extends ChatScreen {
         }
         Font font = FontManager.font(msg.isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);
         float textMax = Math.max(s(20), hit.bubbleWidth() - UiTokens.BUBBLE_PAD * 2.0F);
-        List<String> lines = SkiaFontRenderer.wrap(font, msg.getDisplayText(), textMax);
+        List<RichLine> richLines = RichTextRenderer.wrapFor(msg.getContentRich(), font, textMax);
+        List<String> lines = new ArrayList<>();
+        for (RichLine line : richLines) {
+            lines.add(line.getPlainText());
+        }
         if (lines.isEmpty()) {
             return out;
         }
