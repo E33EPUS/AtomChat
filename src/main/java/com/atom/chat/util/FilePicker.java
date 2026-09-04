@@ -102,6 +102,65 @@ public final class FilePicker {
         return result.get();
     }
 
+    /**
+     * Opens a save dialog for downloaded images. Returns the chosen path, or
+     * {@code null} when the user cancels.
+     */
+    public static Path pickSavePath(String suggestedName) {
+        System.setProperty("java.awt.headless", "false");
+        AtomicReference<Path> result = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        SwingUtilities.invokeLater(() -> {
+            try {
+                installLookAndFeel();
+                JFileChooser chooser = new JFileChooser();
+                chooser.setDialogTitle(tr("atomchat.picker.save.title"));
+                chooser.setAcceptAllFileFilterUsed(true);
+                chooser.setSelectedFile(new File(defaultDirectory(), safeFileName(suggestedName)));
+
+                JFrame frame = new JFrame(tr("atomchat.picker.save.title"));
+                frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                frame.getContentPane().add(chooser, BorderLayout.CENTER);
+                frame.pack();
+                frame.setLocationRelativeTo(null);
+                frame.setVisible(true);
+                frame.setAlwaysOnTop(true);
+                frame.toFront();
+
+                try {
+                    if (chooser.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
+                        File file = chooser.getSelectedFile();
+                        if (file != null) {
+                            result.set(file.toPath());
+                        }
+                    }
+                } finally {
+                    frame.dispose();
+                }
+            } catch (Throwable t) {
+                AtomChat.LOGGER.warn("Image save dialog failed", t);
+            } finally {
+                done.countDown();
+            }
+        });
+        try {
+            done.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+        return result.get();
+    }
+
+    /** Strips path separators so a URL's last segment can become a file name. */
+    private static String safeFileName(String name) {
+        if (name == null || name.isBlank()) {
+            return "image.png";
+        }
+        String cleaned = name.replaceAll("[/\\\\:*?\"<>|]", "_");
+        return cleaned.isBlank() ? "image.png" : cleaned;
+    }
+
     private static String tr(String key) {
         return Text.translatable(key).getString();
     }

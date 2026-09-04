@@ -8,6 +8,7 @@ import com.atom.chat.emote.EmoteImageCache;
 import com.atom.chat.emote.EmoteStore;
 import com.atom.chat.image.AvatarRenderer;
 import com.atom.chat.image.ImageLoader;
+import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.SkinResolver;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.font.FontManager;
@@ -97,7 +98,7 @@ public class AtomChatScreen extends ChatScreen {
 
     // Per-cell hover fade shared by the emoji / kaomoji / emote grids.
     private final Map<Integer, Float> cellHover = new HashMap<>();
-    private final float[] contextMenuHover = {0.0F, 0.0F};
+    private final float[] contextMenuHover = {0.0F, 0.0F, 0.0F};
     // Emoji tab transition: double-layer content slide + sliding indicator.
     private final Animator tabContentAnim = new Animator(Easing::easeInOutCubic);
     private final Animator tabIndicatorAnim = new Animator(Easing::easeInOutCubic);
@@ -130,12 +131,24 @@ public class AtomChatScreen extends ChatScreen {
     // Feather-style send: one diagonal fold + the paper-plane outline.
     private static final String ICON_SEND_SVG = "M18 2.5 L9.5 11"
             + " M18 2.5 L13.5 18.5 L9.5 11 L2.5 7.5 Z";
+    // Context-menu icons, same 20x20 line-icon language as the toolbar.
+    private static final String ICON_COPY_SVG = "M5 3 L11 3 L11 9 L5 9 Z M8 7 L14 7 L14 13 L8 13 Z";
+    private static final String ICON_QUOTE_SVG = "M3 3 L17 3 L17 12 L10 12 L6 16 L7 12 L3 12 Z"
+            + " M7 6 L7 9 M10 6 L10 9";
+    private static final String ICON_SAVE_SVG = "M10 3 L10 11 M7 8 L10 11 L13 8"
+            + " M4 15 L4 17 L16 17 L16 15";
     private static final io.github.humbleui.skija.Path ICON_IMAGE_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_IMAGE_SVG);
     private static final io.github.humbleui.skija.Path ICON_EMOJI_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_EMOJI_SVG);
     private static final io.github.humbleui.skija.Path ICON_SEND_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_SEND_SVG);
+    private static final io.github.humbleui.skija.Path ICON_COPY_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_COPY_SVG);
+    private static final io.github.humbleui.skija.Path ICON_QUOTE_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_QUOTE_SVG);
+    private static final io.github.humbleui.skija.Path ICON_SAVE_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_SAVE_SVG);
 
     private static final Pattern CICODE = Pattern.compile(
             "\\[\\[CICode,url=([^,\\]]+),name=([^,\\]]*)(?:,w=(\\d+),h=(\\d+))?\\]\\]");
@@ -190,6 +203,9 @@ public class AtomChatScreen extends ChatScreen {
 
     /** Set while an upload is in flight; the input placeholder reads it. */
     private volatile boolean imageUploading;
+    /** Short-lived hint shown in the empty input placeholder (save errors etc). */
+    private volatile String transientHint;
+    private long transientHintSetAt;
     /** GLFW drop callback, installed while this screen is open (MC sets none). */
     private GLFWDropCallback dropCallback;
 
@@ -571,8 +587,15 @@ public class AtomChatScreen extends ChatScreen {
         // upload progress readout, which is the only feedback a file drop can
         // give — GLFW reports the drop itself but has no drag-enter to react to.
         if (current.isEmpty()) {
-            String hint = truncateToWidth(inputFont,
-                    imageUploading ? tr("atomchat.input.uploading") : tr("atomchat.input.placeholder"), layout.inputTextMaxWidth());
+            String hintText;
+            if (imageUploading) {
+                hintText = tr("atomchat.input.uploading");
+            } else if (transientHint != null && System.currentTimeMillis() - transientHintSetAt < 4000L) {
+                hintText = transientHint;
+            } else {
+                hintText = tr("atomchat.input.placeholder");
+            }
+            String hint = truncateToWidth(inputFont, hintText, layout.inputTextMaxWidth());
             SkiaFontRenderer.drawText(canvas, inputFont, hint, textX,
                     SkiaFontRenderer.centerBaselineY(inputFont, layout.inputTextCenterY), textSecondary());
         } else {
@@ -659,14 +682,18 @@ public class AtomChatScreen extends ChatScreen {
      * how the icon's own path bounds differ.
      */
     private void drawIcon(Canvas canvas, io.github.humbleui.skija.Path icon, float bx, float by, int color) {
-        float size = s(18);
+        drawIconCentered(canvas, icon, bx + UiTokens.BUTTON_W / 2.0F, by + UiTokens.BUTTON_H / 2.0F,
+                s(18), color);
+    }
+
+    /** Draws an icon centered on an arbitrary point; used by toolbar and menus. */
+    private void drawIconCentered(Canvas canvas, io.github.humbleui.skija.Path icon, float cx, float cy,
+                                  float size, int color) {
         Rect b = icon.getBounds();
         if (b == null || b.isEmpty()) {
             return;
         }
         float scale = size / Math.max(b.getWidth(), b.getHeight());
-        float cx = bx + UiTokens.BUTTON_W / 2.0F;
-        float cy = by + UiTokens.BUTTON_H / 2.0F;
         canvas.save();
         try {
             canvas.translate(cx - (b.getLeft() + b.getRight()) / 2.0F * scale,
@@ -1833,14 +1860,19 @@ public class AtomChatScreen extends ChatScreen {
             }
             return;
         }
+        boolean imageMessage = extractImageUrl(shown.getRawText()) != null;
+        int rows = imageMessage ? 3 : 2;
+        float rowH = UiTokens.MENU_H / 2.0F;
+        float menuH = rowH * rows;
         float menuW = UiTokens.MENU_W;
-        float menuH = UiTokens.MENU_H;
         float menuX = Math.min(contextX, panelX() + panelWidth() - menuW - s(8));
         float menuY = Math.min(contextY, panelY() + panelHeight() - menuH - s(8));
-        boolean overTop = vmx >= menuX && vmx <= menuX + menuW && vmy >= menuY && vmy <= menuY + menuH / 2.0F;
-        boolean overBottom = vmx >= menuX && vmx <= menuX + menuW && vmy >= menuY + menuH / 2.0F && vmy <= menuY + menuH;
-        contextMenuHover[0] = UiMotion.approach(contextMenuHover[0], overTop ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
-        contextMenuHover[1] = UiMotion.approach(contextMenuHover[1], overBottom ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
+        for (int row = 0; row < rows; row++) {
+            float rowY = menuY + row * rowH;
+            boolean overRow = vmx >= menuX && vmx <= menuX + menuW
+                    && vmy >= rowY && vmy <= rowY + rowH;
+            contextMenuHover[row] = UiMotion.approach(contextMenuHover[row], overRow ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
+        }
         canvas.save();
         try (Paint layer = new Paint()) {
             layer.setColor(Color.makeARGB((int) (255.0F * contextAnim), 0, 0, 0));
@@ -1852,17 +1884,28 @@ public class AtomChatScreen extends ChatScreen {
             SkiaDraw.drawRoundedRect(canvas, menuX, menuY, menuW, menuH, s(10), Color.makeARGB(245, 35, 39, 47));
             SkiaDraw.drawRoundedShadow(canvas, menuX, menuY, menuW, menuH, s(10), s(8), Color.makeARGB(100, 0, 0, 0));
             Font menuFont = FontManager.font(UiTokens.FONT_BUTTON);
-            for (int row = 0; row < 2; row++) {
-                float rowY = menuY + row * menuH / 2.0F;
+            for (int row = 0; row < rows; row++) {
+                float rowY = menuY + row * rowH;
                 float hov = contextMenuHover[row];
                 if (hov > 0.01F) {
                     // Uniform s(4) inset on every side of the row capsule so it
                     // never looks top-heavy against the menu edges.
-                    SkiaDraw.drawRoundedRect(canvas, menuX + s(4), rowY + s(4), menuW - s(8), menuH / 2.0F - s(8),
+                    SkiaDraw.drawRoundedRect(canvas, menuX + s(4), rowY + s(4), menuW - s(8), rowH - s(8),
                             s(6), Color.makeARGB((int) (55.0F * hov), 255, 255, 255));
                 }
-                SkiaFontRenderer.drawText(canvas, menuFont, tr(row == 0 ? "atomchat.context.copy" : "atomchat.context.quote"),
-                        menuX + s(12), SkiaFontRenderer.centerBaselineY(menuFont, rowY + menuH * 0.25F), textPrimary());
+                String label = switch (row) {
+                    case 0 -> tr("atomchat.context.copy");
+                    case 1 -> tr("atomchat.context.quote");
+                    default -> tr("atomchat.context.save");
+                };
+                io.github.humbleui.skija.Path icon = switch (row) {
+                    case 0 -> ICON_COPY_PATH;
+                    case 1 -> ICON_QUOTE_PATH;
+                    default -> ICON_SAVE_PATH;
+                };
+                drawIconCentered(canvas, icon, menuX + s(18), rowY + rowH / 2.0F, s(16), textPrimary());
+                SkiaFontRenderer.drawText(canvas, menuFont, label, menuX + s(36),
+                        SkiaFontRenderer.centerBaselineY(menuFont, rowY + rowH / 2.0F), textPrimary());
             }
             canvas.restore();
         }
@@ -2134,19 +2177,25 @@ public class AtomChatScreen extends ChatScreen {
         ChatMessage menuBefore = contextMessage;
         if (contextMessage != null) {
             float menuW = UiTokens.MENU_W;
-            float menuH = UiTokens.MENU_H;
+            boolean imageMessage = extractImageUrl(contextMessage.getRawText()) != null;
+            int rows = imageMessage ? 3 : 2;
+            float rowH = UiTokens.MENU_H / 2.0F;
+            float menuH = rowH * rows;
             float menuX = Math.min(contextX, panelX + panelWidth() - menuW - s(8));
             float menuY = Math.min(contextY, panelY + panelHeight() - menuH - s(8));
             boolean inside = (float) mx >= menuX && (float) mx <= menuX + menuW
                     && (float) my >= menuY && (float) my <= menuY + menuH;
             if (inside && button == 0) {
-                if ((float) my < menuY + menuH / 2.0F) {
+                int row = (int) ((my - menuY) / rowH);
+                if (row == 0) {
                     copyToClipboard(contextMessage.getContentText());
-                } else {
+                } else if (row == 1) {
                     replyTarget = contextMessage;
                     inputFocused = true;
                     setFocused(chatField);
                     chatField.setFocused(true);
+                } else {
+                    saveImage(contextMessage);
                 }
                 closeContextMenu();
                 return true;
@@ -2437,6 +2486,64 @@ public class AtomChatScreen extends ChatScreen {
         }, "AtomChat-ImagePicker");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * Saves another player's CICode image to a local file. The save dialog runs
+     * on the same worker-thread pattern as the open picker; the actual download
+     * happens off-thread via {@link ImageSaver} so the raw bytes stay identical.
+     */
+    private void saveImage(ChatMessage message) {
+        String url = extractImageUrl(message.getRawText());
+        if (url == null) {
+            return;
+        }
+        Thread worker = new Thread(() -> {
+            suppressAutoIconify();
+            Path target;
+            try {
+                target = FilePicker.pickSavePath(fileNameFromUrl(url));
+            } finally {
+                restoreAutoIconify();
+            }
+            refocusWindow();
+            if (target == null) {
+                return;
+            }
+            ImageSaver.save(url, target).whenComplete((path, throwable) -> {
+                if (throwable != null) {
+                    this.client.execute(() -> showTransientHint(tr("atomchat.input.save_failed")));
+                } else {
+                    AtomChat.LOGGER.info("Saved chat image to {}", path);
+                }
+            });
+        }, "AtomChat-ImageSavePicker");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /** URL last path segment, stripped of query/fragment; falls back to image.png. */
+    private static String fileNameFromUrl(String url) {
+        if (url == null) {
+            return "image.png";
+        }
+        String clean = url;
+        int cut = clean.indexOf('?');
+        int hash = clean.indexOf('#');
+        if (hash >= 0) {
+            cut = cut >= 0 ? Math.min(cut, hash) : hash;
+        }
+        if (cut >= 0) {
+            clean = clean.substring(0, cut);
+        }
+        int slash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'));
+        String name = slash >= 0 && slash + 1 < clean.length() ? clean.substring(slash + 1) : clean;
+        return name.isEmpty() ? "image.png" : name;
+    }
+
+    private void showTransientHint(String text) {
+        transientHint = text;
+        transientHintSetAt = System.currentTimeMillis();
     }
 
     /**

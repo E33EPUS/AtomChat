@@ -1,6 +1,7 @@
 package com.atom.chat.text;
 
 import net.minecraft.text.ClickEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.text.TextVisitFactory;
@@ -73,6 +74,19 @@ public final class RichText {
 
     public boolean isEmpty() {
         return runs.isEmpty();
+    }
+
+    /**
+     * Rebuilds a Minecraft {@link Text} from this flat run list, preserving each
+     * run's effective style. Useful when a rewrite has to splice original styled
+     * slices back together with new placeholder runs.
+     */
+    public Text toText() {
+        MutableText out = Text.literal("").setStyle(rootStyle);
+        for (RichRun run : runs) {
+            out.append(Text.literal(run.text()).setStyle(run.style()));
+        }
+        return out;
     }
 
     public RichText slice(int from, int to) {

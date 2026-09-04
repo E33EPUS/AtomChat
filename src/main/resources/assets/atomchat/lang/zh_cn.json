@@ -10,11 +10,16 @@
   "atomchat.emoji.tab.emote": "表情包",
   "atomchat.context.copy": "复制",
   "atomchat.context.quote": "引用",
+  "atomchat.context.save": "保存图片",
+  "atomchat.hud.image": "[图片]",
+  "atomchat.hud.quote": "[引用] ",
   "atomchat.sender.me": "我",
   "atomchat.sender.player": "玩家",
   "atomchat.picker.title": "AtomChat - 选择图片",
+  "atomchat.picker.save.title": "AtomChat - 保存图片",
   "atomchat.picker.filter.image": "图片 (png, jpg, jpeg, gif, webp, bmp)",
   "atomchat.picker.filter.emote": "表情包 (png, jpg, jpeg)",
   "atomchat.picker.preview.none": "无预览",
-  "atomchat.picker.preview.loading": "加载中…"
+  "atomchat.picker.preview.loading": "加载中…",
+  "atomchat.input.save_failed": "图片保存失败"
 }

@@ -10,11 +10,16 @@
   "atomchat.emoji.tab.emote": "Stickers",
   "atomchat.context.copy": "Copy",
   "atomchat.context.quote": "Quote",
+  "atomchat.context.save": "Save Image",
+  "atomchat.hud.image": "[Image]",
+  "atomchat.hud.quote": "[Quote] ",
   "atomchat.sender.me": "Me",
   "atomchat.sender.player": "Player",
   "atomchat.picker.title": "AtomChat - Choose Image",
+  "atomchat.picker.save.title": "AtomChat - Save Image",
   "atomchat.picker.filter.image": "Images (png, jpg, jpeg, gif, webp, bmp)",
   "atomchat.picker.filter.emote": "Stickers (png, jpg, jpeg)",
   "atomchat.picker.preview.none": "No preview",
-  "atomchat.picker.preview.loading": "Loading…"
+  "atomchat.picker.preview.loading": "Loading…",
+  "atomchat.input.save_failed": "Failed to save image"
 }

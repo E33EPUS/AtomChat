@@ -6,6 +6,7 @@ import com.atom.chat.chat.ChatPipeline;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.chat.MessageCapture;
 import com.atom.chat.chat.SenderMeta;
+import com.atom.chat.text.ChatTextRewriter;
 import com.atom.chat.text.RichText;
 import net.minecraft.client.gui.screen.AtomChatScreen;
 import net.minecraft.client.MinecraftClient;
@@ -15,12 +16,16 @@ import net.minecraft.client.gui.hud.MessageIndicator;
 import net.minecraft.network.message.MessageSignatureData;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = ChatHud.class, priority = 500)
 public class ChatHudMixin {
+    @Unique
+    private boolean atomchat$reposting;
+
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void atomchat$hideVanillaChatHud(DrawContext context, int currentTick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
         MinecraftClient client = MinecraftClient.getInstance();
@@ -31,6 +36,28 @@ public class ChatHudMixin {
 
     @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"))
     private void atomchat$captureMessage(Text message, MessageSignatureData signatureData, MessageIndicator indicator, CallbackInfo ci) {
+        if (atomchat$reposting) {
+            return;
+        }
+
+        // Store the original message first; the vanilla HUD copy is rewritten
+        // below only after capture has already decided what belongs in ChatStore.
+        atomchat$captureAndStore(message, signatureData, indicator);
+
+        Text rewritten = ChatTextRewriter.rewrite(message);
+        if (rewritten != null) {
+            ci.cancel();
+            atomchat$reposting = true;
+            try {
+                ((ChatHud) (Object) this).addMessage(rewritten, signatureData, indicator);
+            } finally {
+                atomchat$reposting = false;
+            }
+        }
+    }
+
+    @Unique
+    private void atomchat$captureAndStore(Text message, MessageSignatureData signatureData, MessageIndicator indicator) {
         String raw = message.getString();
         MinecraftClient client = MinecraftClient.getInstance();
 
