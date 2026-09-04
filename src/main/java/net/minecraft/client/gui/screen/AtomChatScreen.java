@@ -11,6 +11,9 @@ import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.SkinResolver;
 import com.atom.chat.image.ImageUploader;
+import com.atom.chat.nav.AppPage;
+import com.atom.chat.nav.AtomChatState;
+import com.atom.chat.nav.NavigationStack;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.mixin.MouseHandlerAccessor;
 import com.atom.chat.render.Animator;
@@ -75,6 +78,11 @@ import java.util.regex.Pattern;
 public class AtomChatScreen extends ChatScreen {
     /** Which context menu is open: normal message bubble actions or player-avatar actions. */
     private enum ContextMenuMode { BUBBLE, AVATAR }
+
+    /** How this screen was opened: from the vanilla chat box or from the AtomChat key. */
+    public enum AtomChatOpenMode { DIRECT_WORLD, RESTORE }
+
+    private final NavigationStack<AppPage> navigation;
 
     private final String originalChatText;
     private final SkiaGraphics graphics = new SkiaGraphics();
@@ -273,8 +281,23 @@ public class AtomChatScreen extends ChatScreen {
     private long lastEntrancePrune;
 
     public AtomChatScreen(String originalChatText) {
+        this(originalChatText, AtomChatOpenMode.DIRECT_WORLD);
+    }
+
+    public AtomChatScreen(String originalChatText, AtomChatOpenMode mode) {
         super(originalChatText);
         this.originalChatText = originalChatText;
+        this.navigation = new NavigationStack<>(AppPage.CHAT_LIST);
+        if (mode == AtomChatOpenMode.DIRECT_WORLD) {
+            navigation.replaceWithRoot(AppPage.CHAT_LIST);
+            navigation.push(AppPage.WORLD_CHAT);
+        } else {
+            List<AppPage> saved = AtomChatState.snapshot();
+            navigation.replaceWithRoot(saved.get(0));
+            for (int i = 1; i < saved.size(); i++) {
+                navigation.push(saved.get(i));
+            }
+        }
     }
 
     public String getOriginalChatText() {
@@ -507,6 +530,7 @@ public class AtomChatScreen extends ChatScreen {
 
     @Override
     public void removed() {
+        AtomChatState.save(navigation.snapshot());
         uninstallDropCallback();
         // Give back the GPU texture the panel blur was sampling.
         graphics.releaseWorldSnapshot();

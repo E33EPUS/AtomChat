@@ -25,5 +25,7 @@
   "atomchat.picker.filter.emote": "Stickers (png, jpg, jpeg)",
   "atomchat.picker.preview.none": "No preview",
   "atomchat.picker.preview.loading": "Loading…",
-  "atomchat.input.save_failed": "Failed to save image"
+  "atomchat.input.save_failed": "Failed to save image",
+  "key.atomchat.open": "Open AtomChat Inherited Page",
+  "key.atomchat.category": "AtomChat"
 }

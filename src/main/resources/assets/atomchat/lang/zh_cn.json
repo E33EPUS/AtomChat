@@ -25,5 +25,7 @@
   "atomchat.picker.filter.emote": "表情包 (png, jpg, jpeg)",
   "atomchat.picker.preview.none": "无预览",
   "atomchat.picker.preview.loading": "加载中…",
-  "atomchat.input.save_failed": "图片保存失败"
+  "atomchat.input.save_failed": "图片保存失败",
+  "key.atomchat.open": "打开 AtomChat 继承页",
+  "key.atomchat.category": "AtomChat"
 }

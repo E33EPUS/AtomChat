@@ -3,13 +3,24 @@ package com.atom.chat;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.render.PanelBlurRenderer;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.minecraft.client.gui.screen.AtomChatScreen;
+import net.minecraft.client.gui.screen.AtomChatScreen.AtomChatOpenMode;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.resource.ResourceType;
 import net.minecraft.util.Identifier;
+import org.lwjgl.glfw.GLFW;
 
 public class AtomChatClient implements ClientModInitializer {
+    public static final KeyBinding OPEN_ATOMCHAT_KEY = KeyBindingHelper.registerKeyBinding(
+            new KeyBinding("key.atomchat.open", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_Y,
+                    "key.atomchat.category"));
+
     @Override
     public void onInitializeClient() {
         // The AWT/Swing image picker needs a real toolkit, not the headless
@@ -29,5 +40,13 @@ public class AtomChatClient implements ClientModInitializer {
             }
         });
         AtomChat.LOGGER.info("AtomChat client initialized");
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (OPEN_ATOMCHAT_KEY.wasPressed()) {
+                if (client.currentScreen == null) {
+                    client.setScreen(new AtomChatScreen("", AtomChatOpenMode.RESTORE));
+                }
+            }
+        });
     }
 }
