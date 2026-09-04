@@ -1030,12 +1030,18 @@ public class AtomChatScreen extends ChatScreen {
         for (RichLine line : richLines) {
             lines.add(line.getPlainText());
         }
-        float singleLineWidth = richLines.size() <= 1
-                ? (richLines.isEmpty() ? 0.0F : RichTextRenderer.width(font, richLines.get(0)))
-                : 0.0F;
+        // The bubble must hug the longest visible line. Using the single-line
+        // width of the whole message collapsed multi-line messages (e.g. a hard
+        // newline between two short lines) to a pill only as wide as the bubble
+        // padding, because the old expression forced a 0 width whenever there
+        // was more than one line.
+        float maxLineWidth = 0.0F;
+        for (RichLine line : richLines) {
+            maxLineWidth = Math.max(maxLineWidth, RichTextRenderer.width(font, line));
+        }
         float bubbleWidth;
-        if (singleLineWidth + UiTokens.BUBBLE_PAD * 2.0F <= bubbleMaxWidth) {
-            bubbleWidth = Math.max(UiTokens.BUBBLE_MIN_W, singleLineWidth + UiTokens.BUBBLE_PAD * 2.0F);
+        if (maxLineWidth + UiTokens.BUBBLE_PAD * 2.0F <= bubbleMaxWidth) {
+            bubbleWidth = Math.max(UiTokens.BUBBLE_MIN_W, maxLineWidth + UiTokens.BUBBLE_PAD * 2.0F);
         } else {
             bubbleWidth = bubbleMaxWidth;
         }
@@ -2543,7 +2549,8 @@ public class AtomChatScreen extends ChatScreen {
                 // Quote travels with the message so other players can see it too.
                 normalized = "「引用 @" + quoteName + ": " + quoteText + "」" + normalized;
             }
-            if (normalized.startsWith("/")) {
+            boolean command = normalized.startsWith("/");
+            if (command) {
                 this.client.player.networkHandler.sendChatCommand(normalized.substring(1));
             } else {
                 if (!normalized.startsWith("「引用")
@@ -2554,10 +2561,16 @@ public class AtomChatScreen extends ChatScreen {
                 this.client.player.networkHandler.sendChatMessage(normalized);
             }
             this.client.inGameHud.getChatHud().addToMessageHistory(normalized);
-            UUID ownUuid = this.client.player.getUuid();
-            String ownProfile = this.client.player.getName().getString();
-            ChatStore.get().add(new ChatMessage(Text.literal(normalized), true, false, quoteName, quoteText,
-                    ownUuid, ownProfile, ownProfile, normalized));
+            // Vanilla never echoes commands back into the chat feed as your own
+            // message, so do not manufacture a local bubble for them either.
+            // Non-command chat still gets an immediate local echo so the UI feels
+            // like a phone messenger even before the server relays the message.
+            if (!command) {
+                UUID ownUuid = this.client.player.getUuid();
+                String ownProfile = this.client.player.getName().getString();
+                ChatStore.get().add(new ChatMessage(Text.literal(normalized), true, false, quoteName, quoteText,
+                        ownUuid, ownProfile, ownProfile, normalized));
+            }
             inputSetText("");
             replyTarget = null;
             inputFocused = true;

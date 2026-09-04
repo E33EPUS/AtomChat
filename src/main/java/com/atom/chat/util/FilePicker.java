@@ -58,6 +58,10 @@ public final class FilePicker {
      *                   pick a file the store will silently refuse.
      */
     public static Path pickImage(Runnable beforeShow, Runnable afterShow, Predicate<String> nameFilter) {
+        // Second line of defence: the launcher may pass
+        // -Djava.awt.headless=true. If no AWT class has initialised yet this
+        // restores a real toolkit; AtomChatClient also does it earlier.
+        System.setProperty("java.awt.headless", "false");
         AtomicReference<Path> result = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
         SwingUtilities.invokeLater(() -> {

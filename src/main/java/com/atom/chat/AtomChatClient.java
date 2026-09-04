@@ -12,6 +12,10 @@ import net.minecraft.util.Identifier;
 public class AtomChatClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
+        // The AWT/Swing image picker needs a real toolkit, not the headless
+        // AWT some launchers/other mods select. This must run before any AWT
+        // class initialises, so it lives here at the very start of client init.
+        System.setProperty("java.awt.headless", "false");
         AtomChatConfig.get();
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
             @Override
