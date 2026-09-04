@@ -8,6 +8,7 @@ import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
 import com.atom.chat.ui.AppIcons;
 import com.atom.chat.ui.UiLayout;
+import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
@@ -20,6 +21,11 @@ import io.github.humbleui.skija.Path;
 import io.github.humbleui.types.Rect;
 import net.minecraft.text.Text;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public final class ConversationListPage {
@@ -27,12 +33,16 @@ public final class ConversationListPage {
 
     private final PageHost host;
 
+    /** Hover fade for the conversation card; shares the UI-wide 90ms language. */
+    private float rowHover;
+    private long lastFrameMs = System.currentTimeMillis();
+
     public ConversationListPage(PageHost host) {
         this.host = host;
     }
 
-    private static String tr(String key) {
-        return Text.translatable(key).getString();
+    private static String tr(String key, Object... args) {
+        return Text.translatable(key, args).getString();
     }
 
     private static float s(float v) {
@@ -45,29 +55,57 @@ public final class ConversationListPage {
         return new UiLayout.Rect(rowX, rowY, layout.list.w(), ROW_H);
     }
 
-    public void render(Canvas canvas, UiLayout layout) {
+    public void render(Canvas canvas, UiLayout layout, float vmx, float vmy) {
+        long now = System.currentTimeMillis();
+        float dt = Math.min(50.0F, Math.max(1.0F, now - lastFrameMs));
+        lastFrameMs = now;
+        boolean hovered = rowRect(layout).contains(vmx, vmy);
+        rowHover = UiMotion.approach(rowHover, hovered ? 1.0F : 0.0F, dt, UiMotion.HOVER_MS);
+
         UiLayout.Rect row = rowRect(layout);
         SkiaDraw.drawRoundedRect(canvas, row.x(), row.y(), row.w(), row.h(),
                 s(12), Color.makeARGB(60, 255, 255, 255));
+        if (rowHover > 0.01F) {
+            SkiaDraw.drawRoundedRect(canvas, row.x(), row.y(), row.w(), row.h(),
+                    s(12), Color.makeARGB((int) (45.0F * rowHover), 255, 255, 255));
+        }
 
-        float iconSize = s(36);
-        float iconRadius = s(10);
-        float iconX = row.x() + s(14);
+        // Public card icon: container and inner globe are deliberately larger
+        // than the old compact tile. The container keeps a uniform s(10) inset
+        // from the card edge, matching the vertical breathing room inside the
+        // s(64) row height.
+        float iconSize = s(44);
+        float iconRadius = s(12);
+        float iconInset = s(10);
+        float iconX = row.x() + iconInset;
         float iconY = row.y() + (row.h() - iconSize) / 2.0F;
         SkiaDraw.drawRoundedRect(canvas, iconX, iconY, iconSize, iconSize, iconRadius,
                 Color.makeARGB(60, 255, 255, 255));
         drawIconCentered(canvas, AppIcons.ICON_GLOBE_PATH,
-                iconX + iconSize / 2.0F, iconY + iconSize / 2.0F, s(20),
+                iconX + iconSize / 2.0F, iconY + iconSize / 2.0F, s(26),
                 Color.makeARGB(255, 255, 255, 255));
 
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
         Font subFont = FontManager.font(UiTokens.FONT_QUOTE);
-        float textX = iconX + iconSize + s(14);
+        Font timeFont = FontManager.font(UiTokens.FONT_QUOTE);
+        float textX = iconX + iconSize + s(12);
         float nameCenterY = row.y() + row.h() / 2.0F - s(9);
         float previewCenterY = row.y() + row.h() / 2.0F + s(12);
-        SkiaFontRenderer.drawText(canvas, nameFont, tr("atomchat.conversation.world"), textX,
+
+        // Time sits at the top right, aligned with the title row.
+        String time = latestMessageTime();
+        float timeW = time.isEmpty() ? 0.0F : SkiaFontRenderer.getStringWidth(timeFont, time);
+        float timeX = row.right() - s(10) - timeW;
+        float nameMaxW = Math.max(0.0F, timeX - textX - s(8));
+        String name = truncateToWidth(nameFont, tr("atomchat.conversation.world"), nameMaxW);
+        SkiaFontRenderer.drawText(canvas, nameFont, name, textX,
                 SkiaFontRenderer.centerBaselineY(nameFont, nameCenterY),
                 Color.makeARGB(255, 255, 255, 255));
+        if (!time.isEmpty()) {
+            SkiaFontRenderer.drawText(canvas, timeFont, time, timeX,
+                    SkiaFontRenderer.centerBaselineY(timeFont, nameCenterY),
+                    Color.makeARGB(190, 170, 170, 186));
+        }
 
         float maxPreviewW = Math.max(0.0F, row.right() - textX - s(8));
         String preview = truncateToWidth(subFont, latestPreview(), maxPreviewW);
@@ -90,6 +128,30 @@ public final class ConversationListPage {
             return tr("atomchat.conversation.empty");
         }
         return previewFor(messages.get(messages.size() - 1));
+    }
+
+    private static String latestMessageTime() {
+        List<ChatMessage> messages = ChatStore.get().snapshot();
+        if (messages.isEmpty()) {
+            return "";
+        }
+        return formatMessageTime(messages.get(messages.size() - 1));
+    }
+
+    private static String formatMessageTime(ChatMessage msg) {
+        ZonedDateTime dt = Instant.ofEpochMilli(msg.getTimestamp()).atZone(ZoneId.systemDefault());
+        LocalDate date = dt.toLocalDate();
+        LocalDate today = LocalDate.now();
+        if (date.equals(today)) {
+            return dt.format(DateTimeFormatter.ofPattern("HH:mm"));
+        }
+        if (date.equals(today.minusDays(1))) {
+            return tr("atomchat.time.yesterday");
+        }
+        if (date.equals(today.minusDays(2))) {
+            return tr("atomchat.time.beforeYesterday");
+        }
+        return tr("atomchat.time.date", dt.getMonthValue(), dt.getDayOfMonth());
     }
 
     private static String previewFor(ChatMessage msg) {

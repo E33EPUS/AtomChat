@@ -15,6 +15,11 @@
 - **图标-only 底栏**：去掉 `Chat / Profile / Settings` 文字，底栏高度改为 `图标尺寸(s28) + 2×胶囊内留白(s4) + 2×边缘留白(s8)` 的公式布局，图标垂直居中，胶囊与底栏四边等距。
 - **图标线宽按尺寸比例统一**：所有 20×20 SVG 线性图标的描边随渲染尺寸等比缩放（参考：s16 图标 = 1.5 线宽），底栏大图标不再显得比右键菜单/工具栏细。
 - **SVG 图标重绘**：使用 svg-design 方法论重绘底部三个 tab 图标——圆角聊天气泡去掉过粗内线、人物、设置改为 Lucide 真齿轮（ISC 无版权）；Public 地球恢复历史 Lucide 风格椭圆经线版本；图标尺寸回落到 s24 并采用光学渐变线宽（大图标不再等比变粗）。
+- **IME 组字贴合修复**：隐藏 EditBox 的 X 坐标按“Skia 已上屏前缀宽度 − 原版字体前缀宽度”补偿，中文输入法组字窗不再与已输入文字之间出现间距。
+- **根页卡片 hover**：公屏卡片复用全局 45/255 白高亮 + 90ms 淡入淡出语言。
+- **会话卡片时间**：公屏卡片右上角显示最新消息时间——今天 HH:mm，跨天显示 昨天/前天/M月d日，后续私聊卡片可沿用。
+- **页面切换动画**：进入/返回公屏采用 200ms easeInOutCubic 双向全宽 push/pop——根页与详情页主体同时左右移动；上栏作为固定“状态栏”不随动画移动，只切换标题与返回键可见性。
+- **公屏图标放大**：卡片图标容器 s36→s44、内层地球 SVG s20→s26，四周统一 s10 留白，与圆角卡片间距按公式计算。
 
 ### English
 
@@ -29,6 +34,11 @@
 - **Icon-only bottom tab bar**: Chat / Profile / Settings text labels are gone; the bar height is now `icon size (s28) + 2 × capsule padding (s4) + 2 × edge padding (s8)`, with the icon vertically centred and the selected capsule keeping equal breathing room from every bar edge.
 - **Size-proportional icon strokes**: all 20×20 SVG line icons now scale their stroke with rendered size (reference: s16 icon = 1.5 stroke), so the larger bottom-tab icons no longer look thinner than context-menu/toolbar icons.
 - **Redrawn shell icons**: bottom-tab icons (rounded chat bubble without heavy inner lines, user, Lucide proper gear under ISC) were redrawn with the svg-design methodology; the Public globe restores the earlier Lucide-style elliptical-meridian version. Icon size is back to s24 and strokes use an optical taper so larger icons no longer become proportionally heavier.
+- **IME composition alignment**: the hidden EditBox X is offset by the difference between Skia and vanilla prefix widths, so the Chinese IME pre-edit window no longer floats away from the committed Skia text.
+- **Root card hover**: the Public conversation card now reuses the global 45/255 white highlight with the 90ms fade language.
+- **Conversation time**: the Public card shows the latest message time at the top right — HH:mm for today, Yesterday / 2 days ago / M/d across days — ready for future private-chat cards.
+- **Page transition**: entering/leaving Public uses a 200ms easeInOutCubic full-width push/pop where root/detail bodies move together while the top header stays fixed like a status bar, only swapping title/back visibility.
+- **Larger Public icon**: the card icon container grows from s36 to s44 and the inner globe from s20 to s26, with uniform s10 spacing calculated against the rounded card.
 
 ## v0.1.3
 

@@ -92,6 +92,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final ConversationListPage conversationListPage = new ConversationListPage(this);
     private final PlaceholderPage profilePage = new PlaceholderPage(AppPage.PROFILE);
     private final PlaceholderPage settingsPage = new PlaceholderPage(AppPage.SETTINGS);
+    /** Root-page mouse coordinates in virtual UI space, for card hover rendering. */
+    private float rootMouseX;
+    private float rootMouseY;
+    /** When true, ShellHeader is skipped while moving page layers in a transition. */
+    private boolean suppressHeader;
 
     private final String originalChatText;
     private final SkiaGraphics graphics = new SkiaGraphics();
@@ -132,6 +137,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final Animator rootTabAnim = bottomTabBar.indicatorAnimator();
     private int rootTabFrom = -1;
     private int rootTabTo = -1;
+
+    // Page push/pop transition (root <-> world chat). The world page slides
+    // horizontally over a static root page; the navigation entry changes only
+    // after the animation settles so the active page stays consistent.
+    private final Animator pageNavAnim = new Animator(Easing::easeInOutCubic);
+    private AppPage pageNavFrom;
+    private AppPage pageNavTo;
+    private boolean pageNavPopPending;
 
     /** Hover wash behind the unified header back arrow. */
     private float backButtonHover;
@@ -338,6 +351,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         if (!page.isRoot() && topPage().isRoot()) {
             rootTabAnim.setValue(rootIndex(topPage()));
+            startPageNav(topPage(), page, false);
         }
         navigation.push(page);
         if (!page.isRoot()) {
@@ -347,7 +361,47 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public void popPage() {
+        if (navigation.size() > 1 && topPage() == AppPage.WORLD_CHAT) {
+            List<AppPage> stack = navigation.snapshot();
+            AppPage previous = stack.get(stack.size() - 2);
+            if (previous.isRoot()) {
+                // Keep the world page on top while it slides out; the actual
+                // navigation pop happens in finishPageNav().
+                startPageNav(AppPage.WORLD_CHAT, previous, true);
+                return;
+            }
+        }
+        resetTransientWorldUi();
         navigation.pop();
+    }
+
+    private boolean pageNavActive() {
+        return pageNavFrom != null && pageNavTo != null && !pageNavAnim.isDone();
+    }
+
+    private void startPageNav(AppPage from, AppPage to, boolean popPending) {
+        pageNavFrom = from;
+        pageNavTo = to;
+        pageNavPopPending = popPending;
+        pageNavAnim.setValue(0.0F);
+        pageNavAnim.animateTo(UiMotion.TAB_MS, 1.0F);
+    }
+
+    private void finishPageNav() {
+        if (pageNavPopPending) {
+            resetTransientWorldUi();
+            navigation.pop();
+        }
+        pageNavFrom = null;
+        pageNavTo = null;
+        pageNavPopPending = false;
+        pageNavAnim.setValue(0.0F);
+    }
+
+    private float pageNavDx(float travel) {
+        float progress = pageNavAnim.getValue();
+        boolean pushing = pageNavTo == AppPage.WORLD_CHAT;
+        return pushing ? travel * (1.0F - progress) : travel * progress;
     }
 
     @Override
@@ -505,10 +559,39 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private void positionInputField(UiLayout layout) {
         double density = uiDensity();
         double scaleFactor = this.client.getWindow().getScaleFactor();
-        chatField.setX((int) Math.round((layout.inputBar.x() + UiTokens.INPUT_TEXT_X) * density / scaleFactor));
+        // The hidden EditBox is what anchors the native IME composition window.
+        // EditBox computes its screen caret as fieldX + vanilla-font prefix
+        // width, while AtomChat draws the committed text with Skia. Shift the
+        // field's X so EditBox.getScreenX(caret) lands exactly on the Skia caret
+        // (no visible gap before the IME pre-edit box).
+        String current = inputGetText();
+        int caret = caretIndex();
+        String wholePrefix = current.substring(0, Math.min(caret, current.length()));
+        String linePrefix = inputLinePrefix(layout, caret);
+        Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
+        float skiaLinePrefixVirtual = SkiaFontRenderer.getStringWidth(inputFont, linePrefix);
+        int desiredGuiX = (int) Math.round((layout.inputBar.x() + UiTokens.INPUT_TEXT_X + skiaLinePrefixVirtual)
+                * density / scaleFactor);
+        int vanillaWholePrefixGuiWidth = this.client.textRenderer.getWidth(wholePrefix);
+        chatField.setX(desiredGuiX - vanillaWholePrefixGuiWidth);
         chatField.setY((int) Math.round(caretLineTopY() * density / scaleFactor));
         chatField.setWidth((int) Math.max(10.0F, Math.round((layout.inputBar.w() - UiTokens.INPUT_TEXT_X * 2.0F) * density / scaleFactor)));
         chatField.setHeight((int) Math.round(inputLineHeight() * density / scaleFactor));
+    }
+
+    /** Skia width of the committed text before the caret on the caret's wrapped line. */
+    private String inputLinePrefix(UiLayout layout, int caret) {
+        List<String> lines = wrappedInput(layout.inputTextMaxWidth());
+        if (lines.isEmpty()) {
+            return "";
+        }
+        int line = caretLine(lines, caret);
+        int lineStart = 0;
+        for (int i = 0; i < line; i++) {
+            lineStart += lines.get(i).length();
+        }
+        int col = MathHelper.clamp(caret - lineStart, 0, lines.get(line).length());
+        return lines.get(line).substring(0, col);
     }
 
     @Override
@@ -669,27 +752,53 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // Root pages then add only their body and the bottom tab bar; world chat
         // adds the composer/message stack.
         if (!isWorldChatPage()) {
-            UiLayout root = rootLayout();
-            float vmx = toVirtualX(mouseX);
-            float vmy = toVirtualY(mouseY);
-            bottomTabBar.update(frameDt, vmx, vmy, root.tabBar);
-            ShellHeader.render(canvas, root.header, shellTitle(), false, null, 0.0F,
-                    textPrimary());
-            drawRootPage(canvas, root);
-            // Root pages share the same scrollbar rendering; with the current
-            // one-row content maxScroll is 0 and nothing is visible yet.
-            drawScrollbar(canvas, root, vmx, vmy, rootScroll);
-            drawBottomTabBar(canvas, root);
+            drawRootScreen(canvas, mouseX, mouseY, topPage());
             drawBezel(canvas, layout);
             return;
         }
 
         float vmx = toVirtualX(mouseX);
         float vmy = toVirtualY(mouseY);
+        boolean navRunning = pageNavActive();
+        if (navRunning) {
+            pageNavAnim.update(frameDt);
+            if (pageNavAnim.isDone()) {
+                boolean wasPop = pageNavPopPending;
+                finishPageNav();
+                if (wasPop) {
+                    drawRootScreen(canvas, mouseX, mouseY, topPage());
+                    drawBezel(canvas, layout);
+                    return;
+                }
+                // Push finished: world page is now the settled top page.
+                navRunning = false;
+            } else {
+                // Full-width push/pop: only the page bodies move. The header is
+                // drawn separately as a fixed "status bar" after both layers.
+                suppressHeader = true;
+                AppPage navRoot = pageNavTo == AppPage.WORLD_CHAT ? pageNavFrom : pageNavTo;
+                float travel = layout.rect().w();
+                float progress = pageNavAnim.getValue();
+                boolean pushing = pageNavTo == AppPage.WORLD_CHAT;
+                float rootDx = pushing ? -travel * progress : -travel * (1.0F - progress);
+                UiLayout.Rect panelRect = layout.rect();
+                canvas.save();
+                SkiaDraw.clip(canvas, panelRect.x(), panelRect.y(), panelRect.w(), panelRect.h(), 0.0F);
+                canvas.translate(rootDx, 0.0F);
+                drawRootScreen(canvas, mouseX, mouseY, navRoot);
+                canvas.restore();
+
+                canvas.save();
+                SkiaDraw.clip(canvas, panelRect.x(), panelRect.y(), panelRect.w(), panelRect.h(), 0.0F);
+                canvas.translate(pageNavDx(travel), 0.0F);
+            }
+        }
         backButtonHover = UiMotion.approach(backButtonHover,
                 isBackButtonHit(vmx, vmy) ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
-        ShellHeader.render(canvas, layout.header, tr("atomchat.channel.world"), true,
-                backButton(), backButtonHover, textPrimary());
+        if (!suppressHeader) {
+            ShellHeader.render(canvas, layout.header, tr("atomchat.channel.world"), true,
+                    backButton(), backButtonHover, textPrimary());
+        }
 
         // Grow the input bar before the list is measured, so the list loses
         // exactly the height the bar gains.
@@ -793,6 +902,20 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         drawEmojiPanel(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
         drawContextMenu(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
 
+        if (navRunning) {
+            canvas.restore();
+            suppressHeader = false;
+            // Fixed status-bar header: it never slides with the page bodies.
+            if (pageNavTo == AppPage.WORLD_CHAT) {
+                ShellHeader.render(canvas, layout.header, tr("atomchat.channel.world"), true,
+                        backButton(), backButtonHover, textPrimary());
+            } else {
+                UiLayout root = rootLayout();
+                ShellHeader.render(canvas, root.header, shellTitleFor(pageNavTo), false, null, 0.0F,
+                        textPrimary());
+            }
+        }
+
         // Bezel ring last: nothing at the panel edge can sit on top of it.
         drawBezel(canvas, layout);
     }
@@ -814,15 +937,32 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return UiLayout.ofRoot(panelX(), panelY(), panelWidth(), panelHeight());
     }
 
-    private void drawRootPage(Canvas canvas, UiLayout layout) {
+    /** Renders the full root screen (header + page body + bottom tab bar). */
+    private void drawRootScreen(Canvas canvas, int mouseX, int mouseY, AppPage rootPage) {
+        UiLayout root = rootLayout();
+        float vmx = toVirtualX(mouseX);
+        float vmy = toVirtualY(mouseY);
+        bottomTabBar.update(frameDt, vmx, vmy, root.tabBar);
+        if (!suppressHeader) {
+            ShellHeader.render(canvas, root.header, shellTitleFor(rootPage), false, null, 0.0F,
+                    textPrimary());
+        }
+        rootMouseX = vmx;
+        rootMouseY = vmy;
+        drawRootPage(canvas, root, rootPage);
+        drawScrollbar(canvas, root, vmx, vmy, rootScroll);
+        drawBottomTabBar(canvas, root, rootPage);
+    }
+
+    private void drawRootPage(Canvas canvas, UiLayout layout, AppPage rootPage) {
         if (!rootTransitionActive()) {
-            drawRootPageBody(canvas, layout, topPage(), 0.0F);
+            drawRootPageBody(canvas, layout, rootPage, 0.0F);
             return;
         }
         float progress = rootSlideProgress();
         if (progress >= 0.999F) {
             clearRootTransition();
-            drawRootPageBody(canvas, layout, topPage(), 0.0F);
+            drawRootPageBody(canvas, layout, rootPage, 0.0F);
             return;
         }
         // Full-width opaque push, same language as the emoji tab content
@@ -836,7 +976,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             float sign = rootTabTo > rootTabFrom ? 1.0F : -1.0F;
             drawRootPageBody(canvas, layout, rootPageForIndex(rootTabFrom),
                     -sign * travel * progress);
-            drawRootPageBody(canvas, layout, topPage(),
+            drawRootPageBody(canvas, layout, rootPage,
                     sign * travel * (1.0F - progress));
         } finally {
             canvas.restore();
@@ -849,7 +989,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         canvas.translate(dx, 0.0F);
         try {
             switch (page) {
-                case CHAT_LIST -> conversationListPage.render(canvas, layout);
+                case CHAT_LIST -> conversationListPage.render(canvas, layout, rootMouseX, rootMouseY);
                 case PROFILE -> profilePage.render(canvas, layout);
                 case SETTINGS -> settingsPage.render(canvas, layout);
                 case WORLD_CHAT -> throw new IllegalStateException("Root page body cannot render world chat");
@@ -898,7 +1038,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private String shellTitle() {
-        return switch (topPage()) {
+        return shellTitleFor(topPage());
+    }
+
+    private String shellTitleFor(AppPage page) {
+        return switch (page) {
             case CHAT_LIST -> tr("atomchat.tab.chat");
             case PROFILE -> tr("atomchat.tab.profile");
             case SETTINGS -> tr("atomchat.tab.settings");
@@ -906,9 +1050,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         };
     }
 
-    private void drawBottomTabBar(Canvas canvas, UiLayout layout) {
-        int selectedIndex = rootIndex(topPage());
+    private void drawBottomTabBar(Canvas canvas, UiLayout layout, AppPage rootPage) {
+        int selectedIndex = rootIndex(rootPage);
         bottomTabBar.render(canvas, layout.tabBar, selectedIndex, textPrimary());
+    }
+
+    private void drawBottomTabBar(Canvas canvas, UiLayout layout) {
+        drawBottomTabBar(canvas, layout, topPage());
     }
 
     /** Routes a root-page click on one of the three bottom tab cells. */
@@ -2497,8 +2645,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
 
         // Back to the conversation list before any composer/emoji/message hit.
+        // resetTransientWorldUi() runs inside popPage() after any slide-out
+        // animation so the world page still looks intact while it leaves.
         if (button == 0 && isBackButtonHit(mx, my)) {
-            resetTransientWorldUi();
             popPage();
             return true;
         }
