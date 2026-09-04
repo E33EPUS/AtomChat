@@ -13,7 +13,6 @@ import net.minecraft.text.Text;
 
 public final class ConversationListPage {
     private static final float ROW_H = UiTokens.s(64);
-    private static final float ROW_GAP = UiTokens.s(10);
 
     private final PageHost host;
 
@@ -31,7 +30,7 @@ public final class ConversationListPage {
 
     private UiLayout.Rect rowRect(UiLayout layout) {
         float rowX = layout.list.x();
-        float rowY = layout.header.bottom() + UiTokens.PANEL_TOP_GAP + ROW_GAP;
+        float rowY = layout.list.y() + UiTokens.ROOT_CONTENT_GAP;
         return new UiLayout.Rect(rowX, rowY, layout.list.w(), ROW_H);
     }
 

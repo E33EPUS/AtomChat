@@ -12,8 +12,8 @@ import io.github.humbleui.skija.Font;
 import net.minecraft.text.Text;
 
 /**
- * Temporary root-page body used while the real conversation list, profile and
- * settings implementations are still being built.
+ * Temporary root-page body used while the real profile and settings
+ * implementations are still being built. Chat list has its own page.
  */
 public final class PlaceholderPage {
     private final AppPage page;
@@ -31,10 +31,9 @@ public final class PlaceholderPage {
                 layout.header.w(), layout.header.h(), UiTokens.HEADER_RADIUS,
                 Color.makeARGB(60, 255, 255, 255));
         String title = switch (page) {
-            case CHAT_LIST -> tr("atomchat.tab.chat");
             case PROFILE -> tr("atomchat.tab.profile");
             case SETTINGS -> tr("atomchat.tab.settings");
-            case WORLD_CHAT -> tr("atomchat.tab.chat");
+            default -> throw new IllegalArgumentException("PlaceholderPage does not support " + page);
         };
         Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
         SkiaFontRenderer.drawTextCentered(canvas, titleFont, title,
@@ -42,10 +41,9 @@ public final class PlaceholderPage {
                 layout.header.y() + layout.header.h() / 2.0F,
                 Color.makeARGB(255, 255, 255, 255));
         String placeholder = switch (page) {
-            case CHAT_LIST -> tr("atomchat.page.chat.placeholder");
             case PROFILE -> tr("atomchat.page.profile.placeholder");
             case SETTINGS -> tr("atomchat.page.settings.placeholder");
-            case WORLD_CHAT -> tr("atomchat.page.chat.placeholder");
+            default -> throw new IllegalArgumentException("PlaceholderPage does not support " + page);
         };
         Font bodyFont = FontManager.font(UiTokens.FONT_BODY);
         SkiaFontRenderer.drawTextCentered(canvas, bodyFont, placeholder,

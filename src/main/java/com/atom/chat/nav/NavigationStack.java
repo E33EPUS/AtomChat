@@ -36,7 +36,8 @@ public final class NavigationStack<T> {
     }
 
     public void replaceWithRoot(T root) {
+        Objects.requireNonNull(root, "root");
         pages.clear();
-        pages.add(Objects.requireNonNull(root, "root"));
+        pages.add(root);
     }
 }

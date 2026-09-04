@@ -119,24 +119,39 @@ class UiLayoutTest {
         assertSane(UiLayout.of(24, 16, 360, 280));
     }
 
+    private static void assertSaneRoot(UiLayout l) {
+        UiLayout.Rect panel = l.rect();
+
+        assertTrue(panel.contains(l.header), "root header inside panel");
+        assertTrue(panel.contains(l.tabBar), "tab bar inside panel");
+        assertTrue(panel.contains(l.list), "root list inside panel");
+        assertTrue(l.list.h() > 0, "root content has room");
+        assertEquals(panel.bottom() - l.tabBar.bottom(), UiTokens.PANEL_BOTTOM_PAD, EPS,
+                "bottom breathing space under tab bar");
+        assertTrue(l.inputBar.w() == 0.0F, "input bar is not used on root pages");
+        assertEquals(UiTokens.TAB_BAR_H, l.tabBar.h(), EPS, "tab bar height uses token");
+        // The root list starts immediately below the header gap and ends exactly
+        // where the tab bar begins.
+        assertEquals(l.header.bottom() + UiTokens.PANEL_TOP_GAP, l.list.y(), EPS,
+                "root list starts below the header plus PANEL_TOP_GAP");
+        assertEquals(l.tabBar.y(), l.list.bottom(), EPS,
+                "root list bottom meets the tab bar top");
+    }
+
     @Test
     void rootLayoutHasTabBarAndNoInputBar() {
         UiLayout l = UiLayout.ofRoot(24, 100, 525, 975);
-        UiLayout.Rect panel = l.rect();
-
-        assertTrue(panel.contains(l.header), "header inside panel");
-        assertTrue(panel.contains(l.tabBar), "tab bar inside panel");
-        assertTrue(panel.contains(l.list), "list inside panel");
-        assertTrue(l.list.h() > 0, "root content has room");
-        assertEquals(panel.bottom() - l.tabBar.bottom(), UiTokens.PANEL_BOTTOM_PAD, 0.01F,
-                "bottom breathing space under tab bar");
-        assertTrue(l.inputBar.w() == 0.0F, "input bar is not used on root pages");
-        assertTrue(l.tabBar.h() == UiTokens.TAB_BAR_H, "tab bar height uses token");
+        assertSaneRoot(l);
     }
 
     @Test
     void rootTabBarNeverOverlapsHeader() {
         UiLayout l = UiLayout.ofRoot(24, 100, 525, 975);
         assertTrue(l.tabBar.y() >= l.header.bottom() + 1.0F, "tab bar below header");
+    }
+
+    @Test
+    void compactRootPanelStillFits() {
+        assertSaneRoot(UiLayout.ofRoot(24, 16, 360, 280));
     }
 }

@@ -333,17 +333,23 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return topPage() == AppPage.WORLD_CHAT;
     }
 
+    private boolean isVanillaChatKey(int keyCode, int scanCode) {
+        return client != null && client.options.chatKey.matchesKey(keyCode, scanCode);
+    }
+
     /**
-     * Hit rect for the world-chat header's SVG back button. It is fixed to the
-     * left edge of the header card and vertically centered, matching where the
-     * icon is drawn.
+     * Shared hit/draw rect for the world-chat header's SVG back button. It is
+     * fixed to the left edge of the header card and vertically centered.
      */
-    private boolean isBackButtonHit(float vmx, float vmy) {
+    private UiLayout.Rect backButton() {
         float size = s(36);
         UiLayout.Rect header = layout().header;
-        return vmx >= header.x() + s(4) && vmx <= header.x() + s(4) + size
-                && vmy >= header.y() + (header.h() - size) / 2.0F
-                && vmy <= header.y() + (header.h() - size) / 2.0F + size;
+        float y = header.y() + (header.h() - size) / 2.0F;
+        return new UiLayout.Rect(header.x() + s(4), y, size, size);
+    }
+
+    private boolean isBackButtonHit(float vmx, float vmy) {
+        return backButton().contains(vmx, vmy);
     }
 
     @Override
@@ -359,6 +365,31 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     @Override
     public void switchRoot(AppPage root) {
         navigation.replaceWithRoot(root);
+    }
+
+    /**
+     * Clears world-chat-only ephemeral UI before navigating back to a root page,
+     * so it cannot reappear when the world page is opened again. The chat draft
+     * and message-list scroll position are deliberately preserved.
+     */
+    private void resetTransientWorldUi() {
+        closeContextMenu();
+        lastContextMessage = null;
+        lastContextMenuMode = ContextMenuMode.BUBBLE;
+        contextAnim = 0.0F;
+        for (int i = 0; i < contextMenuHover.length; i++) {
+            contextMenuHover[i] = 0.0F;
+        }
+        emojiOpen = false;
+        emojiScroll = 0;
+        replyTarget = null;
+        clearTextSelection();
+        pendingClickSpan = null;
+        pendingClickMoved = false;
+        draggingScrollbar = false;
+        dragStartY = 0.0F;
+        dragStartScroll = 0.0F;
+        dismissSuggestor();
     }
 
     public String getOriginalChatText() {
@@ -645,12 +676,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             canvas.drawRRect(RRect.makeXYWH(layout.header.x(), layout.header.y(), layout.header.w(), layout.header.h(), UiTokens.HEADER_RADIUS), header);
         }
         // Back arrow sits at the header's left edge; the title stays centered.
-        if (isWorldChatPage()) {
-            drawIconCentered(canvas, ICON_BACK_PATH,
-                    layout.header.x() + s(4) + s(18),
-                    layout.header.y() + layout.header.h() / 2.0F,
-                    s(18), textPrimary());
-        }
+        UiLayout.Rect back = backButton();
+        drawIconCentered(canvas, ICON_BACK_PATH,
+                back.x() + back.w() / 2.0F,
+                back.y() + back.h() / 2.0F,
+                s(18), textPrimary());
         // Channel name is centered in the card (both axes); the clock stays
         // pinned to the right edge.
         Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
@@ -804,7 +834,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), s(18),
                 Color.makeARGB(60, 255, 255, 255));
         Font tabFont = FontManager.font(UiTokens.FONT_QUOTE);
-        AppPage[] roots = {AppPage.CHAT_LIST, AppPage.PROFILE, AppPage.SETTINGS};
         io.github.humbleui.skija.Path[] icons = {
                 ICON_TAB_CHAT_PATH, ICON_TAB_PROFILE_PATH, ICON_TAB_SETTINGS_PATH
         };
@@ -2427,7 +2456,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         // Back to the conversation list before any composer/emoji/message hit.
         if (button == 0 && isBackButtonHit(mx, my)) {
-            dismissSuggestor();
+            resetTransientWorldUi();
             popPage();
             return true;
         }
@@ -2708,9 +2737,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (closing) {
             return true;
         }
-        // Root pages have no world-chat composer keyboard handling yet. Consume
-        // keys here so they never reach the hidden ChatScreen chat field/history.
+        // Root pages have no world-chat composer keyboard handling yet. The
+        // vanilla chat key still opens the World Chat page from any root page:
+        // replace with CHAT_LIST then push WORLD_CHAT so back returns to the
+        // conversation list. All other keys are consumed so they never reach the
+        // hidden ChatScreen chat field/history.
         if (!isWorldChatPage()) {
+            if (isVanillaChatKey(keyCode, scanCode)) {
+                switchRoot(AppPage.CHAT_LIST);
+                pushPage(AppPage.WORLD_CHAT);
+                return true;
+            }
             return true;
         }
         // Copy selected message text before the vanilla field/suggestion layer

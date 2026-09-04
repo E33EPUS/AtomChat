@@ -49,4 +49,13 @@ class NavigationStackTest {
         assertEquals(1, stack.size());
         assertEquals(AppPage.SETTINGS, stack.peek());
     }
+
+    @Test
+    void replaceWithRootRejectsNullWithoutClearingStack() {
+        NavigationStack<AppPage> stack = new NavigationStack<>(AppPage.CHAT_LIST);
+        stack.push(AppPage.WORLD_CHAT);
+        assertThrows(NullPointerException.class, () -> stack.replaceWithRoot(null));
+        assertEquals(2, stack.size());
+        assertEquals(AppPage.WORLD_CHAT, stack.peek());
+    }
 }

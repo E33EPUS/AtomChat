@@ -108,7 +108,7 @@ public final class UiTokens {
 
     // Bottom tab bar (root pages only; hidden on detail pages)
     public static final float TAB_BAR_H = s(64);
-    public static final float TAB_BAR_PAD_X = s(12);
+    /** Vertical inset between the root content list and content rows/controls. */
     public static final float ROOT_CONTENT_GAP = s(10);
 
     // Panel background blur (gated by AtomChatConfig.blurEnabled). The tint sits

@@ -1,13 +1,11 @@
 {
   "atomchat.screen.title": "AtomChat",
   "atomchat.channel.world": "World Channel",
-  "atomchat.back": "Back",
   "atomchat.conversation.world": "World Channel",
   "atomchat.conversation.world.subtitle": "Tap to open the public chat",
   "atomchat.tab.chat": "Chat",
   "atomchat.tab.profile": "Profile",
   "atomchat.tab.settings": "Settings",
-  "atomchat.page.chat.placeholder": "Chat list (coming soon)",
   "atomchat.page.profile.placeholder": "Profile (coming soon)",
   "atomchat.page.settings.placeholder": "Settings (coming soon)",
   "atomchat.reply.to": "Reply to @%s: %s",
