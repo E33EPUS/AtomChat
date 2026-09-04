@@ -333,6 +333,19 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return topPage() == AppPage.WORLD_CHAT;
     }
 
+    /**
+     * Hit rect for the world-chat header's SVG back button. It is fixed to the
+     * left edge of the header card and vertically centered, matching where the
+     * icon is drawn.
+     */
+    private boolean isBackButtonHit(float vmx, float vmy) {
+        float size = s(36);
+        UiLayout.Rect header = layout().header;
+        return vmx >= header.x() + s(4) && vmx <= header.x() + s(4) + size
+                && vmy >= header.y() + (header.h() - size) / 2.0F
+                && vmy <= header.y() + (header.h() - size) / 2.0F + size;
+    }
+
     @Override
     public void pushPage(AppPage page) {
         navigation.push(page);
@@ -404,8 +417,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         graphics.draw(preUi, (canvas, worldSnapshot) -> drawPhone(canvas, worldSnapshot, mouseX, mouseY, delta));
         // The hidden EditBox stays positioned so the IME floating window anchors
         // correctly; its text/cursor are drawn by Skia above. The suggestion popup
-        // still renders through the vanilla pipeline on top.
-        if (!closing && chatField != null) {
+        // still renders through the vanilla pipeline on top. Root pages do not
+        // show the composer, so none of this may run outside WORLD_CHAT.
+        if (!closing && chatField != null && isWorldChatPage()) {
             positionInputField(layout());
             if (chatInputSuggestor != null) {
                 chatInputSuggestor.render(context, mouseX, mouseY);
@@ -414,7 +428,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         // Hover tooltips are drawn through the vanilla pipeline after the Skia
         // panel and the suggestion popup so they stay readable on top of both.
-        Style hovered = findHoveredStyle(toVirtualX(mouseX), toVirtualY(mouseY));
+        // Root pages keep their own hover model; stale world spans must not show.
+        Style hovered = isWorldChatPage() ? findHoveredStyle(toVirtualX(mouseX), toVirtualY(mouseY)) : null;
         if (hovered != null && hovered.getHoverEvent() != null) {
             context.drawHoverEvent(this.textRenderer, hovered, mouseX, mouseY);
         }
@@ -559,6 +574,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** Window-wide: the drop event carries no cursor position we could hit-test with. */
     private void onFilesDropped(int count, long names) {
+        // File drops only feed the world-chat composer; root pages must ignore them.
+        if (!isWorldChatPage()) {
+            return;
+        }
         try {
             PointerBuffer buffer = MemoryUtil.memPointerBuffer(names, count);
             for (int i = 0; i < count; i++) {
@@ -624,6 +643,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // Header: inset card, same style as the input bar.
         try (Paint header = new Paint().setColor(Color.makeARGB(60, 255, 255, 255))) {
             canvas.drawRRect(RRect.makeXYWH(layout.header.x(), layout.header.y(), layout.header.w(), layout.header.h(), UiTokens.HEADER_RADIUS), header);
+        }
+        // Back arrow sits at the header's left edge; the title stays centered.
+        if (isWorldChatPage()) {
+            drawIconCentered(canvas, ICON_BACK_PATH,
+                    layout.header.x() + s(4) + s(18),
+                    layout.header.y() + layout.header.h() / 2.0F,
+                    s(18), textPrimary());
         }
         // Channel name is centered in the card (both axes); the clock stays
         // pinned to the right edge.
@@ -2168,6 +2194,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Root pages have no world-chat message list / emoji panel to scroll yet,
+        // and must not let the hidden composer or suggestion layer see the wheel.
+        if (!isWorldChatPage()) {
+            return false;
+        }
         // Suggestion popup scrolls first when open.
         if (chatInputSuggestor != null && chatInputSuggestor.mouseScrolled(verticalAmount)) {
             return true;
@@ -2367,32 +2398,38 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (hasTextSelection() || selecting) {
             clearTextSelection();
         }
-        // Vanilla suggestion layer gets first pick on clicks too (prevents click-through).
-        if (chatInputSuggestor != null && chatInputSuggestor.mouseClicked((int) mouseX, (int) mouseY, button)) {
-            return true;
-        }
         float mx = toVirtualX(mouseX);
         float my = toVirtualY(mouseY);
-        float panelX = panelX();
-        float panelY = panelY();
-        UiLayout layout = layout();
 
-        // Root pages have no world-chat composer/message interactions. The
-        // bottom tab bar is their only interactive chrome for now; placeholder
-        // profile/settings pages consume clicks so nothing falls through to the
-        // world-chat handling below.
+        // Root pages have no world-chat composer/message interactions. Route
+        // them before the hidden chat field/suggestion layer can see the click,
+        // and consume root clicks so ChatScreen's composer never gets focus.
         if (!isWorldChatPage()) {
             if (button == 0 && handleBottomTabClick(mx, my)) {
                 return true;
             }
-            if (topPage() == AppPage.CHAT_LIST && conversationListPage.mouseClicked(mx, my, rootLayout())) {
+            if (topPage() == AppPage.CHAT_LIST
+                    && button == 0
+                    && conversationListPage.mouseClicked(mx, my, rootLayout())) {
                 return true;
             }
-            if (topPage() == AppPage.PROFILE || topPage() == AppPage.SETTINGS) {
-                // Placeholder pages consume clicks inside the panel.
-                return true;
-            }
-            return super.mouseClicked(mouseX, mouseY, button);
+            return true;
+        }
+
+        float panelX = panelX();
+        float panelY = panelY();
+        UiLayout layout = layout();
+
+        // Vanilla suggestion layer gets first pick on clicks too (prevents click-through).
+        if (chatInputSuggestor != null && chatInputSuggestor.mouseClicked((int) mouseX, (int) mouseY, button)) {
+            return true;
+        }
+
+        // Back to the conversation list before any composer/emoji/message hit.
+        if (button == 0 && isBackButtonHit(mx, my)) {
+            dismissSuggestor();
+            popPage();
+            return true;
         }
 
         // The emoji toggle button is tested before the panel's own "click outside
@@ -2581,6 +2618,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        // Root pages have no world-chat selection/scrollbar drag state, and must
+        // not forward drags to the hidden composer either.
+        if (!isWorldChatPage()) {
+            return false;
+        }
         // Any drag while a click is pending must suppress the click-on-release,
         // including drags that do not start a text selection (e.g. name bars).
         if (button == 0 && pendingClickSpan != null) {
@@ -2619,6 +2661,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // Root pages have no world-chat click-on-release/scrollbar handling, and
+        // must not forward releases to the hidden composer either.
+        if (!isWorldChatPage()) {
+            return false;
+        }
         if (button == 0) {
             float mx = toVirtualX(mouseX);
             float my = toVirtualY(mouseY);
@@ -2659,6 +2706,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return true;
         }
         if (closing) {
+            return true;
+        }
+        // Root pages have no world-chat composer keyboard handling yet. Consume
+        // keys here so they never reach the hidden ChatScreen chat field/history.
+        if (!isWorldChatPage()) {
             return true;
         }
         // Copy selected message text before the vanilla field/suggestion layer
@@ -2728,6 +2780,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     @Override
     public boolean charTyped(char chr, int modifiers) {
         if (closing) {
+            return true;
+        }
+        // Root pages do not own the composer, so typing must not reach the
+        // hidden ChatScreen chat field.
+        if (!isWorldChatPage()) {
             return true;
         }
         if (AtomChatConfig.get().debug) {
