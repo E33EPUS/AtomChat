@@ -49,6 +49,15 @@ class ChatMessageTest {
     }
 
     @Test
+    void fullConstructorForcesEmptySenderRichForSystemMessages() {
+        RichText sender = RichText.literal("Server");
+        RichText content = RichText.literal("Server: hello");
+        ChatMessage msg = new ChatMessage(Text.literal("Server: hello"), false, true,
+                null, null, null, "Server", "Server", "Server: hello", sender, content);
+        assertTrue(msg.getSenderRich().isEmpty());
+    }
+
+    @Test
     void displayTextComesFromRichContent() {
         ChatMessage msg = new ChatMessage(Text.literal("prefix"), false, false,
                 null, null, null, "Alice", "Alice", "plain", RichText.literal("Alice"),

@@ -53,7 +53,7 @@ public class ChatMessage {
         this.senderName = clean(senderName);
         this.profileName = clean(profileName);
         this.contentText = contentText != null && !contentText.isBlank() ? clean(contentText) : null;
-        this.senderRich = senderRich != null ? senderRich
+        this.senderRich = !system && senderRich != null ? senderRich
                 : legacySenderRich(system, this.senderName, this.profileName);
         this.contentRich = contentRich != null ? contentRich
                 : RichText.literal(legacyDisplayText(rawText, quoteName, this.contentText));
