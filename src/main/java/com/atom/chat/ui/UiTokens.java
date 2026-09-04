@@ -106,6 +106,11 @@ public final class UiTokens {
     public static final float MENU_W = s(110);
     public static final float MENU_H = s(64);
 
+    // Bottom tab bar (root pages only; hidden on detail pages)
+    public static final float TAB_BAR_H = s(64);
+    public static final float TAB_BAR_PAD_X = s(12);
+    public static final float ROOT_CONTENT_GAP = s(10);
+
     // Panel background blur (gated by AtomChatConfig.blurEnabled). The tint sits
     // on top of the blurred snapshot so text stays legible without smothering
     // it — 0x66 read as a bare oil film over the world, 0x99 keeps the panel's

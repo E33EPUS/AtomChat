@@ -118,4 +118,25 @@ class UiLayoutTest {
         // panelWidth()/panelHeight() clamp to viewport-32; the smallest realistic case
         assertSane(UiLayout.of(24, 16, 360, 280));
     }
+
+    @Test
+    void rootLayoutHasTabBarAndNoInputBar() {
+        UiLayout l = UiLayout.ofRoot(24, 100, 525, 975);
+        UiLayout.Rect panel = l.rect();
+
+        assertTrue(panel.contains(l.header), "header inside panel");
+        assertTrue(panel.contains(l.tabBar), "tab bar inside panel");
+        assertTrue(panel.contains(l.list), "list inside panel");
+        assertTrue(l.list.h() > 0, "root content has room");
+        assertEquals(panel.bottom() - l.tabBar.bottom(), UiTokens.PANEL_BOTTOM_PAD, 0.01F,
+                "bottom breathing space under tab bar");
+        assertTrue(l.inputBar.w() == 0.0F, "input bar is not used on root pages");
+        assertTrue(l.tabBar.h() == UiTokens.TAB_BAR_H, "tab bar height uses token");
+    }
+
+    @Test
+    void rootTabBarNeverOverlapsHeader() {
+        UiLayout l = UiLayout.ofRoot(24, 100, 525, 975);
+        assertTrue(l.tabBar.y() >= l.header.bottom() + 1.0F, "tab bar below header");
+    }
 }
