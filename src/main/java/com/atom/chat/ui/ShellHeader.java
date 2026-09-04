@@ -74,7 +74,7 @@ public final class ShellHeader {
             canvas.scale(scale, scale);
             try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
                     .setMode(PaintMode.STROKE)
-                    .setStrokeWidth(UiTokens.s(1.5F) / scale)
+                    .setStrokeWidth(UiTokens.iconStroke(size) / scale)
                     .setStrokeCap(PaintStrokeCap.ROUND)
                     .setStrokeJoin(PaintStrokeJoin.ROUND)) {
                 canvas.drawPath(icon, paint);

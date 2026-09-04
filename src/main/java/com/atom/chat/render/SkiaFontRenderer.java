@@ -201,7 +201,21 @@ public final class SkiaFontRenderer {
                 || cp == 0xFE0F || cp == 0x200D || (cp >= 0x2B00 && cp <= 0x2BFF);
     }
 
+    /**
+     * U+FE0F is an emoji presentation selector: it should not contribute a
+     * visible advance. Some fallback fonts still give it a non-zero width,
+     * which makes FE0F emoji sit off-centre in cells and leaves an extra gap
+     * next to them in wrapped text. Rendering and measuring therefore drop it
+     * while the original chat string is preserved untouched.
+     */
+    private static final char EMOJI_VARIATION_SELECTOR = '\uFE0F';
+
     private static void drawRuns(Canvas canvas, String text, float x, float y, Font primary, Paint paint) {
+        // Keep the original string intact; only strip the presentation selector
+        // from the glyph run we hand to Skia so it cannot add phantom width.
+        if (text.indexOf(EMOJI_VARIATION_SELECTOR) >= 0) {
+            text = text.replace(String.valueOf(EMOJI_VARIATION_SELECTOR), "");
+        }
         float drawX = x;
         int i = 0;
         int n = text.length();
@@ -224,6 +238,9 @@ public final class SkiaFontRenderer {
     }
 
     private static float measureRuns(Font primary, String text) {
+        if (text.indexOf(EMOJI_VARIATION_SELECTOR) >= 0) {
+            text = text.replace(String.valueOf(EMOJI_VARIATION_SELECTOR), "");
+        }
         float width = 0.0F;
         int i = 0;
         int n = text.length();
@@ -261,7 +278,11 @@ public final class SkiaFontRenderer {
             }
             int cp = text.codePointAt(i);
             int charCount = Character.charCount(cp);
-            float charWidth = fontFor(font, cp).measureTextWidth(text.substring(i, i + charCount));
+            // FE0F is preserved in the wrapped line (so caret/string indexes stay
+            // stable) but contributes no measurable width, matching draw/measure.
+            float charWidth = cp == EMOJI_VARIATION_SELECTOR
+                    ? 0.0F
+                    : fontFor(font, cp).measureTextWidth(text.substring(i, i + charCount));
             if (currentWidth + charWidth > maxWidth && current.length() > 0) {
                 lines.add(current.toString());
                 current.setLength(0);

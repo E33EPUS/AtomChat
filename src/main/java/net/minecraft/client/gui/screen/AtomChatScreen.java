@@ -962,9 +962,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /**
      * Draws one of the inline SVG-path toolbar icons, centered in its button
-     * and scaled to fit an {@code ICON_SIZE} box. Stroke width is divided by the
-     * path scale so the rendered line stays a constant UI thickness no matter
-     * how the icon's own path bounds differ.
+     * and scaled to fit an {@code ICON_SIZE} box. Stroke width scales with the
+     * rendered icon size so every icon keeps the same optical line weight.
      */
     private void drawIcon(Canvas canvas, io.github.humbleui.skija.Path icon, float bx, float by, int color) {
         drawIconCentered(canvas, icon, bx + UiTokens.BUTTON_W / 2.0F, by + UiTokens.BUTTON_H / 2.0F,
@@ -986,7 +985,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             canvas.scale(scale, scale);
             try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
                     .setMode(PaintMode.STROKE)
-                    .setStrokeWidth(s(1.5F) / scale)
+                    .setStrokeWidth(UiTokens.iconStroke(size) / scale)
                     .setStrokeCap(PaintStrokeCap.ROUND)
                     .setStrokeJoin(PaintStrokeJoin.ROUND)) {
                 canvas.drawPath(icon, paint);
@@ -2151,7 +2150,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 }
                 String label = avatarMenu ? avatarContextLabel(row) : bubbleContextLabel(row, imageMessage);
                 io.github.humbleui.skija.Path icon = avatarMenu ? avatarContextIcon(row) : bubbleContextIcon(row, imageMessage);
-                drawIconCentered(canvas, icon, menuX + s(18), rowY + rowH / 2.0F, s(16), textPrimary());
+                drawIconCentered(canvas, icon, menuX + s(18), rowY + rowH / 2.0F, UiTokens.CONTEXT_ICON_SIZE, textPrimary());
                 SkiaFontRenderer.drawText(canvas, menuFont, label, menuX + s(36),
                         SkiaFontRenderer.centerBaselineY(menuFont, rowY + rowH / 2.0F), textPrimary());
             }

@@ -105,16 +105,38 @@ public final class UiTokens {
     // Context menu
     public static final float MENU_W = s(110);
     public static final float MENU_H = s(64);
+    /** Context-menu icon size; also the reference size for icon stroke scaling. */
+    public static final float CONTEXT_ICON_SIZE = s(16);
 
-    // Bottom tab bar (root pages only; hidden on detail pages). The bar height
-    // is derived from the icon/label stack so rendering never needs to guess.
-    public static final float TAB_ICON_TOP = s(7);
-    public static final float TAB_ICON_SIZE = s(22);
-    public static final float TAB_LABEL_GAP = s(2);
-    public static final float TAB_LABEL_FONT = s(11);
-    public static final float TAB_BOTTOM_PAD = s(5);
-    public static final float TAB_BAR_H = TAB_ICON_TOP + TAB_ICON_SIZE + TAB_LABEL_GAP
-            + s(13) + TAB_BOTTOM_PAD;
+    // Icon line language. All AtomChat SVG paths use a hand-written line-icon
+    // language. Stroke width follows an optical taper rather than a strict
+    // linear scale: tiny 16px icons keep 1.5 stroke, 24px uses 2.0 and 32px
+    // uses 2.5 (the svg-design reference table), so large tab icons do not get
+    // proportionally heavy.
+    public static final float ICON_STROKE_REF = s(1.5F);
+    public static final float ICON_STROKE_LARGE = s(2.5F);
+    public static final float ICON_LARGE_SIZE = s(32);
+
+    /** Returns the stroke width (UI units) that matches {@code iconSize}. */
+    public static float iconStroke(float iconSize) {
+        if (iconSize <= CONTEXT_ICON_SIZE) {
+            return ICON_STROKE_REF;
+        }
+        float t = (iconSize - CONTEXT_ICON_SIZE) / (ICON_LARGE_SIZE - CONTEXT_ICON_SIZE);
+        return ICON_STROKE_REF + t * (ICON_STROKE_LARGE - ICON_STROKE_REF);
+    }
+
+    // Bottom tab bar (root pages only; hidden on detail pages). Icon-only:
+    // no text labels, so the bar is a formula layout around the icon:
+    //   bar height = icon size
+    //              + 2 * capsule padding (icon -> highlight pill)
+    //              + 2 * edge padding    (highlight pill -> bar edge)
+    // The pill is full-cell wide; the icon sits on the pill's vertical centre,
+    // and the pill keeps s(8) breathing room from the bar edge on all sides.
+    public static final float TAB_EDGE_PAD = s(8);
+    public static final float TAB_CAPSULE_PAD = s(4);
+    public static final float TAB_ICON_SIZE = s(24);
+    public static final float TAB_BAR_H = TAB_ICON_SIZE + 2.0F * (TAB_CAPSULE_PAD + TAB_EDGE_PAD);
     /** Vertical inset between the root content list and content rows/controls. */
     public static final float ROOT_CONTENT_GAP = s(10);
 

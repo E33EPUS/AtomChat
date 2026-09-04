@@ -11,6 +11,10 @@
 - **公屏命名**：用户可见的 “World Channel / 世界频道” 统一改为 `Public / 公屏`。
 - **可复用滚动系统**：新增纯 `ScrollController`，世界频道消息列表与根页共用滚动条/滚轮/拖动逻辑；为后续长列表（私聊/设置）铺路。
 - **架构拆分**：抽出 `AppIcons` / `ShellHeader` / `BottomTabBar` / `ScrollController` 等壳级组件，减少 `AtomChatScreen` 膨胀。
+- **Emoji 视觉居中修正**：`U+FE0F` 表情变体选择符不再参与 Skia 的文字宽度/换行测量，带 `❤️/✌️` 等字符在表情格子、消息和输入框里的横向偏移与多余空隙消除；发送内容保持原字符不变。
+- **图标-only 底栏**：去掉 `Chat / Profile / Settings` 文字，底栏高度改为 `图标尺寸(s28) + 2×胶囊内留白(s4) + 2×边缘留白(s8)` 的公式布局，图标垂直居中，胶囊与底栏四边等距。
+- **图标线宽按尺寸比例统一**：所有 20×20 SVG 线性图标的描边随渲染尺寸等比缩放（参考：s16 图标 = 1.5 线宽），底栏大图标不再显得比右键菜单/工具栏细。
+- **SVG 图标重绘**：使用 svg-design 方法论重绘底部三个 tab 图标——圆角聊天气泡去掉过粗内线、人物、设置改为 Lucide 真齿轮（ISC 无版权）；Public 地球恢复历史 Lucide 风格椭圆经线版本；图标尺寸回落到 s24 并采用光学渐变线宽（大图标不再等比变粗）。
 
 ### English
 
@@ -21,6 +25,10 @@
 - **Public naming**: all user-visible “World Channel / 世界频道” copy is now `Public / 公屏`.
 - **Reusable scroll system**: a pure `ScrollController` now powers both the world-chat message list and root pages, sharing scrollbar/wheel/drag behavior for future long lists.
 - **Architecture cleanup**: extracted shell-level `AppIcons`, `ShellHeader`, `BottomTabBar`, and `ScrollController` components to keep `AtomChatScreen` from growing further.
+- **Emoji visual centring fix**: `U+FE0F` emoji presentation selectors no longer contribute to Skia text/measure/line-wrap width, so `❤️/✌️` and similar glyphs no longer sit off-centre or leave phantom gaps in the emoji grid, messages, or the input box; the original sent text is unchanged.
+- **Icon-only bottom tab bar**: Chat / Profile / Settings text labels are gone; the bar height is now `icon size (s28) + 2 × capsule padding (s4) + 2 × edge padding (s8)`, with the icon vertically centred and the selected capsule keeping equal breathing room from every bar edge.
+- **Size-proportional icon strokes**: all 20×20 SVG line icons now scale their stroke with rendered size (reference: s16 icon = 1.5 stroke), so the larger bottom-tab icons no longer look thinner than context-menu/toolbar icons.
+- **Redrawn shell icons**: bottom-tab icons (rounded chat bubble without heavy inner lines, user, Lucide proper gear under ISC) were redrawn with the svg-design methodology; the Public globe restores the earlier Lucide-style elliptical-meridian version. Icon size is back to s24 and strokes use an optical taper so larger icons no longer become proportionally heavier.
 
 ## v0.1.3
 

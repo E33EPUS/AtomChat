@@ -1,37 +1,27 @@
 package com.atom.chat.ui;
 
-import com.atom.chat.font.FontManager;
 import com.atom.chat.render.Animator;
 import com.atom.chat.render.Easing;
 import com.atom.chat.render.SkiaDraw;
-import com.atom.chat.render.SkiaFontRenderer;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
-import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
 import io.github.humbleui.skija.PaintStrokeCap;
 import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.skija.Path;
 import io.github.humbleui.types.Rect;
-import net.minecraft.text.Text;
 
 /**
- * Shared bottom tab bar for AtomChat root pages. Rendering and hit-testing are
- * both driven by {@link UiLayout.Rect} plus {@link UiTokens} geometry so the
- * shell never hardcodes a cell position.
+ * Shared icon-only bottom tab bar for AtomChat root pages. Rendering and
+ * hit-testing are both driven by {@link UiLayout.Rect} plus {@link UiTokens}
+ * geometry so the shell never hardcodes a cell position.
  *
  * <p>The bar owns the hover fade state and the sliding selected capsule's
  * {@link Animator}. The screen shares the same animator for the root content
  * push so the capsule and the page body always move together.</p>
  */
 public final class BottomTabBar {
-    private static final String[] LABELS = {
-            "atomchat.tab.chat",
-            "atomchat.tab.profile",
-            "atomchat.tab.settings"
-    };
-
     private static final Path[] ICONS = {
             AppIcons.ICON_TAB_CHAT_PATH,
             AppIcons.ICON_TAB_PROFILE_PATH,
@@ -43,10 +33,6 @@ public final class BottomTabBar {
 
     public BottomTabBar() {
         indicatorAnim.setValue(0.0F);
-    }
-
-    private static String tr(String key) {
-        return Text.translatable(key).getString();
     }
 
     /** The animator used for the selected capsule; shared with the root content transition. */
@@ -90,7 +76,10 @@ public final class BottomTabBar {
                 UiTokens.s(18), Color.makeARGB(60, 255, 255, 255));
 
         float cellWidth = bar.w() / 3.0F;
-        float inset = UiTokens.s(4);
+        // The selected/hover capsule is inset from the bar by TAB_EDGE_PAD on
+        // all four sides; its height is bar height minus the two vertical edge
+        // pads. With no label, the icon sits on the pill's vertical centre.
+        float inset = UiTokens.TAB_EDGE_PAD;
         float radius = UiTokens.s(8);
         float capsuleY = bar.y() + inset;
         float capsuleH = bar.h() - inset * 2.0F;
@@ -115,15 +104,11 @@ public final class BottomTabBar {
                     Color.makeARGB((int) (45.0F * hov), 255, 255, 255));
         }
 
-        Font labelFont = FontManager.font(UiTokens.TAB_LABEL_FONT);
         for (int i = 0; i < 3; i++) {
             float cellCenterX = bar.x() + cellWidth * (i + 0.5F);
-            float iconCenterY = bar.y() + UiTokens.TAB_ICON_TOP + UiTokens.TAB_ICON_SIZE / 2.0F;
-            float labelCenterY = bar.y() + UiTokens.TAB_ICON_TOP + UiTokens.TAB_ICON_SIZE
-                    + UiTokens.TAB_LABEL_GAP + UiTokens.s(13) / 2.0F;
-            drawIconCentered(canvas, ICONS[i], cellCenterX, iconCenterY, UiTokens.TAB_ICON_SIZE, textPrimary);
-            SkiaFontRenderer.drawTextCentered(canvas, labelFont, tr(LABELS[i]),
-                    cellCenterX, labelCenterY, textPrimary);
+            float iconCenterY = bar.y() + bar.h() / 2.0F;
+            drawIconCentered(canvas, ICONS[i], cellCenterX, iconCenterY,
+                    UiTokens.TAB_ICON_SIZE, textPrimary);
         }
     }
 
@@ -151,7 +136,7 @@ public final class BottomTabBar {
             canvas.scale(scale, scale);
             try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
                     .setMode(PaintMode.STROKE)
-                    .setStrokeWidth(UiTokens.s(1.5F) / scale)
+                    .setStrokeWidth(UiTokens.iconStroke(size) / scale)
                     .setStrokeCap(PaintStrokeCap.ROUND)
                     .setStrokeJoin(PaintStrokeJoin.ROUND)) {
                 canvas.drawPath(icon, paint);
