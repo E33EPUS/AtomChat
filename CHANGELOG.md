@@ -1,6 +1,37 @@
 # Changelog
 
+## v0.1.5
+
+### 中文
+
+- **根页会话列表重写（QQ 同款）**：Public 固定置顶，随后按规则列出当前服务器全部在线玩家，再补“最近私聊过但现在离线”的玩家；无分组标题，列表支持滚动。
+- **玩家卡片**：显示真实 ID、皮肤圆形头像（预留 `PlayerAvatarSource` 接口，后续可接自定义头像）、最近消息预览、时间；右上角未读红点计数（>99 显示 99+），屏蔽玩家整卡黑白滤镜。
+- **私聊页面**：新增带目标的 PRIVATE_CHAT 页面；根列表左键玩家卡进入私聊，公屏头像右键“私聊”也进入；每个私聊会话独立保存消息历史、草稿与滚动位置；Header 显示真实 ID + 在线/离线小圆点。
+- **私聊捕获**：按 vanilla `/msg` 翻译键（incoming/outgoing）分流到 `PrivateChatStore`，不混入公屏；发送时本地立即上屏，并移植 e33chat 的 pending echo 抑制，避免服务器回显双份。
+- **发送语义**：私聊页普通文本自动拼 `/msg <真实ID>`，以 `/` 开头原样作为命令；图片/表情/引用/拖放/消息右键菜单随会话视图完整复用。
+- **会话视图复用**：公屏与私聊共用消息渲染/输入栏/滚动/回复/表情体系；新增“回到最新”右下圆形向下箭头按钮，不在吸底状态时浮出，点击平滑回底（公屏与私聊都有）。
+- **右键玩家菜单**：根列表玩家卡右键 = 传送（在线可点/离线置灰）+ 屏蔽/取消屏蔽；公屏头像菜单 = @提及 / 私聊 / 传送（在线可点/离线置灰）/ 屏蔽/取消屏蔽；传送固定 `/tp <真实ID>`。
+- **屏蔽系统**：名单全局持久化到 `atomchat-client.json`；保留旧消息只挡新消息；已屏蔽玩家卡片黑白滤镜，仍可进入私聊查看历史但输入栏只读。
+- **离线与只读**：离线最近会话可进入查看历史，输入栏显示“对方不在线，无法发送”；已屏蔽同理。
+- **导航状态恢复**：Y 键重开会恢复上次页面栈，包括正在浏览的私聊会话目标。
+- **未读体系**：Public 与每个私聊会话都维护未读数，进入会话动画开始时清零；根列表实时从 Tab 名单刷新上下线。
+
+### English
+
+- **Root conversation list rewrite (QQ style)**: Public stays pinned at the top, then every online player on the current server is listed by rule, followed by recently-chatted players who are now offline; no group headers, scrolling supported.
+- **Player cards**: real profile ID, circular skin avatar (behind a `PlayerAvatarSource` interface ready for custom avatars), latest message preview and time; unread red badge on the right (>99 becomes 99+); blocked players get a full-card grayscale filter.
+- **Private chat pages**: a target-aware PRIVATE_CHAT page; left-clicking a player card enters it, and the public-chat avatar right-click Whisper item also enters it. Each conversation keeps its own history, draft and scroll position; the header shows the real ID with an online/offline dot.
+- **Private capture**: vanilla `/msg` translation keys (incoming/outgoing) are routed into `PrivateChatStore`, never into the public feed; sends appear locally immediately and use the e33chat-style pending echo suppression so the server echo cannot duplicate bubbles.
+- **Send semantics**: in a private page plain text is auto-prefixed with `/msg <real ID>`; slash input is sent as-is as a command. Images/emotes/quotes/drop/context menus are inherited from the shared chat view.
+- **Shared chat view**: public and private channels reuse the same message rendering/input/scroll/reply/emoji stack. A new circular “jump to latest” down-arrow button floats bottom-right when the view is not at the bottom and scrolls smoothly back down (both public and private).
+- **Player right-click menus**: root player card = Teleport (enabled online / greyed offline) + Block/Unblock; public avatar menu = Mention / Whisper / Teleport (enabled online / greyed offline) / Block/Unblock; teleport uses `/tp <real ID>`.
+- **Block system**: the global list persists to `atomchat-client.json`; old messages are kept and only new ones are filtered; blocked cards are grayscale and still open read-only history.
+- **Offline/read-only**: offline recent chats open read-only with a “player is offline” composer; blocked conversations behave the same.
+- **Navigation restore**: the Y hotkey restores the previous page stack, including the private conversation that was open.
+- **Unread system**: Public and each private conversation track unread counts; entering a conversation clears its badge at animation start; the root list refreshes online/offline status every frame from the tab list.
+
 ## v0.1.4
+
 
 ### 中文
 

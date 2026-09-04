@@ -10,6 +10,7 @@ class AppPageTest {
         assertTrue(AppPage.PROFILE.isRoot());
         assertTrue(AppPage.SETTINGS.isRoot());
         assertFalse(AppPage.WORLD_CHAT.isRoot());
+        assertFalse(AppPage.PRIVATE_CHAT.isRoot());
     }
 
     @Test

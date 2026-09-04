@@ -60,6 +60,21 @@ public final class ShellHeader {
                 header.y() + header.h() / 2.0F, textPrimary);
     }
 
+    public static void render(Canvas canvas, UiLayout.Rect header, String title, boolean showBack,
+                              UiLayout.Rect backButton, float backHover, int textPrimary,
+                              Boolean statusOnline) {
+        render(canvas, header, title, showBack, backButton, backHover, textPrimary);
+        if (statusOnline != null && header != null && header.w() > 0) {
+            Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
+            float titleW = SkiaFontRenderer.getStringWidth(titleFont, title);
+            float dotR = UiTokens.s(5);
+            float dotX = header.x() + header.w() / 2.0F - titleW / 2.0F - UiTokens.s(12) - dotR;
+            float dotY = header.y() + header.h() / 2.0F;
+            int dotColor = statusOnline ? Color.makeARGB(255, 82, 196, 110) : Color.makeARGB(255, 130, 140, 150);
+            SkiaDraw.drawRoundedRect(canvas, dotX - dotR, dotY - dotR, dotR * 2, dotR * 2, dotR, dotColor);
+        }
+    }
+
     private static void drawIconCentered(Canvas canvas, io.github.humbleui.skija.Path icon,
                                          float cx, float cy, float size, int color) {
         Rect b = icon.getBounds();

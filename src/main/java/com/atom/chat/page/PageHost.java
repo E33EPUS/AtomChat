@@ -1,5 +1,6 @@
 package com.atom.chat.page;
 
+import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.nav.AppPage;
 
 /**
@@ -8,6 +9,12 @@ import com.atom.chat.nav.AppPage;
  */
 public interface PageHost {
     void pushPage(AppPage page);
+
+    /** Pushes the public world channel (used by the Public conversation card). */
+    void openWorldChat();
+
+    /** Pushes a private conversation page. */
+    void openPrivateChat(PlayerRef target);
 
     void popPage();
 

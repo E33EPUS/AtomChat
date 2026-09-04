@@ -37,5 +37,11 @@
   "atomchat.picker.preview.loading": "加载中…",
   "atomchat.input.save_failed": "图片保存失败",
   "key.atomchat.open": "打开 AtomChat 继承页",
-  "key.atomchat.category": "AtomChat"
+  "key.atomchat.category": "AtomChat",
+  "atomchat.conversation.start": "点击开始私聊",
+  "atomchat.conversation.me": "我",
+  "atomchat.private.offline": "对方不在线，无法发送",
+  "atomchat.private.blocked": "你已屏蔽对方，无法发送",
+  "atomchat.context.unblock": "取消屏蔽",
+  "atomchat.channel.private": "私聊"
 }

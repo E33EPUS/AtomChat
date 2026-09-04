@@ -37,5 +37,11 @@
   "atomchat.picker.preview.loading": "Loading…",
   "atomchat.input.save_failed": "Failed to save image",
   "key.atomchat.open": "Open AtomChat Inherited Page",
-  "key.atomchat.category": "AtomChat"
+  "key.atomchat.category": "AtomChat",
+  "atomchat.conversation.start": "Tap to start chatting",
+  "atomchat.conversation.me": "Me",
+  "atomchat.private.offline": "Player is offline, cannot send",
+  "atomchat.private.blocked": "You blocked this player, cannot send",
+  "atomchat.context.unblock": "Unblock",
+  "atomchat.channel.private": "Private"
 }

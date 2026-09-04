@@ -2,25 +2,30 @@ package com.atom.chat.nav;
 
 import java.util.List;
 
+/**
+ * Last page stack persisted across AtomChat screen instances opened through the
+ * AtomChat hotkey (RESTORE mode). The vanilla chat key always opens DIRECT_WORLD
+ * and ignores this state.
+ */
 public final class AtomChatState {
-    private static List<AppPage> stack = List.of(AppPage.CHAT_LIST);
+    private static List<NavPage> stack = List.of(NavPage.of(AppPage.CHAT_LIST));
 
     private AtomChatState() {
     }
 
-    public static synchronized List<AppPage> snapshot() {
+    public static synchronized List<NavPage> snapshot() {
         return List.copyOf(stack);
     }
 
-    public static synchronized void save(List<AppPage> pages) {
+    public static synchronized void save(List<NavPage> pages) {
         if (pages == null || pages.isEmpty() || pages.get(0) == null || !pages.get(0).isRoot()) {
-            stack = List.of(AppPage.CHAT_LIST);
+            stack = List.of(NavPage.of(AppPage.CHAT_LIST));
             return;
         }
         for (int i = 1; i < pages.size(); i++) {
-            AppPage page = pages.get(i);
+            NavPage page = pages.get(i);
             if (page == null || page.isRoot()) {
-                stack = List.of(AppPage.CHAT_LIST);
+                stack = List.of(NavPage.of(AppPage.CHAT_LIST));
                 return;
             }
         }
@@ -28,6 +33,6 @@ public final class AtomChatState {
     }
 
     static synchronized void reset() {
-        stack = List.of(AppPage.CHAT_LIST);
+        stack = List.of(NavPage.of(AppPage.CHAT_LIST));
     }
 }

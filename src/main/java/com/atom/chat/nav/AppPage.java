@@ -4,7 +4,8 @@ public enum AppPage {
     CHAT_LIST("chat_list", true),
     PROFILE("profile", true),
     SETTINGS("settings", true),
-    WORLD_CHAT("world_chat", false);
+    WORLD_CHAT("world_chat", false),
+    PRIVATE_CHAT("private_chat", false);
 
     private final String id;
     private final boolean root;

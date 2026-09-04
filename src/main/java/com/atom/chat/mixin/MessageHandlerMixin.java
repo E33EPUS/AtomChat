@@ -3,6 +3,7 @@ package com.atom.chat.mixin;
 import com.atom.chat.chat.ChatClassifier;
 import com.atom.chat.chat.ChatPipeline;
 import com.atom.chat.chat.MessageCapture;
+import com.atom.chat.chat.PrivateChatParser;
 import com.atom.chat.chat.SenderMeta;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.client.network.message.MessageHandler;
@@ -96,6 +97,11 @@ public class MessageHandlerMixin {
         if (overlay) {
             return;
         }
+        SenderMeta privateMeta = PrivateChatParser.tryParse(message);
+        if (privateMeta != null) {
+            MessageCapture.set(privateMeta);
+            return;
+        }
         if (ChatClassifier.isVanillaBroadcast(message)) {
             return;
         }
@@ -104,4 +110,6 @@ public class MessageHandlerMixin {
             MessageCapture.set(parsed);
         }
     }
+
+
 }

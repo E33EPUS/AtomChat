@@ -3,7 +3,11 @@ package com.atom.chat;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.render.PanelBlurRenderer;
 import net.fabricmc.api.ClientModInitializer;
+import com.atom.chat.chat.ChatStore;
+import com.atom.chat.chat.PrivateChatStore;
+import com.atom.chat.chat.PrivateEchoTracker;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
@@ -41,6 +45,11 @@ public class AtomChatClient implements ClientModInitializer {
         });
         AtomChat.LOGGER.info("AtomChat client initialized");
 
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            PrivateChatStore.reset();
+            PrivateEchoTracker.clear();
+            ChatStore.reset();
+        });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_ATOMCHAT_KEY.wasPressed()) {
                 if (client.currentScreen == null) {

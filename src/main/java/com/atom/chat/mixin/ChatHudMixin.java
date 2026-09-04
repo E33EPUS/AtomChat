@@ -1,10 +1,14 @@
 package com.atom.chat.mixin;
 
+import com.atom.chat.chat.BlockList;
 import com.atom.chat.chat.ChatClassifier;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatPipeline;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.chat.MessageCapture;
+import com.atom.chat.chat.PlayerRef;
+import com.atom.chat.chat.PrivateChatParser;
+import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.SenderMeta;
 import com.atom.chat.text.ChatTextRewriter;
 import com.atom.chat.text.RichText;
@@ -20,6 +24,8 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.UUID;
 
 @Mixin(value = ChatHud.class, priority = 500)
 public class ChatHudMixin {
@@ -71,7 +77,18 @@ public class ChatHudMixin {
             addSystemMessage(message);
             return;
         }
+        if (meta != null && meta.whisper()) {
+            atomchat$routePrivate(message, meta, client);
+            return;
+        }
         if (meta == null) {
+            // No channel-level identity. Private /msg lines are deterministic by
+            // translation key even when the MessageHandler capture missed them.
+            SenderMeta fallbackPrivate = PrivateChatParser.tryParse(message);
+            if (fallbackPrivate != null) {
+                atomchat$routePrivate(message, fallbackPrivate, client);
+                return;
+            }
             // No channel-level identity: translation-key system lines are
             // authoritative and must stay system even if their rendered text
             // happens to look like a player line. Other routes may only claim
@@ -93,6 +110,9 @@ public class ChatHudMixin {
             // them makes real messages vanish from the panel; showing a possible
             // duplicate is the safer failure per e33chat's "宁可不杀" rule.
             String displayName = parsed.senderName() != null ? parsed.senderName() : parsed.profileName();
+            if (displayName != null && BlockList.isBlocked(displayName)) {
+                return;
+            }
             var sliced = ChatPipeline.sliceRichText(message, parsed);
             if (sliced.isPresent()) {
                 ChatStore.get().add(new ChatMessage(message, false, parsed.system(), null, null,
@@ -110,6 +130,10 @@ public class ChatHudMixin {
         boolean own = isOwn(meta, raw, client);
         if (own) {
             // Own message echo: already added locally by AtomChatScreen.
+            return;
+        }
+        String blockName = meta.profileName() != null ? meta.profileName() : meta.senderName();
+        if (blockName != null && BlockList.isBlocked(blockName)) {
             return;
         }
 
@@ -140,6 +164,43 @@ public class ChatHudMixin {
         ChatStore.get().add(new ChatMessage(message, false, meta.system(), null, null,
                 meta.senderUuid(), displayName, meta.profileName(), content,
                 senderRich, contentRich));
+    }
+
+    @Unique
+    private static void atomchat$routePrivate(Text message, SenderMeta meta, MinecraftClient client) {
+        // Suppressed outgoing echo sentinel: the local bubble already exists.
+        if (meta.system()) {
+            return;
+        }
+        String partnerName = meta.whisperPartner();
+        if (partnerName == null) {
+            return;
+        }
+        boolean own = isOwn(meta, message.getString(), client);
+        UUID partnerUuid = own ? null : meta.senderUuid();
+        PlayerRef partner = PlayerRef.of(partnerUuid, partnerName);
+
+        String content = meta.contentText() != null
+                ? meta.contentText()
+                : ChatPipeline.extractContent(message.getString(), meta);
+        String displayName = meta.profileName() != null ? meta.profileName() : meta.senderName();
+        if (displayName == null) {
+            displayName = partnerName;
+        }
+        RichText senderRich = meta.senderComponent() != null
+                ? RichText.of(meta.senderComponent())
+                : RichText.literal(displayName);
+        RichText contentRich = meta.contentComponent() != null
+                ? RichText.of(meta.contentComponent()).linkifyUrls()
+                : RichText.literal(content != null ? content : message.getString()).linkifyUrls();
+        ChatMessage privateMessage = new ChatMessage(message, own, false, null, null,
+                own ? meta.senderUuid() : meta.senderUuid(), displayName,
+                own ? meta.profileName() : meta.profileName(), content, senderRich, contentRich);
+        if (own) {
+            PrivateChatStore.addOutgoing(partner, privateMessage);
+        } else if (!BlockList.isBlocked(partner)) {
+            PrivateChatStore.addIncoming(partner, privateMessage);
+        }
     }
 
     private static void addSystemMessage(Text message) {

@@ -26,6 +26,8 @@ public class AtomChatConfig {
     public int panelBgColor = 0xEE16191F;
     public int textPrimaryColor = 0xFFFFFFFF;
     public int textSecondaryColor = 0xDCAAAABA;
+    /** Global blocked-player real names, persisted locally. */
+    public java.util.List<String> blockedPlayers = new java.util.ArrayList<>();
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AtomChatConfig instance;
@@ -44,6 +46,9 @@ public class AtomChatConfig {
                 String json = Files.readString(path, StandardCharsets.UTF_8);
                 AtomChatConfig config = GSON.fromJson(json, AtomChatConfig.class);
                 if (config != null) {
+                    if (config.blockedPlayers == null) {
+                        config.blockedPlayers = new java.util.ArrayList<>();
+                    }
                     // Write the merged instance straight back: options added in
                     // newer builds are absent from an older file, and Gson drops
                     // unknown keys — so without this a new option could never be
