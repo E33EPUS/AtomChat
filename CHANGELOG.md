@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.1.3
+
+### 中文
+
+- **富文本聊天渲染**：玩家名/正文支持颜色、下划线、点击与悬停；可点击 `/tell`、Xaero 坐标、FTB 接受/拒绝、外部链接；裸 `http(s)` 自动识别为可点击链接并在悬停时显示 URL。
+- **原版 HUD 占位**：`[[CICode,...]]` 图片代码在原版聊天栏显示为绿色 `[图片]`，不再刷一长串 URL；引用消息显示为蓝色 `[引用]`，保留发送者前缀。
+- **图片消息右键保存**：右键图片气泡新增“保存”，通过 FlatLaf 另存为对话框选择位置，后台下载原始 URL 字节（GIF/WebP/PNG 原样保留）。
+- **右键菜单图标**：复制 / 引用 / 保存均绘制 20×20 白色线性 SVG 图标。
+- **文件选择器改进**：默认“详细信息”视图，图片文件在列表中直接显示内联缩略图，不再依赖右侧预览区。
+- **气泡/UI 修复**：多行文本气泡宽度按最长行计算；引用胶囊与气泡外缘对齐；系统消息胶囊颜色与图片加载占位一致并保留半透明；普通网页链接不再被误当成图片消息。
+- **指令不再本地弹气泡**：输入 `/` 指令不再制造自己的聊天气泡，与原版行为一致。
+- **稳定性修复**：修复 AWT headless 导致图片选择器打不开；修复 0.1.2 中 HUD 重写未声明 cancellable 导致发送图片后被踢出单人游戏的问题。
+
+### English
+
+- **Rich-text chat rendering**: player names/bodies support colors, underlines, click actions and hover tooltips; clickable `/tell`, Xaero coordinates, FTB accept/deny and external links work; bare `http(s)` URLs become clickable links with a hover URL tooltip.
+- **Compact vanilla HUD placeholders**: `[[CICode,...]]` image codes now show as green `[Image]` instead of a long URL, and quote replies show as blue `[Quote]` while keeping the sender prefix.
+- **Save images from the context menu**: right-click an image bubble → Save, pick a destination in the FlatLaf save dialog, and the original URL bytes are downloaded in the background (GIF/WebP/PNG preserved).
+- **Context menu icons**: Copy / Quote / Save now use 20×20 white line-style SVG icons.
+- **File chooser improvements**: defaults to Details view and shows inline thumbnails directly in the file list.
+- **Bubble/UI fixes**: multi-line bubble width hugs the longest line; quote capsule aligns with the bubble edge; system capsule uses the image-loading placeholder colour while staying translucent; ordinary web links are no longer mistaken for image messages.
+- **No local bubble for commands**: slash commands no longer manufacture a local chat bubble, matching vanilla behaviour.
+- **Stability fixes**: fixed the AWT headless issue that prevented the image picker from opening; fixed 0.1.2 being kicked from single-player when sending an image because the HUD-rewrite mixin was not declared cancellable.
+
 ## Unreleased
 
 ### Added
