@@ -70,6 +70,26 @@ class RichChatPartsTest {
     }
 
     @Test
+    void sliceAngleLineSenderDropsVanillaAngleBrackets() {
+        Text line = Text.literal("<Steve> hi");
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "Steve", "Steve", "hi", false))
+                .orElseThrow();
+        assertEquals("Steve", parts.sender().getString());
+        assertEquals("hi", parts.content().getString());
+    }
+
+    @Test
+    void slicePrefixedAngleLineSenderKeepsPrefixOnly() {
+        Text line = Text.literal("[VIP]<Steve> hi");
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "Steve", "Steve", "hi", false))
+                .orElseThrow();
+        assertEquals("[VIP]Steve", parts.sender().getString());
+        assertEquals("hi", parts.content().getString());
+    }
+
+    @Test
     void emptyWhenMetaHasNoUsableName() {
         Text line = Text.literal("[系统]公告: 欢迎");
         assertTrue(ChatPipeline.sliceRichText(line, new SenderMeta(null, null, null, null, true)).isEmpty());

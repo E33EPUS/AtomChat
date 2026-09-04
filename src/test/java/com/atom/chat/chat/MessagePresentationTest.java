@@ -15,6 +15,16 @@ class MessagePresentationTest {
                 MessagePresentation.parseDecoratedPlayerLine("<Steve> hi", List.of("Steve"));
         assertTrue(line.isPresent());
         assertEquals("Steve", line.get().playerName());
+        assertEquals("Steve", line.get().displayLabel());
+        assertEquals("hi", line.get().content());
+    }
+
+    @Test
+    void prefixedAngleBracketDisplayLabelKeepsPrefix() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("[VIP]<Steve> hi", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("[VIP]Steve", line.get().displayLabel());
         assertEquals("hi", line.get().content());
     }
 

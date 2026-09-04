@@ -8,7 +8,10 @@ import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.FontMetrics;
 import io.github.humbleui.skija.Paint;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Style;
+import net.minecraft.text.Text;
 
 import java.util.List;
 
@@ -77,11 +80,28 @@ public final class RichTextRenderer {
                 }
                 if (addClickable && sink != null
                         && (run.style().getClickEvent() != null || run.style().getHoverEvent() != null)) {
-                    sink.add(new ClickableSpan(runX, lineTop, runWidth, lineHeight, run.style()));
+                    Style spanStyle = withUrlHover(run.style());
+                    sink.add(new ClickableSpan(runX, lineTop, runWidth, lineHeight, spanStyle));
                 }
                 runX += runWidth;
             }
         }
+    }
+
+    /**
+     * Returns the style to attach to a clickable span. Bare URL links show the
+     * URL as a hover tooltip even when the incoming style carries no explicit
+     * hover event; constructing the hover text is deferred to render time when
+     * the Minecraft client is bootstrapped.
+     */
+    private static Style withUrlHover(Style style) {
+        if (style == null || style.getClickEvent() == null
+                || style.getClickEvent().getAction() != ClickEvent.Action.OPEN_URL
+                || style.getHoverEvent() != null) {
+            return style;
+        }
+        return style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                Text.literal(style.getClickEvent().getValue())));
     }
 
     /**

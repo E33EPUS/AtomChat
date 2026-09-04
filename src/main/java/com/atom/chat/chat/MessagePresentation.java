@@ -148,6 +148,12 @@ public final class MessagePresentation {
         }
 
         String displayLabel = text.substring(0, labelEnd);
+        if (idx > 0 && text.charAt(idx - 1) == '<') {
+            // The closing angle bracket is a separator, not part of the label;
+            // the opening one must be dropped too so "<Steve> hi" reads "Steve"
+            // and "[VIP]<Steve> hi" reads "[VIP]Steve".
+            displayLabel = text.substring(0, idx - 1) + text.substring(idx, labelEnd);
+        }
         return Optional.of(new PlayerLine(cleanName, displayLabel, text.substring(sep).strip(),
                 idx, after, labelEnd, sep));
     }

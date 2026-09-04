@@ -3,10 +3,10 @@ package com.atom.chat.text;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.text.TextVisitFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,12 +32,22 @@ public final class RichText {
 
     public static RichText of(Text text) {
         List<RichRun> out = new ArrayList<>();
-        text.visit((style, s) -> {
-            if (!s.isEmpty()) {
-                out.add(new RichRun(s, style));
+        StringBuilder current = new StringBuilder();
+        Style[] currentStyle = new Style[1];
+        TextVisitFactory.visitFormatted(text, Style.EMPTY, (index, style, codePoint) -> {
+            if (currentStyle[0] != null && !currentStyle[0].equals(style)) {
+                if (current.length() > 0) {
+                    out.add(new RichRun(current.toString(), currentStyle[0]));
+                    current.setLength(0);
+                }
             }
-            return Optional.empty();
-        }, Style.EMPTY);
+            currentStyle[0] = style;
+            current.appendCodePoint(codePoint);
+            return true;
+        });
+        if (current.length() > 0) {
+            out.add(new RichRun(current.toString(), currentStyle[0]));
+        }
         return new RichText(out, text.getStyle());
     }
 

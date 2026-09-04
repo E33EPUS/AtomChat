@@ -36,7 +36,7 @@ public class ChatMessage {
                        UUID senderUuid, String senderName, String profileName, String contentText) {
         this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
                 legacySenderRich(system, senderName, profileName),
-                RichText.literal(legacyDisplayText(component.getString(), quoteName, contentText)));
+                RichText.literal(legacyDisplayText(component.getString(), quoteName, contentText)).linkifyUrls());
     }
 
     public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
@@ -56,7 +56,7 @@ public class ChatMessage {
         this.senderRich = !system && senderRich != null ? senderRich
                 : legacySenderRich(system, this.senderName, this.profileName);
         this.contentRich = contentRich != null ? contentRich
-                : RichText.literal(legacyDisplayText(rawText, quoteName, this.contentText));
+                : RichText.literal(legacyDisplayText(rawText, quoteName, this.contentText)).linkifyUrls();
     }
 
     private static String clean(String s) {
@@ -137,6 +137,12 @@ public class ChatMessage {
 
     /** Display name to show in the bubble; null for pure system lines. */
     public String getSenderName() {
+        if (senderRich != null && !senderRich.isEmpty()) {
+            String rich = senderRich.getString();
+            if (rich != null && !rich.isBlank()) {
+                return rich;
+            }
+        }
         return senderName != null ? senderName : profileName;
     }
 

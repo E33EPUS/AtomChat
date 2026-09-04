@@ -15,7 +15,7 @@ class RichTextTest {
         Text text = Text.literal("a").setStyle(click).append(Text.literal("b"));
         RichText rich = RichText.of(text);
         assertEquals("ab", rich.getString());
-        assertEquals(2, rich.runs().size());
+        assertEquals(1, rich.runs().size());
         assertEquals(click, rich.runs().get(0).style());
     }
 
@@ -75,6 +75,26 @@ class RichTextTest {
                 .findFirst().orElseThrow();
         assertEquals(0x00FF00, link.style().getColor().getRgb());
         assertEquals(colored, link.style().withClickEvent(null));
+    }
+
+    @Test
+    void ofParsesLegacyFormattingCodesAndStripsControlPairs() {
+        RichText rich = RichText.of(Text.literal("§aHello §rWorld"));
+        assertEquals("Hello World", rich.getString());
+        assertEquals(2, rich.runs().size());
+        assertEquals("Hello ", rich.runs().get(0).text());
+        assertEquals(0x55FF55, rich.runs().get(0).style().getColor().getRgb());
+        assertEquals("World", rich.runs().get(1).text());
+        assertEquals(null, rich.runs().get(1).style().getColor());
+    }
+
+    @Test
+    void ofGroupsContiguousCharactersByEffectiveStyle() {
+        RichText rich = RichText.of(Text.literal("§aA§cB"));
+        assertEquals("AB", rich.getString());
+        assertEquals(2, rich.runs().size());
+        assertEquals(0x55FF55, rich.runs().get(0).style().getColor().getRgb());
+        assertEquals(0xFF5555, rich.runs().get(1).style().getColor().getRgb());
     }
 
     @Test

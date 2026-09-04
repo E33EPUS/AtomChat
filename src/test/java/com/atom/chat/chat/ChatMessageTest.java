@@ -41,6 +41,23 @@ class ChatMessageTest {
     }
 
     @Test
+    void legacyConstructorLinkifiesSynthesizedContent() {
+        ChatMessage msg = new ChatMessage(Text.literal("see https://example.com/x now"), false, false,
+                null, null, null, "Alice", "Alice", "see https://example.com/x now");
+        assertTrue(msg.getContentRich().runs().stream().anyMatch(r -> r.style().getClickEvent() != null
+                && r.style().getClickEvent().getAction() == net.minecraft.text.ClickEvent.Action.OPEN_URL));
+        assertEquals("see https://example.com/x now", msg.getContentRich().getString());
+    }
+
+    @Test
+    void getSenderNamePrefersRichSenderText() {
+        ChatMessage msg = new ChatMessage(Text.literal("<Alice> hi"), false, false,
+                null, null, null, "Alice", "Alice", "hi",
+                RichText.literal("[VIP]Alice"), RichText.literal("hi"));
+        assertEquals("[VIP]Alice", msg.getSenderName());
+    }
+
+    @Test
     void systemMessageHasEmptySenderRich() {
         ChatMessage msg = new ChatMessage(Text.literal("Server: hello"), false, true,
                 null, null, null, null, null, null);

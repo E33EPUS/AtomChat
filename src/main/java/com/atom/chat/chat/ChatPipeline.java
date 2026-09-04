@@ -161,7 +161,15 @@ public final class ChatPipeline {
         }
 
         RichText full = RichText.of(fullLine);
-        RichText sender = full.slice(0, pl.labelEnd());
+        RichText sender;
+        if (pl.nameStart() > 0 && text.charAt(pl.nameStart() - 1) == '<') {
+            // Vanilla angle decoration is not part of the displayed sender:
+            // "<Steve> hi" and "[VIP]<Steve> hi" must render as "Steve" and
+            // "[VIP]Steve", not as a rich slice that keeps the opening '<'.
+            sender = RichText.literal(pl.displayLabel());
+        } else {
+            sender = full.slice(0, pl.labelEnd());
+        }
         RichText content = full.slice(pl.contentStart(), text.length()).linkifyUrls();
         return Optional.of(new RichChatParts(sender, content));
     }

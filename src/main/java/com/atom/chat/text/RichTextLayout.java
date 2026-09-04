@@ -60,6 +60,18 @@ public final class RichTextLayout {
         while (index < full.length()) {
             int codePoint = full.codePointAt(index);
             int codePointEnd = index + Character.charCount(codePoint);
+
+            if (codePoint == '\n') {
+                if (lineEnd > lineStart) {
+                    emitTrimmedLine(lines, sourceRuns, full, lineStart, lineEnd);
+                }
+                lineStart = codePointEnd;
+                lineEnd = codePointEnd;
+                lineWidth = 0f;
+                index = codePointEnd;
+                continue;
+            }
+
             String codePointText = full.substring(index, codePointEnd);
             float codePointWidth = measurer.measure(codePointText);
             boolean space = codePoint == ' ';

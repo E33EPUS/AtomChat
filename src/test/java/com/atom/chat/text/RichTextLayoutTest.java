@@ -48,6 +48,38 @@ class RichTextLayoutTest {
     }
 
     @Test
+    void wrapTreatsNewlineAsHardLineBreak() {
+        List<RichLine> lines = RichTextLayout.wrap(RichText.literal("a\nb"), CHAR_10, 100f);
+
+        assertEquals(2, lines.size());
+        assertEquals("a", lines.get(0).getPlainText());
+        assertEquals("b", lines.get(1).getPlainText());
+        assertEquals(0, lines.get(0).textStart());
+        assertEquals(1, lines.get(0).textEnd());
+        assertEquals(2, lines.get(1).textStart());
+        assertEquals(3, lines.get(1).textEnd());
+    }
+
+    @Test
+    void wrapDoesNotEmitNewlineAsVisibleGlyph() {
+        List<RichLine> lines = RichTextLayout.wrap(RichText.literal("a\nb"), CHAR_10, 15f);
+
+        assertEquals(2, lines.size());
+        assertTrue(lines.stream().noneMatch(l -> l.getPlainText().contains("\n")));
+        assertEquals("a", lines.get(0).getPlainText());
+        assertEquals("b", lines.get(1).getPlainText());
+    }
+
+    @Test
+    void wrapSkipsEmptyNewlineLines() {
+        List<RichLine> lines = RichTextLayout.wrap(RichText.literal("a\n\nb"), CHAR_10, 100f);
+
+        assertEquals(2, lines.size());
+        assertEquals("a", lines.get(0).getPlainText());
+        assertEquals("b", lines.get(1).getPlainText());
+    }
+
+    @Test
     void wrapDropsSpaceAtLineBreak() {
         RichText text = RichText.literal("abc def");
         List<RichLine> lines = RichTextLayout.wrap(text, CHAR_10, 30f);

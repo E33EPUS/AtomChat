@@ -38,24 +38,34 @@ public class ChatHudMixin {
         if (meta == null) {
             // No channel-level identity: translation-key system lines are
             // authoritative and must stay system even if their rendered text
-            // happens to look like a player line. Other routes keep the old
-            // tolerant text fallback so unhandled player/private/unknown
-            // messages still show something sane.
+            // happens to look like a player line. Other routes may only claim
+            // a player when the text parser resolves the line to an online
+            // player; otherwise they are system messages.
             if (ChatClassifier.classifyByKey(message) == ChatClassifier.Route.SYSTEM) {
-                ChatStore.get().add(new ChatMessage(message, false, true, null, null,
-                        null, null, null, null));
+                addSystemMessage(message);
                 return;
             }
-            FallbackIdentity fb = parseAngleFallback(raw);
-            if (fb != null && client.player != null && fb.name().equals(client.player.getName().getString())) {
+            SenderMeta parsed = ChatPipeline.tryParsePlayerLine(raw);
+            if (parsed == null) {
+                addSystemMessage(message);
+                return;
+            }
+            if (isOwn(parsed, raw, client)) {
                 // Own message echo: already added locally by AtomChatScreen.
                 return;
             }
-            ChatStore.get().add(new ChatMessage(message, false, fb == null, null, null,
-                    null,
-                    fb != null ? fb.name() : null,
-                    fb != null ? fb.name() : null,
-                    null));
+            String displayName = parsed.senderName() != null ? parsed.senderName() : parsed.profileName();
+            var sliced = ChatPipeline.sliceRichText(message, parsed);
+            if (sliced.isPresent()) {
+                ChatStore.get().add(new ChatMessage(message, false, parsed.system(), null, null,
+                        parsed.senderUuid(), displayName, parsed.profileName(), parsed.contentText(),
+                        sliced.get().sender(), sliced.get().content().linkifyUrls()));
+            } else {
+                String fallbackContent = parsed.contentText() != null ? parsed.contentText() : raw;
+                ChatStore.get().add(new ChatMessage(message, false, parsed.system(), null, null,
+                        parsed.senderUuid(), displayName, parsed.profileName(), parsed.contentText(),
+                        RichText.empty(), RichText.literal(fallbackContent).linkifyUrls()));
+            }
             return;
         }
 
@@ -92,6 +102,11 @@ public class ChatHudMixin {
         ChatStore.get().add(new ChatMessage(message, false, meta.system(), null, null,
                 meta.senderUuid(), displayName, meta.profileName(), content,
                 senderRich, contentRich));
+    }
+
+    private static void addSystemMessage(Text message) {
+        ChatStore.get().add(new ChatMessage(message, false, true, null, null,
+                null, null, null, null, RichText.empty(), RichText.of(message).linkifyUrls()));
     }
 
     private static boolean isOwn(SenderMeta meta, String raw, MinecraftClient client) {
