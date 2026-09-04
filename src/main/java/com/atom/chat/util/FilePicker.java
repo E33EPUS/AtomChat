@@ -4,15 +4,26 @@ import com.atom.chat.AtomChat;
 import com.formdev.flatlaf.FlatLightLaf;
 import net.minecraft.text.Text;
 
+import javax.swing.Action;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.filechooser.FileFilter;
+import javax.swing.filechooser.FileView;
 import java.awt.BorderLayout;
+import java.awt.event.ActionEvent;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
@@ -117,8 +128,12 @@ public final class FilePicker {
             }
         });
         chooser.setCurrentDirectory(defaultDirectory());
-        // The native dialog's preview pane, rebuilt as a chooser accessory.
-        chooser.setAccessory(ImagePreview.attachTo(chooser, 220, 280));
+        // Details is the more useful default for picking one image out of a
+        // folder: it shows name/date/size columns alongside the thumbnails.
+        switchToDetailsView(chooser);
+        // Inline thumbnails: every image row shows a preview as its file icon,
+        // so there is no need to click a file and look at the right-hand pane.
+        chooser.setFileView(new ThumbnailFileView(chooser));
 
         JFrame frame = new JFrame(tr("atomchat.picker.title"));
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -182,5 +197,69 @@ public final class FilePicker {
             return localized;
         }
         return new File(home);
+    }
+
+    /**
+     * JFileChooser has no public view-type setter; the FilePane registers
+     * standard actions on the chooser's action map, so invoking the details
+     * action before the dialog is shown gives us the same effect as the user
+     * clicking the toolbar's details toggle.
+     */
+    private static void switchToDetailsView(JFileChooser chooser) {
+        Action details = chooser.getActionMap().get("viewTypeDetails");
+        if (details != null) {
+            details.actionPerformed(new ActionEvent(chooser, ActionEvent.ACTION_PERFORMED,
+                    "viewTypeDetails"));
+        }
+    }
+
+    /**
+     * Supplies inline thumbnails as file icons. The first paint of an image row
+     * returns no custom icon (so FlatLaf's file icon is used); a small decoder
+     * thread then produces a 48px thumbnail and repaints the chooser. Decoding
+     * reuses {@link ImagePreview#decode}'s subsampling path, so huge photos are
+     * never read at full resolution on the EDT.
+     */
+    private static final class ThumbnailFileView extends FileView {
+        private static final int THUMB_SIZE = 48;
+        private static final ExecutorService LOADER = Executors.newFixedThreadPool(2, r -> {
+            Thread t = new Thread(r, "AtomChat-Thumbnail");
+            t.setDaemon(true);
+            return t;
+        });
+
+        private final JFileChooser chooser;
+        private final ConcurrentMap<String, ImageIcon> cache = new ConcurrentHashMap<>();
+        private final Set<String> loading = ConcurrentHashMap.newKeySet();
+
+        private ThumbnailFileView(JFileChooser chooser) {
+            this.chooser = chooser;
+        }
+
+        @Override
+        public Icon getIcon(File file) {
+            if (file == null || !file.isFile() || !ImageFiles.isImageName(file.getName())) {
+                return null;
+            }
+            String key = file.getAbsolutePath();
+            Icon cached = cache.get(key);
+            if (cached != null) {
+                return cached;
+            }
+            if (!loading.add(key)) {
+                return null;
+            }
+            LOADER.execute(() -> {
+                BufferedImage image = ImagePreview.decode(file, THUMB_SIZE, THUMB_SIZE);
+                if (image != null) {
+                    cache.put(key, new ImageIcon(image));
+                }
+                loading.remove(key);
+                if (image != null) {
+                    SwingUtilities.invokeLater(chooser::repaint);
+                }
+            });
+            return null;
+        }
     }
 }

@@ -1108,7 +1108,15 @@ public class AtomChatScreen extends ChatScreen {
         float bubbleWidth = Math.min(maxWidth, Math.max(s(40), lineMax + UiTokens.BUBBLE_PAD * 2.0F));
         float bubbleX = x + (maxWidth - bubbleWidth) / 2.0F;
         float bubbleTop = y + s(2);
-        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, s(10), Color.makeARGB(150, 35, 39, 47));
+        // System capsules keep the translucent alpha but borrow the placeholder
+        // bubble's RGB (otherBubbleColor), so they are not darker than the
+        // "image loading" capsule users already see as the chat's grey tone.
+        int placeholderRgb = otherBubble();
+        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, s(10),
+                Color.makeARGB(150,
+                        (placeholderRgb >> 16) & 0xFF,
+                        (placeholderRgb >> 8) & 0xFF,
+                        placeholderRgb & 0xFF));
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
         RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
                 lineHeight, textSecondary(), clickableSpans, true);
@@ -1130,7 +1138,11 @@ public class AtomChatScreen extends ChatScreen {
         String quote = name + ": " + msg.getQuoteText();
         String display = truncateToWidth(quoteFont, quote, textMaxW);
         float pillW = Math.min(capW, SkiaFontRenderer.getStringWidth(quoteFont, display) + UiTokens.QUOTE_PAD_X * 2.0F + barW + s(4));
-        float pillX = own ? x + maxWidth - UiTokens.AVATAR_SIZE - s(6) - pillW : x + UiTokens.AVATAR_SIZE + s(6);
+        // Align the quote's outer edge with the bubble's outer edge, not with
+        // the avatar. The bubble uses AVATAR_GAP as the horizontal gap to the
+        // avatar, so the quote must use the same token.
+        float pillX = own ? x + maxWidth - UiTokens.AVATAR_SIZE - UiTokens.AVATAR_GAP - pillW
+                : x + UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
         // Quote pill shares the same light gray-white fill as the header/input
         // cards (translucent white over the panel), so it reads as one family.
         SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), Color.makeARGB(60, 255, 255, 255));
@@ -2555,7 +2567,8 @@ public class AtomChatScreen extends ChatScreen {
             } else {
                 if (!normalized.startsWith("「引用")
                         && (normalized.startsWith("http://") || normalized.startsWith("https://"))
-                        && !normalized.contains("CICode")) {
+                        && !normalized.contains("CICode")
+                        && ImageFiles.isImageUrl(normalized)) {
                     normalized = "[[CICode,url=" + normalized + ",name=图片]]";
                 }
                 this.client.player.networkHandler.sendChatMessage(normalized);

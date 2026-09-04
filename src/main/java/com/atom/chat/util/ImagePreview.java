@@ -108,8 +108,10 @@ public final class ImagePreview {
      * {@link ImageReadParam#setSourceSubsampling} makes the decoder skip pixels
      * instead of reading them — and scales the remainder down to the pane.
      * Returns null for anything ImageIO cannot read (webp, for instance).
+     * Package-visible so the picker's inline file icons can reuse the same
+     * thumbnail decoder.
      */
-    private static BufferedImage decode(File file, int maxWidth, int maxHeight) {
+    static BufferedImage decode(File file, int maxWidth, int maxHeight) {
         try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
             if (in == null) {
                 return null;

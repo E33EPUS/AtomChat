@@ -36,6 +36,27 @@ public final class ImageFiles {
     }
 
     /**
+     * True only for URLs whose path points directly at an image file. Query
+     * strings and fragments are ignored, so {@code https://x/a.png?v=1} counts
+     * while ordinary web pages (GitHub, docs, forums) stay clickable text.
+     */
+    public static boolean isImageUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        int query = url.indexOf('?');
+        int fragment = url.indexOf('#');
+        int end = url.length();
+        if (query >= 0) {
+            end = Math.min(end, query);
+        }
+        if (fragment >= 0) {
+            end = Math.min(end, fragment);
+        }
+        return isImageName(url.substring(0, end));
+    }
+
+    /**
      * Intrinsic pixel size, read from the file header without decoding the whole
      * image. The uploader needs it so the CICode can carry the aspect ratio and
      * the message list can reserve the right height before the download lands.
