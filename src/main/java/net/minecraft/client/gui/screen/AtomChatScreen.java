@@ -886,7 +886,15 @@ public class AtomChatScreen extends ChatScreen {
                             canvas.translate(dx, 0.0F);
                         }
                     }
+                    int spanStart = clickableSpans.size();
                     MessageHit hit = drawMessage(canvas, msg, x, cursorY, width, hits.size());
+                    // Clickable spans are recorded in content space (like hits
+                    // before conversion); convert them to screen space so later
+                    // hit-testing can compare them directly against the mouse.
+                    for (int i = spanStart; i < clickableSpans.size(); i++) {
+                        ClickableSpan s = clickableSpans.get(i);
+                        clickableSpans.set(i, new ClickableSpan(s.x(), s.y() - scrollY, s.w(), s.h(), s.style()));
+                    }
                     if (layered) {
                         canvas.restore();
                     }
@@ -1150,14 +1158,9 @@ public class AtomChatScreen extends ChatScreen {
             nameWidth = Math.max(nameWidth, RichTextRenderer.width(nameFont, line));
         }
         float x = msg.isOwn() ? rightX - nameWidth : leftX;
-        // Preserve the old drawText baseline (rowY + NAME_BAND/2) by inverting
-        // RichTextRenderer's centerBaselineY conversion for the one-line block.
-        float baseline = rowY + UiTokens.NAME_BAND / 2.0F;
-        var metrics = nameFont.getMetrics();
-        float capHeight = metrics.getCapHeight();
-        float centerY = capHeight > 0.0F
-                ? baseline - capHeight / 2.0F
-                : baseline + (metrics.getAscent() + metrics.getDescent()) / 2.0F;
+        // RichTextRenderer.drawLines takes a centerY and internally converts
+        // it to the cap-height baseline, matching the old drawText helper.
+        float centerY = rowY + UiTokens.NAME_BAND / 2.0F;
         RichTextRenderer.drawLines(canvas, nameFont, lines, x, centerY, lineHeight, textPrimary(),
                 clickableSpans, true);
     }
