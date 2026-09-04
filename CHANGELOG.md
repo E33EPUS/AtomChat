@@ -12,6 +12,7 @@
 - **气泡/UI 修复**：多行文本气泡宽度按最长行计算；引用胶囊与气泡外缘对齐；系统消息胶囊颜色与图片加载占位一致并保留半透明；普通网页链接不再被误当成图片消息。
 - **指令不再本地弹气泡**：输入 `/` 指令不再制造自己的聊天气泡，与原版行为一致。
 - **稳定性修复**：修复 AWT headless 导致图片选择器打不开；修复 0.1.2 中 HUD 重写未声明 cancellable 导致发送图片后被踢出单人游戏的问题。
+- **消息不被误吞**：Xaero waypoint/路径分析等机器协议消息强制走系统通道；无频道身份、仅文本像“自己”的消息不再被 own-echo 误杀，遵循 e33chat“宁可不杀不可错杀”原则。
 
 ### English
 
@@ -23,6 +24,7 @@
 - **Bubble/UI fixes**: multi-line bubble width hugs the longest line; quote capsule aligns with the bubble edge; system capsule uses the image-loading placeholder colour while staying translucent; ordinary web links are no longer mistaken for image messages.
 - **No local bubble for commands**: slash commands no longer manufacture a local chat bubble, matching vanilla behaviour.
 - **Stability fixes**: fixed the AWT headless issue that prevented the image picker from opening; fixed 0.1.2 being kicked from single-player when sending an image because the HUD-rewrite mixin was not declared cancellable.
+- **Messages are never wrongly swallowed**: Xaero waypoint/path-analysis machine protocols are forced to the system channel; meta-less messages that merely look like your own echo are no longer dropped, following e33chat's "rather show than kill" principle.
 
 ## Unreleased
 
