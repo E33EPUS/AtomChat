@@ -1,19 +1,23 @@
 package com.atom.chat.chat;
 
+import com.atom.chat.text.RichText;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.text.Text;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Guard 1 orchestration for system/disguised channels: text-level fallback
  * that identifies a player line from the online/known name list.
  *
- * <p>Trimmed port of e33chat's ChatPipeline (MIT, same author). AtomChat does
- * not slice styled Text today, so this works on the plain string.
+ * <p>Trimmed port of e33chat's ChatPipeline (MIT, same author). Plain-string
+ * parsing is used to locate style-slice boundaries; rich Text slicing then
+ * preserves the original run styles when available.
  */
 public final class ChatPipeline {
     private ChatPipeline() {
@@ -122,5 +126,43 @@ public final class ChatPipeline {
             return fullText;
         }
         return fullText.substring(sep).trim();
+    }
+
+    /**
+     * Slices the final decorated line into styled sender and content parts.
+     * Only returns a result when the line parses as a player line for the
+     * sender/profile names carried by {@code meta}; otherwise returns empty so
+     * callers keep their system-safe fallback.
+     */
+    public static Optional<RichChatParts> sliceRichText(Text fullLine, SenderMeta meta) {
+        if (fullLine == null || meta == null) {
+            return Optional.empty();
+        }
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        if (meta.senderName() != null) {
+            candidates.add(meta.senderName());
+        }
+        if (meta.profileName() != null) {
+            candidates.add(meta.profileName());
+        }
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        String text = fullLine.getString();
+        var parsed = MessagePresentation.parseDecoratedPlayerLine(text, candidates);
+        if (parsed.isEmpty()) {
+            return Optional.empty();
+        }
+        var pl = parsed.orElseThrow();
+        // Whitespace-only gap = broadcast sentence ("Steve joined the game").
+        if (MessagePresentation.isWhitespaceOnlyGap(text, pl.nameEnd(), pl.contentStart())) {
+            return Optional.empty();
+        }
+
+        RichText full = RichText.of(fullLine);
+        RichText sender = full.slice(0, pl.labelEnd());
+        RichText content = full.slice(pl.contentStart(), text.length()).linkifyUrls();
+        return Optional.of(new RichChatParts(sender, content));
     }
 }

@@ -61,12 +61,25 @@ public class ChatHudMixin {
         if (displayName == null) {
             displayName = meta.senderName();
         }
-        RichText senderRich = meta.senderComponent() != null
-                ? RichText.of(meta.senderComponent())
-                : RichText.empty();
-        RichText contentRich = meta.contentComponent() != null
-                ? RichText.of(meta.contentComponent()).linkifyUrls()
-                : RichText.literal(content);
+        RichText senderRich;
+        RichText contentRich;
+        if (meta.senderComponent() == null && meta.contentComponent() == null) {
+            var sliced = ChatPipeline.sliceRichText(message, meta);
+            if (sliced.isPresent()) {
+                senderRich = sliced.get().sender();
+                contentRich = sliced.get().content().linkifyUrls();
+            } else {
+                senderRich = RichText.empty();
+                contentRich = RichText.literal(content);
+            }
+        } else {
+            senderRich = meta.senderComponent() != null
+                    ? RichText.of(meta.senderComponent())
+                    : RichText.empty();
+            contentRich = meta.contentComponent() != null
+                    ? RichText.of(meta.contentComponent()).linkifyUrls()
+                    : RichText.literal(content);
+        }
         ChatStore.get().add(new ChatMessage(message, false, meta.system(), null, null,
                 meta.senderUuid(), displayName, meta.profileName(), content,
                 senderRich, contentRich));

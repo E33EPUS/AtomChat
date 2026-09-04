@@ -8,15 +8,16 @@ import java.util.Optional;
  * Parses decorated server chat lines into structured player-name + content pairs.
  *
  * <p>This is a trimmed port of e33chat's MessagePresentation (MIT, same author).
- * It deliberately works on plain strings only — AtomChat renders Skia text
- * without per-run styles today, so the style-slicing machinery is not needed yet.
+ * It deliberately works on plain strings only — callers use the returned
+ * offsets ({@code labelEnd}/{@code contentStart}) to slice styled {@code Text}
+ * into rich sender/content parts.
  */
 public final class MessagePresentation {
     private MessagePresentation() {
     }
 
     public record PlayerLine(String playerName, String displayLabel, String content,
-                             int nameStart, int nameEnd, int contentStart) {
+                             int nameStart, int nameEnd, int labelEnd, int contentStart) {
     }
 
     /**
@@ -147,7 +148,7 @@ public final class MessagePresentation {
 
         String displayLabel = text.substring(0, idx + cleanName.length());
         return Optional.of(new PlayerLine(cleanName, displayLabel, text.substring(sep).strip(),
-                idx, idx + cleanName.length(), sep));
+                idx, after, after, sep));
     }
 
     /**
