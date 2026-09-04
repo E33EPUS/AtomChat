@@ -38,9 +38,8 @@ public final class ShellHeader {
                 float y = backButton.y() + inset;
                 float w = backButton.w() - inset * 2.0F;
                 float h = backButton.h() - inset * 2.0F;
-                SkiaDraw.drawVerticalGradient(canvas, x, y, w, h, UiTokens.s(8),
-                        Color.makeARGB((int) (45.0F * backHover), 255, 255, 255),
-                        Color.makeARGB(0, 255, 255, 255));
+                SkiaDraw.drawRoundedRect(canvas, x, y, w, h, UiTokens.s(8),
+                        Color.makeARGB((int) (45.0F * backHover), 255, 255, 255));
             }
             drawIconCentered(canvas, AppIcons.ICON_BACK_PATH,
                     backButton.x() + backButton.w() / 2.0F,

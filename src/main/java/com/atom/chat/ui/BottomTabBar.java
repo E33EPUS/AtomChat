@@ -91,28 +91,28 @@ public final class BottomTabBar {
 
         float cellWidth = bar.w() / 3.0F;
         float inset = UiTokens.s(4);
-        float radius = UiTokens.s(6);
+        float radius = UiTokens.s(8);
         float capsuleY = bar.y() + inset;
         float capsuleH = bar.h() - inset * 2.0F;
         float capsuleW = cellWidth - inset * 2.0F;
 
-        // Selected capsule slides between the equal cells. The indicator is the
-        // animator's eased position, not the selected index, so switching tabs
-        // glides the capsule across the bar. Hover washes are drawn on top so a
-        // hovered selected tab still receives the vertical gradient.
+        // Selected capsule is the same pure-color pill as the emoji page tabs:
+        // solid translucent white, no gradient. It slides between cells.
         float capsuleX = bar.x() + indicatorAnim.getValue() * cellWidth + inset;
         SkiaDraw.drawRoundedRect(canvas, capsuleX, capsuleY, capsuleW, capsuleH, radius,
-                Color.makeARGB(55, 255, 255, 255));
+                Color.makeARGB(90, 255, 255, 255));
 
+        // Hover is also a pure-color pill that fades in/out, never a vertical
+        // gradient. Draw it on top so hovering the selected tab keeps the same
+        // solid language with only a subtle brightness lift.
         for (int i = 0; i < 3; i++) {
             float hov = tabHover[i];
             if (hov <= 0.01F) {
                 continue;
             }
             float x = bar.x() + cellWidth * i + inset;
-            SkiaDraw.drawVerticalGradient(canvas, x, capsuleY, capsuleW, capsuleH, radius,
-                    Color.makeARGB((int) (45.0F * hov), 255, 255, 255),
-                    Color.makeARGB(0, 255, 255, 255));
+            SkiaDraw.drawRoundedRect(canvas, x, capsuleY, capsuleW, capsuleH, radius,
+                    Color.makeARGB((int) (45.0F * hov), 255, 255, 255));
         }
 
         Font labelFont = FontManager.font(UiTokens.TAB_LABEL_FONT);

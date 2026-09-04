@@ -1710,9 +1710,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     float hy = panelY + s(6);
                     float hw = tabW - s(8);
                     float hh = UiTokens.EMOJI_TAB_H - s(8);
-                    SkiaDraw.drawVerticalGradient(canvas, hx, hy, hw, hh, s(8),
-                            Color.makeARGB((int) (45.0F * hov), 255, 255, 255),
-                            Color.makeARGB(0, 255, 255, 255));
+                    SkiaDraw.drawRoundedRect(canvas, hx, hy, hw, hh, s(8),
+                            Color.makeARGB((int) (45.0F * hov), 255, 255, 255));
                 }
                 float tx = tabStripX + t * tabW;
                 SkiaFontRenderer.drawTextCentered(canvas, tabFont, labels[t],
