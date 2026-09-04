@@ -11,7 +11,7 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.0%20MVP-informational">
+  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.3-informational">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
@@ -21,7 +21,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija)
 
 The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **0.1.0-MVP / no formal release yet**. Current builds require self-building (see [Development & Building](#development--building)); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.1.3 released**. Download it from [Releases](https://github.com/E33EPUS/atomchat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -52,7 +52,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 | Fabric API | Required | any 1.21.1 compatible version |
 | Java | Required | 21+ |
 
-1. This is an MVP development build: build the JAR yourself under [Development & Building](#development--building) (once a formal Release exists, download it from [Releases](https://github.com/E33EPUS/atomchat/releases) instead)
+1. Download the v0.1.3 JAR from [Releases](https://github.com/E33EPUS/atomchat/releases), or build it yourself under [Development & Building](#development--building)
 2. Put the JAR in `.minecraft/mods/`
 3. Launch the game and press the chat key (default `T` / `/`) to open AtomChat
 
@@ -72,10 +72,12 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 
 - 📱 **Phone-style panel** — the vanilla chat HUD is hidden while AtomChat is open; blurred background plus a translucent glass composer
 - 💬 **Bubbles & avatars** — own messages on the right, others on the left, with avatar and player name; skin faces resolve from online / offline profiles with fallbacks
-- 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with E33Chat / ChatImage), keeps the source aspect ratio; placeholder while loading
-- 📤 **Local image sending** — FlatLaf-styled modern file picker, drag & drop, and Ctrl+V paste; uploads are converted into CICode automatically
+- 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with E33Chat / ChatImage), keeps the source aspect ratio; placeholder while loading; right-click an image bubble to save the original file
+- 📤 **Local image sending** — the FlatLaf picker defaults to Details view with inline thumbnails; supports drag & drop and Ctrl+V paste; uploads are converted into CICode automatically
+- 🔗 **Rich-text messages** — player names/bodies support colors, underlines, clicks and hover tooltips: `/tell`, coordinates, FTB accept/deny and external links are clickable; bare URLs become links automatically
+- 🧹 **Compact vanilla HUD placeholders** — outside the panel, the vanilla chat shows image codes as green `[Image]` and quotes as blue `[Quote]` instead of raw long codes
 - 😀 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist in `<config>/atomchat/emotes/` (png/jpg/jpeg, max 10), added through the `+` cell and deleted by hovering `×`
-- 📋 **Copy & quote reply** — right-click a message to copy or quote; quotes travel as `「引用 @name: snippet」` and render as a quote bar on the receiver
+- 📋 **Copy / Quote / Save** — right-click to copy or quote; image messages can be saved; the context menu uses 20×20 SVG line icons
 - ✏️ **Multi-line input** — up to two visible lines, then internal scrolling; Up/Down move between lines, single-line drafts keep vanilla history cycling
 - 🎨 **SVG icons & unified motion** — image / emoji / send buttons use inline SVG line icons
 - 🌍 **Localization** — supports Simplified Chinese and English; switch the game language to apply
@@ -91,7 +93,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 - Own bubbles sit right, other bubbles left; names hug the bubble edge and avatars align to the bubble top
 - Click an avatar: insert `@name `
 - Double-click an avatar: trigger the QQ-style poke shake
-- Right-click a bubble: `Copy` / `Quote`
+- Right-click a bubble: `Copy` / `Quote`; image bubbles also show `Save` to download the original file
 - Messages containing `[[CICode,url=...,name=...,w=...,h=...]]` render as image bubbles; older size-less codes are also supported
 
 ### Sending Images
@@ -213,7 +215,7 @@ Main modules:
 
 ## Changelog
 
-See [master/CHANGELOG.md](https://github.com/E33EPUS/atomchat/blob/master/CHANGELOG.md) for the full history.
+See [Fabric-1.21.1/CHANGELOG.md](https://github.com/E33EPUS/atomchat/blob/Fabric-1.21.1/CHANGELOG.md) for the full history.
 
 ---
 

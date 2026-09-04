@@ -11,7 +11,7 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.0%20MVP-informational">
+  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.3-informational">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
@@ -21,7 +21,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：**0.1.0-MVP / 尚未发布正式 Release**。当前版本需自行构建（见 [开发与构建](#开发与构建)）；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**v0.1.3 已发布**。可从 [Releases](https://github.com/E33EPUS/atomchat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 
@@ -52,7 +52,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | Fabric API | 必需 | 任意兼容 1.21.1 的版本 |
 | Java | 必需 | 21+ |
 
-1. 当前为 MVP 开发版：按 [开发与构建](#开发与构建) 自行构建 JAR（正式 Release 发布后可改为从 [Releases](https://github.com/E33EPUS/atomchat/releases) 下载）
+1. 从 [Releases](https://github.com/E33EPUS/atomchat/releases) 下载 v0.1.3 JAR，或按 [开发与构建](#开发与构建) 自行构建
 2. 将 JAR 放入 `.minecraft/mods/`
 3. 启动游戏，按聊天键（默认 `T` / `/`）打开 AtomChat
 
@@ -72,10 +72,12 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 - 📱 **手机面板界面** — 原版聊天 HUD 打开期间隐藏，AtomChat 以独立面板呈现；面板模糊背景 + 半透明毛玻璃输入栏
 - 💬 **聊天气泡与头像** — 自己的消息靠右、他人靠左，带头像与玩家名；皮肤头像自动从正版 / 离线皮肤解析降级
-- 🖼️ **图片消息** — 原生渲染 `[[CICode]]` 图片协议（与 E33Chat / ChatImage 互通），按原图比例显示；加载中显示占位文案
-- 📤 **本地图片发送** — 图片按钮使用 FlatLaf 现代化文件选择器；支持拖放 / Ctrl+V 粘贴；上传到图床后自动生成 CICode
+- 🖼️ **图片消息** — 原生渲染 `[[CICode]]` 图片协议（与 E33Chat / ChatImage 互通），按原图比例显示；加载中显示占位文案；右键图片可保存原图到本地
+- 📤 **本地图片发送** — FlatLaf 文件选择器默认“详细信息”视图并直接显示缩略图；支持拖放 / Ctrl+V 粘贴；上传到图床后自动生成 CICode
+- 🔗 **富文本消息** — 玩家名/正文支持颜色、下划线、点击与悬停：`/tell`、坐标、FTB 接受/拒绝、外部链接均可点；裸 URL 自动转链接
+- 🧹 **原版 HUD 占位** — 面板外的原版聊天栏把图片代码显示为绿色 `[图片]`，引用显示为蓝色 `[引用]`，不再刷长串代码
 - 😀 **表情 / 颜文字 / 表情包** — 三个标签页带滑动指示器与全宽 push 切换动画；表情包从 `<config>/atomchat/emotes/` 持久化（png/jpg/jpeg，最多 10 个），`+` 号选择图片，悬停 `×` 删除
-- 📋 **复制 & 引用回复** — 右键消息复制 / 引用；引用以 `「引用 @名字: 摘要」` 随消息发送，接收方渲染成引用条
+- 📋 **复制 / 引用 / 保存** — 右键消息复制、引用；图片消息可保存原图；菜单带 20×20 SVG 线性图标
 - ✏️ **多行输入** — 输入框最高两行，超出后内部滚动；Up/Down 在行间移动光标，单行时沿用原版聊天历史
 - 🎨 **SVG 图标与统一动效** — 图片 / 表情 / 发送按钮为内嵌 SVG 线性图标
 - 🌍 **本地化** — 支持中英双语，切换MC系统语言即可生效
@@ -91,7 +93,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 - 自己的气泡靠右、他人靠左；名称贴在气泡边缘，头像与气泡顶对齐
 - 点击头像：向输入框插入 `@玩家名 `
 - 双击头像：触发头像抖动（QQ 式 poke）
-- 右键气泡：`复制` / `引用`
+- 右键气泡：`复制` / `引用`；图片气泡额外显示 `保存`，可下载原图到本地
 - 收到含 `[[CICode,url=...,name=...,w=...,h=...]]` 的消息会渲染为图片气泡；兼容旧版无尺寸代码
 
 ### 图片发送
@@ -213,7 +215,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 ## 更新日志
 
-完整变更见源码分支 [master/CHANGELOG.md](https://github.com/E33EPUS/atomchat/blob/master/CHANGELOG.md)。
+完整变更见源码分支 [Fabric-1.21.1/CHANGELOG.md](https://github.com/E33EPUS/atomchat/blob/Fabric-1.21.1/CHANGELOG.md)。
 
 ---
 
