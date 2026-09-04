@@ -599,6 +599,7 @@ zh_cn:
 "atomchat.tab.chat": "聊天",
 "atomchat.tab.profile": "个人",
 "atomchat.tab.settings": "设置",
+"atomchat.page.chat.placeholder": "会话列表（开发中）",
 "atomchat.page.profile.placeholder": "个人档案（开发中）",
 "atomchat.page.settings.placeholder": "设置（开发中）"
 ```
@@ -609,6 +610,7 @@ en_us:
 "atomchat.tab.chat": "Chat",
 "atomchat.tab.profile": "Profile",
 "atomchat.tab.settings": "Settings",
+"atomchat.page.chat.placeholder": "Chat list (coming soon)",
 "atomchat.page.profile.placeholder": "Profile (coming soon)",
 "atomchat.page.settings.placeholder": "Settings (coming soon)"
 ```
@@ -660,17 +662,23 @@ public final class PlaceholderPage {
         SkiaDraw.drawRoundedRect(canvas, layout.header.x(), layout.header.y(),
                 layout.header.w(), layout.header.h(), UiTokens.HEADER_RADIUS,
                 Color.makeARGB(60, 255, 255, 255));
-        String title = page == AppPage.PROFILE
-                ? tr("atomchat.tab.profile")
-                : tr("atomchat.tab.settings");
+        String title = switch (page) {
+            case CHAT_LIST -> tr("atomchat.tab.chat");
+            case PROFILE -> tr("atomchat.tab.profile");
+            case SETTINGS -> tr("atomchat.tab.settings");
+            case WORLD_CHAT -> tr("atomchat.tab.chat");
+        };
         Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
         SkiaFontRenderer.drawTextCentered(canvas, titleFont, title,
                 layout.header.x() + layout.header.w() / 2.0F,
                 layout.header.y() + layout.header.h() / 2.0F,
                 Color.makeARGB(255, 255, 255, 255));
-        String placeholder = page == AppPage.PROFILE
-                ? tr("atomchat.page.profile.placeholder")
-                : tr("atomchat.page.settings.placeholder");
+        String placeholder = switch (page) {
+            case CHAT_LIST -> tr("atomchat.page.chat.placeholder");
+            case PROFILE -> tr("atomchat.page.profile.placeholder");
+            case SETTINGS -> tr("atomchat.page.settings.placeholder");
+            case WORLD_CHAT -> tr("atomchat.page.chat.placeholder");
+        };
         Font bodyFont = FontManager.font(UiTokens.FONT_BODY);
         SkiaFontRenderer.drawTextCentered(canvas, bodyFont, placeholder,
                 layout.header.x() + layout.header.w() / 2.0F,
@@ -740,9 +748,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 }
 ```
 
-Add fields for the placeholder pages:
+Add fields for the placeholder pages (Task 5 replaces the chat placeholder
+with the real conversation list):
 
 ```java
+private final PlaceholderPage chatPlaceholderPage = new PlaceholderPage(AppPage.CHAT_LIST);
 private final PlaceholderPage profilePage = new PlaceholderPage(AppPage.PROFILE);
 private final PlaceholderPage settingsPage = new PlaceholderPage(AppPage.SETTINGS);
 ```
@@ -779,7 +789,7 @@ private UiLayout rootLayout() {
 
 private void drawRootPage(Canvas canvas, UiLayout layout) {
     if (topPage() == AppPage.CHAT_LIST) {
-        conversationListPage.render(canvas, layout);
+        chatPlaceholderPage.render(canvas, layout);
     } else if (topPage() == AppPage.PROFILE) {
         profilePage.render(canvas, layout);
     } else if (topPage() == AppPage.SETTINGS) {
@@ -967,19 +977,20 @@ if (topPage() == AppPage.CHAT_LIST && conversationListPage.mouseClicked(mx, my, 
 
 - [ ] **Step 3: Wire ConversationListPage into the screen**
 
-Add fields:
+Remove the Task 4 chat placeholder field and replace it with the real page:
 
 ```java
 private final ConversationListPage conversationListPage = new ConversationListPage(this);
 ```
 
-In `drawRootPage`, when `topPage() == AppPage.CHAT_LIST`, call
-`conversationListPage.render(canvas, rootLayout())`.
+In `drawRootPage`, change the `CHAT_LIST` branch to call
+`conversationListPage.render(canvas, layout)` instead of
+`chatPlaceholderPage.render(...)`.
 
 In the root click path, call:
 
 ```java
-if (topPage() == AppPage.CHAT_LIST && conversationListPage.mouseClicked(mx, my)) {
+if (topPage() == AppPage.CHAT_LIST && conversationListPage.mouseClicked(mx, my, rootLayout())) {
     return true;
 }
 ```
