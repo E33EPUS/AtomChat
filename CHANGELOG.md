@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.4
+
+### 中文
+
+- **头像右键菜单框架**：右键真实玩家头像弹出菜单（@ 提及 / 私聊 / 传送 / 屏蔽）；@ 已接入，其余动作预留；左键单击头像不再插入 @，双击仍为 QQ poke。
+- **导航壳**：AtomChat 升级为同面板页面栈；根页为会话列表，底部 `聊天 / 个人 / 设置` tab；默认聊天键（T）直接打开公屏，新键位（默认 Y）打开上次所在页面；世界频道详情页带 SVG 返回箭头。
+- **统一壳级 Header**：所有页面右上角统一显示时间；Header/标题/返回由壳统一绘制，页面类不再重复画。
+- **底部 Tab 重绘**：采用 Apple 风格紧凑公式布局；三个 tab SVG 重绘为细线 + 选中填充/高亮。
+- **公屏命名**：用户可见的 “World Channel / 世界频道” 统一改为 `Public / 公屏`。
+- **可复用滚动系统**：新增纯 `ScrollController`，世界频道消息列表与根页共用滚动条/滚轮/拖动逻辑；为后续长列表（私聊/设置）铺路。
+- **架构拆分**：抽出 `AppIcons` / `ShellHeader` / `BottomTabBar` / `ScrollController` 等壳级组件，减少 `AtomChatScreen` 膨胀。
+
+### English
+
+- **Avatar context-menu framework**: right-click a real player avatar opens a menu (Mention / Whisper / Teleport / Block); Mention is wired, the rest are placeholders for upcoming features. Left single-click no longer inserts @; double-click still triggers the QQ-style poke.
+- **Navigation shell**: AtomChat now has an in-panel page stack. The root is a conversation list with Chat / Profile / Settings bottom tabs; the normal chat key (T) opens Public directly, and a new key (default Y) restores the last opened page. The Public detail page has an SVG back arrow.
+- **Unified shell header**: time is shown on every page's top-right; header/title/back are drawn once by the shell instead of per page.
+- **Redesigned bottom tab bar**: Apple-style compact formula layout; the three tab SVGs were redrawn with line style plus selected fill/highlight.
+- **Public naming**: all user-visible “World Channel / 世界频道” copy is now `Public / 公屏`.
+- **Reusable scroll system**: a pure `ScrollController` now powers both the world-chat message list and root pages, sharing scrollbar/wheel/drag behavior for future long lists.
+- **Architecture cleanup**: extracted shell-level `AppIcons`, `ShellHeader`, `BottomTabBar`, and `ScrollController` components to keep `AtomChatScreen` from growing further.
+
 ## v0.1.3
 
 ### 中文
