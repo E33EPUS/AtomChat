@@ -62,6 +62,15 @@ public class ChatHudMixin {
         MinecraftClient client = MinecraftClient.getInstance();
 
         SenderMeta meta = MessageCapture.consume();
+        // Machine-to-machine chat protocols must never be claimed as player chat
+        // or suppressed as an own echo. e33chat routes them to the system channel
+        // ("宁可不杀不可错杀"): when in doubt, let the line through.
+        if (ChatClassifier.isXaeroWaypointData(raw)
+                || (meta != null && meta.contentText() != null
+                && ChatClassifier.isXaeroWaypointData(meta.contentText()))) {
+            addSystemMessage(message);
+            return;
+        }
         if (meta == null) {
             // No channel-level identity: translation-key system lines are
             // authoritative and must stay system even if their rendered text
@@ -77,10 +86,12 @@ public class ChatHudMixin {
                 addSystemMessage(message);
                 return;
             }
-            if (isOwn(parsed, raw, client)) {
-                // Own message echo: already added locally by AtomChatScreen.
-                return;
-            }
+            // Deliberately no own-echo suppression here. This branch has no
+            // channel-level identity, so parsing the line as "looks like me" is
+            // not proof it is our own echo — mods (Xaero path analysis, server
+            // waypoints, etc.) can emit own-name-shaped system lines. Suppressing
+            // them makes real messages vanish from the panel; showing a possible
+            // duplicate is the safer failure per e33chat's "宁可不杀" rule.
             String displayName = parsed.senderName() != null ? parsed.senderName() : parsed.profileName();
             var sliced = ChatPipeline.sliceRichText(message, parsed);
             if (sliced.isPresent()) {

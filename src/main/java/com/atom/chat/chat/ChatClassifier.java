@@ -5,6 +5,7 @@ import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.text.Text;
 
 import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -77,6 +78,30 @@ public final class ChatClassifier {
      */
     public static boolean isVanillaBroadcast(Text message) {
         return classifyByKey(message) == Route.SYSTEM;
+    }
+
+    /**
+     * Xaero-compatible mods share waypoint data as chat with machine prefixes
+     * ({@code xaero-waypoint:}, {@code xaero_waypoint:},
+     * {@code xaero_waypoint_add:}). These are not human player chat: e33chat
+     * routes them to the system channel so they are never claimed as a player
+     * bubble and never swallowed as an own echo.
+     */
+    public static boolean isXaeroWaypointData(String line) {
+        if (line == null) {
+            return false;
+        }
+        String text = line;
+        if (text.startsWith("<")) {
+            int end = text.indexOf("> ");
+            if (end >= 0) {
+                text = text.substring(end + 2);
+            }
+        }
+        String lower = text.toLowerCase(Locale.ROOT);
+        return lower.startsWith("xaero-waypoint:")
+                || lower.startsWith("xaero_waypoint:")
+                || lower.startsWith("xaero_waypoint_add:");
     }
 
     private static boolean isPlayerKey(String key) {

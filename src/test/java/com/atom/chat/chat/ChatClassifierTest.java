@@ -38,6 +38,16 @@ class ChatClassifierTest {
     }
 
     @Test
+    void recognizesXaeroWaypointDataAsSystemProtocol() {
+        assertTrue(ChatClassifier.isXaeroWaypointData("xaero_waypoint_add:abc"));
+        assertTrue(ChatClassifier.isXaeroWaypointData("xaero-waypoint:abc"));
+        assertTrue(ChatClassifier.isXaeroWaypointData("xaero_waypoint:abc"));
+        assertTrue(ChatClassifier.isXaeroWaypointData("<Steve> xaero_waypoint_add:abc"));
+        assertFalse(ChatClassifier.isXaeroWaypointData("<Steve> hello world"));
+        assertFalse(ChatClassifier.isXaeroWaypointData(null));
+    }
+
+    @Test
     void isVanillaBroadcastDoesNotFlagPlayerTeamOrPrivateRoutes() {
         assertFalse(ChatClassifier.isVanillaBroadcast(Text.translatable("chat.type.text", "Alice", "hi")));
         assertFalse(ChatClassifier.isVanillaBroadcast(Text.translatable("chat.type.team.text", "Alice", "hi")));
