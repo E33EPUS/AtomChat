@@ -10,6 +10,7 @@ import io.github.humbleui.skija.ImageFilter;
 import io.github.humbleui.skija.MaskFilter;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
+import io.github.humbleui.skija.Shader;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
 
@@ -71,5 +72,22 @@ public final class SkiaDraw {
 
     public static void clip(Canvas canvas, float x, float y, float width, float height, float radius) {
         canvas.clipRRect(RRect.makeXYWH(x, y, width, height, radius), ClipMode.INTERSECT, true);
+    }
+
+    /**
+     * Cheap vertical white gradient used for hover capsules: one rounded rect
+     * filled with a linear gradient from {@code topColor} at the top edge to
+     * {@code bottomColor} at the bottom edge.
+     */
+    public static void drawVerticalGradient(Canvas canvas, float x, float y, float width, float height,
+                                            float radius, int topColor, int bottomColor) {
+        if (width <= 0.0F || height <= 0.0F) {
+            return;
+        }
+        try (Shader shader = Shader.makeLinearGradient(x, y, x, y + height,
+                new int[]{topColor, bottomColor}, new float[]{0.0F, 1.0F});
+             Paint paint = new Paint().setAntiAlias(true).setShader(shader)) {
+            canvas.drawRRect(RRect.makeXYWH(x, y, width, height, radius), paint);
+        }
     }
 }

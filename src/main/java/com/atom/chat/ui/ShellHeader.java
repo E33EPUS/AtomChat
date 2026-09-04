@@ -24,7 +24,7 @@ public final class ShellHeader {
     }
 
     public static void render(Canvas canvas, UiLayout.Rect header, String title, boolean showBack,
-                              UiLayout.Rect backButton, int textPrimary, int accent) {
+                              UiLayout.Rect backButton, float backHover, int textPrimary) {
         if (header == null || header.w() <= 0.0F || header.h() <= 0.0F) {
             return;
         }
@@ -32,6 +32,16 @@ public final class ShellHeader {
                 UiTokens.HEADER_RADIUS, Color.makeARGB(60, 255, 255, 255));
 
         if (showBack && backButton != null) {
+            if (backHover > 0.01F) {
+                float inset = UiTokens.s(4);
+                float x = backButton.x() + inset;
+                float y = backButton.y() + inset;
+                float w = backButton.w() - inset * 2.0F;
+                float h = backButton.h() - inset * 2.0F;
+                SkiaDraw.drawVerticalGradient(canvas, x, y, w, h, UiTokens.s(8),
+                        Color.makeARGB((int) (45.0F * backHover), 255, 255, 255),
+                        Color.makeARGB(0, 255, 255, 255));
+            }
             drawIconCentered(canvas, AppIcons.ICON_BACK_PATH,
                     backButton.x() + backButton.w() / 2.0F,
                     backButton.y() + backButton.h() / 2.0F,

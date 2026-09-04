@@ -125,6 +125,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private int tabAnimFrom = -1;
     private int tabAnimTo = -1;
 
+    // Root tab transition. The bottom bar owns the shared Animator; the screen
+    // keeps the from/to slot indexes and reuses the same Animator for the root
+    // page push so the capsule and content always move in lockstep.
+    private final BottomTabBar bottomTabBar = new BottomTabBar();
+    private final Animator rootTabAnim = bottomTabBar.indicatorAnimator();
+    private int rootTabFrom = -1;
+    private int rootTabTo = -1;
+
+    /** Hover wash behind the unified header back arrow. */
+    private float backButtonHover;
+    /** Hover washes for the emoji panel tab strip. */
+    private final float[] emojiTabHover = new float[3];
 
     // Animation state — durations live in UiMotion so every transition is tuned
     // in one place and none of them can drift back to a sluggish value.
@@ -287,6 +299,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 navigation.push(saved.get(i));
             }
         }
+        if (topPage().isRoot()) {
+            bottomTabBar.setSelectedImmediate(rootIndex(topPage()));
+        }
     }
 
     private AppPage topPage() {
@@ -321,7 +336,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (page == AppPage.WORLD_CHAT) {
             worldScroll.reset();
         }
+        if (!page.isRoot() && topPage().isRoot()) {
+            rootTabAnim.setValue(rootIndex(topPage()));
+        }
         navigation.push(page);
+        if (!page.isRoot()) {
+            clearRootTransition();
+        }
     }
 
     @Override
@@ -331,8 +352,25 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public void switchRoot(AppPage root) {
+        if (!root.isRoot()) {
+            return;
+        }
+        AppPage from = topPage();
         rootScroll.reset();
+        // If a previous root transition is still running, snap the shared
+        // indicator to the current page before starting a new slide.
+        if (!rootTabAnim.isDone() && from.isRoot()) {
+            rootTabAnim.setValue(rootIndex(from));
+        }
         navigation.replaceWithRoot(root);
+        if (from.isRoot() && from != root) {
+            rootTabFrom = rootIndex(from);
+            rootTabTo = rootIndex(root);
+            bottomTabBar.setSelectedIndex(rootTabTo);
+        } else {
+            clearRootTransition();
+            bottomTabBar.setSelectedImmediate(rootIndex(root));
+        }
     }
 
     /**
@@ -632,19 +670,26 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // adds the composer/message stack.
         if (!isWorldChatPage()) {
             UiLayout root = rootLayout();
-            ShellHeader.render(canvas, root.header, shellTitle(), false, null,
-                    textPrimary(), accent());
+            float vmx = toVirtualX(mouseX);
+            float vmy = toVirtualY(mouseY);
+            bottomTabBar.update(frameDt, vmx, vmy, root.tabBar);
+            ShellHeader.render(canvas, root.header, shellTitle(), false, null, 0.0F,
+                    textPrimary());
             drawRootPage(canvas, root);
             // Root pages share the same scrollbar rendering; with the current
             // one-row content maxScroll is 0 and nothing is visible yet.
-            drawScrollbar(canvas, root, toVirtualX(mouseX), toVirtualY(mouseY), rootScroll);
+            drawScrollbar(canvas, root, vmx, vmy, rootScroll);
             drawBottomTabBar(canvas, root);
             drawBezel(canvas, layout);
             return;
         }
 
+        float vmx = toVirtualX(mouseX);
+        float vmy = toVirtualY(mouseY);
+        backButtonHover = UiMotion.approach(backButtonHover,
+                isBackButtonHit(vmx, vmy) ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
         ShellHeader.render(canvas, layout.header, tr("atomchat.channel.world"), true,
-                backButton(), textPrimary(), accent());
+                backButton(), backButtonHover, textPrimary());
 
         // Grow the input bar before the list is measured, so the list loses
         // exactly the height the bar gains.
@@ -770,13 +815,86 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private void drawRootPage(Canvas canvas, UiLayout layout) {
-        if (topPage() == AppPage.CHAT_LIST) {
-            conversationListPage.render(canvas, layout);
-        } else if (topPage() == AppPage.PROFILE) {
-            profilePage.render(canvas, layout);
-        } else if (topPage() == AppPage.SETTINGS) {
-            settingsPage.render(canvas, layout);
+        if (!rootTransitionActive()) {
+            drawRootPageBody(canvas, layout, topPage(), 0.0F);
+            return;
         }
+        float progress = rootSlideProgress();
+        if (progress >= 0.999F) {
+            clearRootTransition();
+            drawRootPageBody(canvas, layout, topPage(), 0.0F);
+            return;
+        }
+        // Full-width opaque push, same language as the emoji tab content
+        // transition: the outgoing page leaves in the direction of travel while
+        // the incoming page enters from that side.
+        canvas.save();
+        try {
+            SkiaDraw.clip(canvas, layout.list.x(), layout.list.y(),
+                    layout.list.w(), layout.list.h(), 0.0F);
+            float travel = layout.list.w();
+            float sign = rootTabTo > rootTabFrom ? 1.0F : -1.0F;
+            drawRootPageBody(canvas, layout, rootPageForIndex(rootTabFrom),
+                    -sign * travel * progress);
+            drawRootPageBody(canvas, layout, topPage(),
+                    sign * travel * (1.0F - progress));
+        } finally {
+            canvas.restore();
+        }
+    }
+
+    /** Renders any root page body at an optional horizontal offset inside the root layout. */
+    private void drawRootPageBody(Canvas canvas, UiLayout layout, AppPage page, float dx) {
+        canvas.save();
+        canvas.translate(dx, 0.0F);
+        try {
+            switch (page) {
+                case CHAT_LIST -> conversationListPage.render(canvas, layout);
+                case PROFILE -> profilePage.render(canvas, layout);
+                case SETTINGS -> settingsPage.render(canvas, layout);
+                case WORLD_CHAT -> throw new IllegalStateException("Root page body cannot render world chat");
+            }
+        } finally {
+            canvas.restore();
+        }
+    }
+
+    private boolean rootTransitionActive() {
+        return rootTabFrom >= 0 && rootTabTo >= 0
+                && rootTabFrom != rootTabTo && !rootTabAnim.isDone();
+    }
+
+    private void clearRootTransition() {
+        rootTabFrom = -1;
+        rootTabTo = -1;
+    }
+
+    private float rootSlideProgress() {
+        int from = rootTabFrom;
+        int to = rootTabTo;
+        if (from < 0 || to < 0 || from == to) {
+            return 1.0F;
+        }
+        float pos = rootTabAnim.getValue();
+        return MathHelper.clamp((from - pos) / (float) (from - to), 0.0F, 1.0F);
+    }
+
+    private AppPage rootPageForIndex(int index) {
+        return switch (index) {
+            case 0 -> AppPage.CHAT_LIST;
+            case 1 -> AppPage.PROFILE;
+            case 2 -> AppPage.SETTINGS;
+            default -> throw new IllegalStateException("Unexpected root tab index " + index);
+        };
+    }
+
+    private int rootIndex(AppPage page) {
+        return switch (page) {
+            case CHAT_LIST -> 0;
+            case PROFILE -> 1;
+            case SETTINGS -> 2;
+            case WORLD_CHAT -> throw new IllegalStateException("World chat has no bottom tab index");
+        };
     }
 
     private String shellTitle() {
@@ -789,13 +907,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private void drawBottomTabBar(Canvas canvas, UiLayout layout) {
-        int selectedIndex = switch (topPage()) {
-            case CHAT_LIST -> 0;
-            case PROFILE -> 1;
-            case SETTINGS -> 2;
-            case WORLD_CHAT -> throw new IllegalStateException("Bottom tab bar is not shown on world chat");
-        };
-        BottomTabBar.render(canvas, layout.tabBar, selectedIndex, textPrimary(), accent());
+        int selectedIndex = rootIndex(topPage());
+        bottomTabBar.render(canvas, layout.tabBar, selectedIndex, textPrimary());
     }
 
     /** Routes a root-page click on one of the three bottom tab cells. */
@@ -1574,6 +1687,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (tabContentAnim.isDone()) {
                 tabAnimFrom = -1;
             }
+            updateEmojiTabHover(vmx, vmy);
             Font tabFont = FontManager.font(UiTokens.FONT_BUTTON);
             String[] labels = emojiTabLabels();
             float tabInset = UiTokens.EMOJI_PANEL_PAD;
@@ -1590,6 +1704,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             SkiaDraw.drawRoundedRect(canvas, tabStripX + indicator * tabW + s(4), panelY + s(6),
                     tabW - s(8), UiTokens.EMOJI_TAB_H - s(8), s(8), Color.makeARGB(90, 255, 255, 255));
             for (int t = 0; t < labels.length; t++) {
+                float hov = emojiTabHover[t];
+                if (hov > 0.01F) {
+                    float hx = tabStripX + t * tabW + s(4);
+                    float hy = panelY + s(6);
+                    float hw = tabW - s(8);
+                    float hh = UiTokens.EMOJI_TAB_H - s(8);
+                    SkiaDraw.drawVerticalGradient(canvas, hx, hy, hw, hh, s(8),
+                            Color.makeARGB((int) (45.0F * hov), 255, 255, 255),
+                            Color.makeARGB(0, 255, 255, 255));
+                }
                 float tx = tabStripX + t * tabW;
                 SkiaFontRenderer.drawTextCentered(canvas, tabFont, labels[t],
                         tx + tabW / 2.0F, panelY + UiTokens.EMOJI_TAB_H / 2.0F + s(2), textPrimary());
@@ -1694,6 +1818,34 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         int idx = row * UiTokens.EMOTE_COLS + col;
         int total = emoteStore.count() + 1;
         return idx >= 0 && idx < total ? idx : -1;
+    }
+
+    /**
+     * Fades the emoji tab-strip hover washes. The capsule geometry is the same
+     * as the active pill, so hover follows the exact slots users click.
+     */
+    private void updateEmojiTabHover(float vmx, float vmy) {
+        int hovered = -1;
+        if (emojiOpen && overEmojiPanel(vmx, vmy)
+                && vmy < emojiPanelY() + UiTokens.EMOJI_TAB_H) {
+            float px = emojiPanelX();
+            float pw = emojiPanelW();
+            float inset = UiTokens.EMOJI_PANEL_PAD;
+            float stripX = px + inset;
+            float stripW = pw - inset * 2.0F;
+            if (vmx >= stripX && vmx <= stripX + stripW) {
+                String[] labels = emojiTabLabels();
+                float tabW = stripW / labels.length;
+                int t = (int) ((vmx - stripX) / tabW);
+                if (t >= 0 && t < labels.length) {
+                    hovered = t;
+                }
+            }
+        }
+        for (int i = 0; i < emojiTabHover.length; i++) {
+            emojiTabHover[i] = UiMotion.approach(emojiTabHover[i],
+                    i == hovered ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
+        }
     }
 
     /**

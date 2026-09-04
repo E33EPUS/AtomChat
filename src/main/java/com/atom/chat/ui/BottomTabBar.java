@@ -1,6 +1,8 @@
 package com.atom.chat.ui;
 
 import com.atom.chat.font.FontManager;
+import com.atom.chat.render.Animator;
+import com.atom.chat.render.Easing;
 import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
 import io.github.humbleui.skija.Canvas;
@@ -18,6 +20,10 @@ import net.minecraft.text.Text;
  * Shared bottom tab bar for AtomChat root pages. Rendering and hit-testing are
  * both driven by {@link UiLayout.Rect} plus {@link UiTokens} geometry so the
  * shell never hardcodes a cell position.
+ *
+ * <p>The bar owns the hover fade state and the sliding selected capsule's
+ * {@link Animator}. The screen shares the same animator for the root content
+ * push so the capsule and the page body always move together.</p>
  */
 public final class BottomTabBar {
     private static final String[] LABELS = {
@@ -32,21 +38,51 @@ public final class BottomTabBar {
             AppIcons.ICON_TAB_SETTINGS_PATH
     };
 
-    private static final Path[] FILLED_ICONS = {
-            AppIcons.ICON_TAB_CHAT_FILLED_PATH,
-            AppIcons.ICON_TAB_PROFILE_FILLED_PATH,
-            AppIcons.ICON_TAB_SETTINGS_FILLED_PATH
-    };
+    private final Animator indicatorAnim = new Animator(Easing::easeInOutCubic);
+    private final float[] tabHover = new float[3];
 
-    private BottomTabBar() {
+    public BottomTabBar() {
+        indicatorAnim.setValue(0.0F);
     }
 
     private static String tr(String key) {
         return Text.translatable(key).getString();
     }
 
-    public static void render(Canvas canvas, UiLayout.Rect bar, int selectedIndex,
-                              int textPrimary, int accent) {
+    /** The animator used for the selected capsule; shared with the root content transition. */
+    public Animator indicatorAnimator() {
+        return indicatorAnim;
+    }
+
+    public void setSelectedIndex(int index) {
+        if (index < 0 || index >= 3) {
+            return;
+        }
+        indicatorAnim.animateTo(UiMotion.TAB_MS, index);
+    }
+
+    public void setSelectedImmediate(int index) {
+        if (index < 0 || index >= 3) {
+            return;
+        }
+        indicatorAnim.setValue(index);
+    }
+
+    public float indicatorValue() {
+        return indicatorAnim.getValue();
+    }
+
+    /** Advances hover fades and the capsule slide; call once per root frame. */
+    public void update(float deltaMs, float vmx, float vmy, UiLayout.Rect bar) {
+        indicatorAnim.update(deltaMs);
+        int hovered = hitTest(vmx, vmy, bar);
+        for (int i = 0; i < 3; i++) {
+            tabHover[i] = UiMotion.approach(tabHover[i], i == hovered ? 1.0F : 0.0F,
+                    deltaMs, UiMotion.HOVER_MS);
+        }
+    }
+
+    public void render(Canvas canvas, UiLayout.Rect bar, int selectedIndex, int textPrimary) {
         if (bar == null || bar.w() <= 0.0F || bar.h() <= 0.0F) {
             return;
         }
@@ -54,31 +90,40 @@ public final class BottomTabBar {
                 UiTokens.s(18), Color.makeARGB(60, 255, 255, 255));
 
         float cellWidth = bar.w() / 3.0F;
+        float inset = UiTokens.s(4);
+        float radius = UiTokens.s(6);
+        float capsuleY = bar.y() + inset;
+        float capsuleH = bar.h() - inset * 2.0F;
+        float capsuleW = cellWidth - inset * 2.0F;
+
+        // Selected capsule slides between the equal cells. The indicator is the
+        // animator's eased position, not the selected index, so switching tabs
+        // glides the capsule across the bar. Hover washes are drawn on top so a
+        // hovered selected tab still receives the vertical gradient.
+        float capsuleX = bar.x() + indicatorAnim.getValue() * cellWidth + inset;
+        SkiaDraw.drawRoundedRect(canvas, capsuleX, capsuleY, capsuleW, capsuleH, radius,
+                Color.makeARGB(55, 255, 255, 255));
+
+        for (int i = 0; i < 3; i++) {
+            float hov = tabHover[i];
+            if (hov <= 0.01F) {
+                continue;
+            }
+            float x = bar.x() + cellWidth * i + inset;
+            SkiaDraw.drawVerticalGradient(canvas, x, capsuleY, capsuleW, capsuleH, radius,
+                    Color.makeARGB((int) (45.0F * hov), 255, 255, 255),
+                    Color.makeARGB(0, 255, 255, 255));
+        }
+
         Font labelFont = FontManager.font(UiTokens.TAB_LABEL_FONT);
         for (int i = 0; i < 3; i++) {
-            boolean selected = i == selectedIndex;
-            float cellX = bar.x() + cellWidth * i;
             float cellCenterX = bar.x() + cellWidth * (i + 0.5F);
             float iconCenterY = bar.y() + UiTokens.TAB_ICON_TOP + UiTokens.TAB_ICON_SIZE / 2.0F;
             float labelCenterY = bar.y() + UiTokens.TAB_ICON_TOP + UiTokens.TAB_ICON_SIZE
                     + UiTokens.TAB_LABEL_GAP + UiTokens.s(13) / 2.0F;
-
-            if (selected) {
-                // Light capsule behind the icon + label content block.
-                float capsuleY = bar.y() + UiTokens.TAB_ICON_TOP - UiTokens.s(2);
-                float capsuleBottom = bar.y() + bar.h() - UiTokens.TAB_BOTTOM_PAD + UiTokens.s(2);
-                float capsuleH = capsuleBottom - capsuleY;
-                float capsuleX = cellX + UiTokens.s(2);
-                float capsuleW = cellWidth - UiTokens.s(2) * 2.0F;
-                SkiaDraw.drawRoundedRect(canvas, capsuleX, capsuleY, capsuleW, capsuleH,
-                        capsuleH / 2.0F, Color.makeARGB(45, 255, 255, 255));
-            }
-
-            int itemColor = selected ? accent : textPrimary;
-            drawIcon(canvas, selected ? FILLED_ICONS[i] : ICONS[i],
-                    cellCenterX, iconCenterY, UiTokens.TAB_ICON_SIZE, itemColor, selected);
+            drawIconCentered(canvas, ICONS[i], cellCenterX, iconCenterY, UiTokens.TAB_ICON_SIZE, textPrimary);
             SkiaFontRenderer.drawTextCentered(canvas, labelFont, tr(LABELS[i]),
-                    cellCenterX, labelCenterY, itemColor);
+                    cellCenterX, labelCenterY, textPrimary);
         }
     }
 
@@ -92,8 +137,8 @@ public final class BottomTabBar {
         return Math.max(0, Math.min(2, index));
     }
 
-    private static void drawIcon(Canvas canvas, Path icon, float cx, float cy,
-                                 float size, int color, boolean filled) {
+    private static void drawIconCentered(Canvas canvas, Path icon, float cx, float cy,
+                                         float size, int color) {
         Rect b = icon.getBounds();
         if (b == null || b.isEmpty()) {
             return;
@@ -104,16 +149,12 @@ public final class BottomTabBar {
             canvas.translate(cx - (b.getLeft() + b.getRight()) / 2.0F * scale,
                     cy - (b.getTop() + b.getBottom()) / 2.0F * scale);
             canvas.scale(scale, scale);
-            try (Paint paint = new Paint().setColor(color).setAntiAlias(true)) {
-                if (filled) {
-                    canvas.drawPath(icon, paint);
-                } else {
-                    paint.setMode(PaintMode.STROKE)
-                            .setStrokeWidth(UiTokens.s(1.5F) / scale)
-                            .setStrokeCap(PaintStrokeCap.ROUND)
-                            .setStrokeJoin(PaintStrokeJoin.ROUND);
-                    canvas.drawPath(icon, paint);
-                }
+            try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
+                    .setMode(PaintMode.STROKE)
+                    .setStrokeWidth(UiTokens.s(1.5F) / scale)
+                    .setStrokeCap(PaintStrokeCap.ROUND)
+                    .setStrokeJoin(PaintStrokeJoin.ROUND)) {
+                canvas.drawPath(icon, paint);
             }
         } finally {
             canvas.restore();

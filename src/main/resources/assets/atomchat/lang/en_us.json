@@ -2,7 +2,7 @@
   "atomchat.screen.title": "AtomChat",
   "atomchat.channel.world": "Public",
   "atomchat.conversation.world": "Public",
-  "atomchat.conversation.world.subtitle": "Tap to open the public chat",
+  "atomchat.conversation.empty": "No messages yet",
   "atomchat.tab.chat": "Chat",
   "atomchat.tab.profile": "Profile",
   "atomchat.tab.settings": "Settings",
