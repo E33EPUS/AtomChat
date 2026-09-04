@@ -41,6 +41,7 @@ import io.github.humbleui.types.RRect;
 import io.github.humbleui.skija.SamplingMode;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.option.KeyBinding;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.StringHelper;
@@ -301,6 +302,13 @@ public class AtomChatScreen extends ChatScreen {
             if (chatInputSuggestor != null) {
                 chatInputSuggestor.render(context, mouseX, mouseY);
             }
+        }
+
+        // Hover tooltips are drawn through the vanilla pipeline after the Skia
+        // panel and the suggestion popup so they stay readable on top of both.
+        Style hovered = findHoveredStyle(toVirtualX(mouseX), toVirtualY(mouseY));
+        if (hovered != null && hovered.getHoverEvent() != null) {
+            context.drawHoverEvent(this.textRenderer, hovered, mouseX, mouseY);
         }
     }
 
@@ -2044,6 +2052,20 @@ public class AtomChatScreen extends ChatScreen {
         return sb.toString();
     }
 
+    private ClickableSpan findClickableSpan(float mx, float my) {
+        for (ClickableSpan s : clickableSpans) {
+            if (mx >= s.x() && mx <= s.x() + s.w() && my >= s.y() && my <= s.y() + s.h()) {
+                return s;
+            }
+        }
+        return null;
+    }
+
+    private Style findHoveredStyle(float mx, float my) {
+        ClickableSpan span = findClickableSpan(mx, my);
+        return span != null ? span.style() : null;
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (closing) {
@@ -2177,6 +2199,12 @@ public class AtomChatScreen extends ChatScreen {
                             FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
                             line.text());
                     if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
+                        // Remember any clickable run under the mouse before the
+                        // selection anchor is armed. Dragging from this point will
+                        // select text instead of firing the click; a clean click
+                        // (no drag) will fire it on mouse release.
+                        pendingClickSpan = findClickableSpan(mx, my);
+                        pendingClickMoved = false;
                         selectionMessage = hit.message();
                         selectionMessageLines = textLines.stream().map(MessageTextLine::text).toList();
                         selectionAnchorLine = selectionFocusLine = line.line();
@@ -2225,11 +2253,15 @@ public class AtomChatScreen extends ChatScreen {
                             selectionFocusLine = line.line();
                             selectionFocusChar = ch;
                             selectionMoved = true;
+                            pendingClickMoved = true;
                         }
                         return true;
                     }
                 }
             }
+            // A drag that leaves the text is still a drag, so it must suppress
+            // any click captured on mouse press even when no selection changed.
+            pendingClickMoved = true;
             return true; // drag outside text keeps current selection active
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -2237,12 +2269,29 @@ public class AtomChatScreen extends ChatScreen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (selecting && button == 0) {
-            selecting = false;
-            if (!selectionMoved) {
-                clearTextSelection();
+        if (button == 0) {
+            float mx = toVirtualX(mouseX);
+            float my = toVirtualY(mouseY);
+            boolean wasSelecting = selecting;
+            ClickableSpan pending = pendingClickSpan;
+            pendingClickSpan = null;
+            boolean shouldClick = pending != null && !pendingClickMoved
+                    && pending.style().getClickEvent() != null
+                    && findClickableSpan(mx, my) == pending;
+            if (wasSelecting) {
+                selecting = false;
+                if (!selectionMoved) {
+                    clearTextSelection();
+                }
             }
-            return true;
+            pendingClickMoved = false;
+            if (shouldClick) {
+                this.handleTextClick(pending.style());
+                return true;
+            }
+            if (wasSelecting) {
+                return true;
+            }
         }
         if (draggingScrollbar && button == 0) {
             draggingScrollbar = false;
