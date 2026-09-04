@@ -11,6 +11,22 @@ import java.util.List;
  * at the start of the next line; spaces that fit inside a line are preserved.
  */
 public final class RichTextLayout {
+    /**
+     * A single wrapped line of kept visible text.
+     *
+     * <p>{@code textStart} and {@code textEnd} are absolute UTF-16 indices into
+     * the original {@link RichText} string, not local offsets within this line.
+     * They refer only to characters actually kept in this line's visible runs;
+     * spaces dropped at a wrap boundary are not represented in either adjacent
+     * line.
+     *
+     * @param runs the visible text runs that make up this line
+     * @param textStart the absolute UTF-16 index in the original {@link RichText}
+     *                  of the first kept visible character on this line
+     * @param textEnd the exclusive absolute UTF-16 index in the original
+     *                {@link RichText} after the last kept visible character on
+     *                this line
+     */
     public record RichLine(List<RichText.RichRun> runs, int textStart, int textEnd) {
         public RichLine {
             runs = List.copyOf(runs);
@@ -95,6 +111,18 @@ public final class RichTextLayout {
         return lines;
     }
 
+    /**
+     * Returns the character hit at {@code localX} as an absolute UTF-16 index
+     * into the original {@link RichText} string, not a local offset within the
+     * line. The returned index is always within {@code [line.textStart(),
+     * line.textEnd()]}.
+     *
+     * @param line the line to hit-test
+     * @param measurer measures character widths using the same metrics that
+     *                 produced the line layout
+     * @param localX the x position relative to this line's left edge
+     * @return the absolute UTF-16 index into the original {@link RichText}
+     */
     public static int charAt(RichLine line, TextMeasurer measurer, float localX) {
         String plain = line.getPlainText();
         if (localX <= 0f || plain.isEmpty()) {
