@@ -30,6 +30,7 @@ import com.atom.chat.render.SkiaGraphics;
 import com.atom.chat.text.RichText;
 import com.atom.chat.text.RichTextLayout.RichLine;
 import com.atom.chat.ui.BottomTabBar;
+import com.atom.chat.ui.ScrollController;
 import com.atom.chat.ui.ShellHeader;
 import com.atom.chat.ui.UiLayout;
 import com.atom.chat.ui.UiMotion;
@@ -102,11 +103,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final EmoteImageCache emoteImageCache = new EmoteImageCache();
 
     private boolean inputFocused = true;
-    /** Vanilla command completion over ChatScreen's chatField, anchored to our input row. */
-    private float scrollY;
-    private float maxScroll;
-    /** List viewport height from the previous frame; detects input-bar growth. */
-    private float lastListHeight = -1.0F;
+    /** Scroll state for the world-chat message list. */
+    private final ScrollController worldScroll = new ScrollController();
+    /** Scroll state for root pages; shared across the root tabs. */
+    private final ScrollController rootScroll = new ScrollController();
     private ChatMessage replyTarget;
     private boolean emojiOpen;
     private int emojiTab;
@@ -136,8 +136,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      * "never replay an entrance" guarantee bounded to recent messages.
      */
     private static final long ENTRANCE_SETTLE_GUARD_MS = 5000L;
-    private static final long SCROLL_ANIM_MS = UiMotion.SCROLL_SNAP_MS;
-    private static final long WHEEL_ANIM_MS = UiMotion.SCROLL_WHEEL_MS;
     // Toolbar icons are kept as inline SVG path data (not assets): three tiny
     // paths are cheaper than a resource pipeline, stay crisp at every scale,
     // and are trivial to recolour for hover/pressed/theme states. The paths use
@@ -194,34 +192,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private long closeStart;
     private float panelProgress = 1.0F;
     private boolean blurDrawnThisFrame;
-    private boolean firstRender = true;
-    private boolean scrollToBottom = true;
-    private float scrollTarget;
-    private boolean scrollAnimActive;
-    private float scrollAnimFrom;
-    private float scrollAnimTo;
-    private long scrollAnimStart;
-    private long scrollAnimMs = SCROLL_ANIM_MS;
     private int pressedButton = -1;
     private long pressTime;
 
-    // Scrollbar state (e33chat style: hover/sheet fade, drag to scroll)
-    private float scrollBarAlpha;
     // Per-frame animation state (smooth hover/popup transitions)
     private final float[] buttonHover = new float[3];
-    private float scrollEmphasis;
     private float emojiAnim;
     private float contextAnim;
     private ChatMessage lastContextMessage;
     private ContextMenuMode lastContextMenuMode = ContextMenuMode.BUBBLE;
     private long frameDt = 16;
     private long lastFrameMs = System.currentTimeMillis();
-    private boolean draggingScrollbar;
-    private float dragStartY;
-    private float dragStartScroll;
-    private long lastScrollbarFrame;
-    /** Scrollbar colour state: only a held left button turns the thumb blue. */
-    private float scrollActive;
 
     // Multi-line input: the bar grows upward by whole line heights, and once the
     // text passes INPUT_MAX_LINES it scrolls inside the fixed box.
@@ -337,6 +318,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public void pushPage(AppPage page) {
+        if (page == AppPage.WORLD_CHAT) {
+            worldScroll.reset();
+        }
         navigation.push(page);
     }
 
@@ -347,15 +331,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public void switchRoot(AppPage root) {
+        rootScroll.reset();
         navigation.replaceWithRoot(root);
     }
 
     /**
      * Clears world-chat-only ephemeral UI before navigating back to a root page,
      * so it cannot reappear when the world page is opened again. The chat draft
-     * and message-list scroll position are deliberately preserved.
+     * is preserved, but the message-list scroll state is reset so reopening the
+     * channel starts fresh at the bottom.
      */
     private void resetTransientWorldUi() {
+        worldScroll.reset();
         closeContextMenu();
         lastContextMessage = null;
         lastContextMenuMode = ContextMenuMode.BUBBLE;
@@ -369,9 +356,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         clearTextSelection();
         pendingClickSpan = null;
         pendingClickMoved = false;
-        draggingScrollbar = false;
-        dragStartY = 0.0F;
-        dragStartScroll = 0.0F;
         dismissSuggestor();
     }
 
@@ -651,6 +635,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             ShellHeader.render(canvas, root.header, shellTitle(), false, null,
                     textPrimary(), accent());
             drawRootPage(canvas, root);
+            // Root pages share the same scrollbar rendering; with the current
+            // one-row content maxScroll is 0 and nothing is visible yet.
+            drawScrollbar(canvas, root, toVirtualX(mouseX), toVirtualY(mouseY), rootScroll);
             drawBottomTabBar(canvas, root);
             drawBezel(canvas, layout);
             return;
@@ -756,7 +743,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         canvas.restore();
 
         // Scrollbar (e33chat style): fades in near/hinting scroll, draggable, highlights.
-        drawScrollbar(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY));
+        drawScrollbar(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY), worldScroll);
 
         drawEmojiPanel(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
         drawContextMenu(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
@@ -975,61 +962,46 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      * while dragged, and fades straight back out otherwise.
      * Thumb maps scrollY to the track; drag maps 1:1 with clamping.
      */
-    private void drawScrollbar(Canvas canvas, UiLayout layout, float vmx, float vmy) {
+    private void drawScrollbar(Canvas canvas, UiLayout layout, float vmx, float vmy,
+                               ScrollController controller) {
         long now = System.currentTimeMillis();
-        long dt = Math.min(50L, now - lastScrollbarFrame);
-        lastScrollbarFrame = now;
 
         UiLayout.Rect list = layout.list;
         float trackW = s(6);
-        float trackX = list.right() - trackW - s(2);
         float trackH = list.h();
-        float visibleRatio = Math.min(1.0F, trackH / (trackH + maxScroll));
+        float visibleRatio = Math.min(1.0F, trackH / (trackH + controller.getMaxScroll()));
         float thumbH = Math.max(s(30), trackH * visibleRatio);
-        float thumbY = list.y() + (trackH - thumbH) * (scrollY / maxScroll);
+        // Deliberately computed before drag updates below, matching the original
+        // frame ordering: the thumb is drawn from the offset captured at frame start.
+        float thumbY = list.y() + (trackH - thumbH) * (controller.getScrollY() / controller.getMaxScroll());
 
-        // Fade in only when the pointer is near the scrollbar itself (or dragging it).
-        boolean nearTrack = vmx >= trackX - s(12) && vmx <= trackX + trackW + s(12)
-                && vmy >= list.y() - s(12) && vmy <= list.bottom() + s(12);
-        boolean active = maxScroll > 0.0F && (draggingScrollbar || nearTrack);
-        float target = active ? 1.0F : 0.0F;
-        scrollBarAlpha = UiMotion.approach(scrollBarAlpha, target, dt, UiMotion.SCROLLBAR_FADE_MS);
-        if (scrollBarAlpha <= 0.0F) {
+        if (controller.updateScrollbarFade(now, vmx, vmy, list, controller.isDragging(), trackW, frameDt) <= 0.0F) {
             return;
         }
 
-        if (draggingScrollbar) {
-            float travel = trackH - thumbH;
-            float delta = (vmy - dragStartY) * (travel > 0.0F ? maxScroll / travel : 0.0F);
-            scrollY = Math.max(0.0F, Math.min(dragStartScroll + delta, maxScroll));
-            scrollTarget = scrollY;
-            scrollToBottom = false;
-            scrollAnimActive = false;
+        if (controller.isDragging()) {
+            controller.dragTo(vmy, trackH);
         }
 
-        boolean hover = !draggingScrollbar
-                && vmx >= trackX - s(8) && vmx <= trackX + trackW + s(8)
-                && vmy >= list.y() && vmy <= list.bottom();
-        // Two separate states: hovering only thickens the thumb (so it reads as
-        // grabbable), while the accent colour is reserved for a held left button.
-        scrollEmphasis = UiMotion.approach(scrollEmphasis, (hover || draggingScrollbar) ? 1.0F : 0.0F, frameDt, UiMotion.SCROLLBAR_EMPHASIS_MS);
-        scrollActive = UiMotion.approach(scrollActive, draggingScrollbar ? 1.0F : 0.0F, frameDt, UiMotion.SCROLLBAR_EMPHASIS_MS);
-        float w = trackW + scrollEmphasis * s(3);
+        float w = trackW + controller.getScrollEmphasis() * s(3);
         int ar = (accent() >> 16) & 0xFF;
         int ag = (accent() >> 8) & 0xFF;
         int ab = accent() & 0xFF;
-        int r = (int) (255 + (ar - 255) * scrollActive);
-        int g = (int) (255 + (ag - 255) * scrollActive);
-        int bch = (int) (255 + (ab - 255) * scrollActive);
-        int alpha = MathHelper.clamp((int) ((170 + 60 * scrollEmphasis) * scrollBarAlpha), 0, 255);
+        int r = (int) (255 + (ar - 255) * controller.getScrollActive());
+        int g = (int) (255 + (ag - 255) * controller.getScrollActive());
+        int bch = (int) (255 + (ab - 255) * controller.getScrollActive());
+        int alpha = MathHelper.clamp((int) ((170 + 60 * controller.getScrollEmphasis())
+                * controller.getScrollBarAlpha()), 0, 255);
         int color = (alpha << 24) | (r << 16) | (g << 8) | bch;
+        float trackX = list.right() - trackW - s(2);
         SkiaDraw.drawRoundedRect(canvas, trackX - (w - trackW) / 2.0F, thumbY, w, thumbH, w / 2.0F, color);
     }
 
-    private boolean overScrollbarTrack(UiLayout layout, float vmx, float vmy) {
+    private boolean overScrollbarTrack(UiLayout layout, float vmx, float vmy,
+                                       ScrollController controller) {
         float trackW = s(6);
         float trackX = layout.list.right() - trackW - s(2);
-        return maxScroll > 0.0F
+        return controller.getMaxScroll() > 0.0F
                 && vmx >= trackX - s(8) && vmx <= trackX + trackW + s(8)
                 && vmy >= layout.list.y() && vmy <= layout.list.bottom();
     }
@@ -1041,10 +1013,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // Snapshot "was at bottom" before maxScroll grows: after new messages
         // arrive the old target is no longer near the new max, so comparing after
         // recompute would make us miss the follow and leave a growing gap.
-        boolean wasAtBottom = scrollToBottom || scrollTarget >= maxScroll - 3.0F;
-        boolean viewportChanged = lastListHeight >= 0.0F && Math.abs(lastListHeight - height) > 0.01F;
-        lastListHeight = height;
-        recomputeMaxScroll(messages, width, y, height);
+        boolean wasAtBottom = worldScroll.isAtBottom();
+        boolean viewportChanged = worldScroll.viewportChanged(height);
+        worldScroll.setContent(measureContentHeight(messages, width), height);
         if (wasAtBottom) {
             if (viewportChanged) {
                 // The list is shrinking/growing in lockstep with the animated
@@ -1052,29 +1023,26 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 // maxScroll with an eased scroll restarts every frame and visibly
                 // lags behind the bar, which is why growing felt desynced while
                 // shrinking (a plain clamp) felt fine.
-                scrollToBottom = false;
-                scrollY = maxScroll;
-                scrollTarget = maxScroll;
-                scrollAnimActive = false;
+                worldScroll.scrollToBottom(false);
             } else {
-                scrollToBottom = true;
+                worldScroll.stickToBottom();
             }
         }
-        updateScrollAnimation();
+        worldScroll.updateAnimation(System.currentTimeMillis());
         canvas.save();
         try {
             SkiaDraw.clip(canvas, x, y, width, height, 0.0F);
-            canvas.translate(0.0F, -scrollY);
+            canvas.translate(0.0F, -worldScroll.getScrollY());
             long now = System.currentTimeMillis();
             pruneEntranceSettled(now);
             float cursorY = y;
             for (ChatMessage msg : messages) {
                 float h = messageHeight(msg, width);
                 float offset = cursorY - y;
-                if (offset > scrollY + height + 80.0F) {
+                if (offset > worldScroll.getScrollY() + height + 80.0F) {
                     break;
                 }
-                if (offset + h >= scrollY - 80.0F) {
+                if (offset + h >= worldScroll.getScrollY() - 80.0F) {
                     float t = entranceProgress(msg, now);
                     boolean layered = t < 1.0F;
                     if (!layered) {
@@ -1113,16 +1081,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     // hit-testing can compare them directly against the mouse.
                     for (int i = spanStart; i < clickableSpans.size(); i++) {
                         ClickableSpan s = clickableSpans.get(i);
-                        clickableSpans.set(i, new ClickableSpan(s.x(), s.y() - scrollY, s.w(), s.h(), s.style()));
+                        clickableSpans.set(i, new ClickableSpan(s.x(), s.y() - worldScroll.getScrollY(), s.w(), s.h(), s.style()));
                     }
                     if (layered) {
                         canvas.restore();
                     }
                     canvas.restore();
                     // Hits are hit-tested in screen space; drawing happens in content space.
-                    hits.add(new MessageHit(hit.message(), hit.index(), hit.x(), hit.y() - scrollY, hit.maxWidth(),
-                            hit.bottom() - scrollY, hit.avatarX(), hit.avatarY() - scrollY, hit.avatarSize(),
-                            hit.bubbleY() - scrollY, hit.bubbleX(), hit.bubbleWidth(), hit.bubbleBottom() - scrollY));
+                    hits.add(new MessageHit(hit.message(), hit.index(), hit.x(), hit.y() - worldScroll.getScrollY(), hit.maxWidth(),
+                            hit.bottom() - worldScroll.getScrollY(), hit.avatarX(), hit.avatarY() - worldScroll.getScrollY(), hit.avatarSize(),
+                            hit.bubbleY() - worldScroll.getScrollY(), hit.bubbleX(), hit.bubbleWidth(), hit.bubbleBottom() - worldScroll.getScrollY()));
                 } else {
                     // Left the viewport: drop the start timestamp only. The
                     // settled marker is deliberately kept so scrolling back up
@@ -1174,54 +1142,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         lastEntrancePrune = now;
         long cutoff = now - ENTRANCE_SETTLE_GUARD_MS;
         messageEnterSettled.removeIf(m -> m.getTimestamp() < cutoff);
-    }
-
-    /**
-     * Tuui WheelUtils-style scrolling: wheel only moves a target value and the
-     * actual offset eases toward it. Bottom-stickiness (e33chat pattern) retargets
-     * to maxScroll while the view is at the bottom.
-     */
-    private void updateScrollAnimation() {
-        long now = System.currentTimeMillis();
-        if (firstRender) {
-            scrollY = maxScroll;
-            scrollTarget = maxScroll;
-            scrollToBottom = false;
-            firstRender = false;
-            return;
-        }
-        // Stickiness follows the target: a wheel-up retarget immediately releases it.
-        boolean wasAtBottom = scrollTarget >= maxScroll - 3.0F;
-        if (scrollToBottom || wasAtBottom) {
-            scrollTarget = maxScroll;
-            scrollToBottom = false;
-            startScrollAnim(scrollTarget, SCROLL_ANIM_MS);
-        }
-        if (scrollAnimActive) {
-            float t = Math.min(1.0F, (now - scrollAnimStart) / (float) scrollAnimMs);
-            scrollY = scrollAnimFrom + (scrollAnimTo - scrollAnimFrom) * Easing.easeOutCubic(t);
-            if (t >= 1.0F) {
-                scrollY = scrollAnimTo;
-                scrollAnimActive = false;
-            }
-        }
-    }
-
-    private void startScrollAnim(float to, long durationMs) {
-        scrollTarget = to;
-        if (Math.abs(scrollY - to) <= 0.5F) {
-            scrollY = to;
-            scrollAnimActive = false;
-            return;
-        }
-        if (scrollAnimActive && scrollAnimTo == to) {
-            return;
-        }
-        scrollAnimFrom = scrollY;
-        scrollAnimTo = to;
-        scrollAnimStart = System.currentTimeMillis();
-        scrollAnimMs = durationMs;
-        scrollAnimActive = true;
     }
 
     private MessageHit drawMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
@@ -1444,14 +1364,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, imageW, bottom);
     }
 
-    private void recomputeMaxScroll(List<ChatMessage> messages, float width, float top, float height) {
+    private float measureContentHeight(List<ChatMessage> messages, float width) {
         float contentHeight = 0;
         for (ChatMessage msg : messages) {
             contentHeight += messageHeight(msg, width) + UiTokens.LIST_GAP;
         }
-        maxScroll = Math.max(0, contentHeight - height);
-        scrollY = Math.max(0, Math.min(scrollY, maxScroll));
-        scrollTarget = Math.max(0, Math.min(scrollTarget, maxScroll));
+        return contentHeight;
     }
 
     /**
@@ -2189,27 +2107,30 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Root pages have no world-chat message list / emoji panel to scroll yet,
-        // and must not let the hidden composer or suggestion layer see the wheel.
+        float mx = toVirtualX(mouseX);
+        float my = toVirtualY(mouseY);
         if (!isWorldChatPage()) {
+            UiLayout.Rect rootList = rootLayout().list;
+            if (rootList.contains(mx, my)) {
+                rootScroll.wheel((float) verticalAmount);
+                if (rootScroll.getMaxScroll() > 0.0F) {
+                    return true;
+                }
+            }
             return false;
         }
         // Suggestion popup scrolls first when open.
         if (chatInputSuggestor != null && chatInputSuggestor.mouseScrolled(verticalAmount)) {
             return true;
         }
-        float mx = toVirtualX(mouseX);
-        float my = toVirtualY(mouseY);
         if (emojiOpen && overEmojiPanel(mx, my)) {
             emojiScroll = Math.max(0, Math.min(
                     emojiScroll - (int) (verticalAmount * s(18)), emojiMaxScroll()));
             return true;
         }
         UiLayout.Rect list = layout().list;
-        if (list.contains((float) mx, (float) my)) {
-            scrollToBottom = false;
-            scrollTarget = Math.max(0, Math.min(scrollTarget - (float) verticalAmount * 45.0F, maxScroll));
-            startScrollAnim(scrollTarget, WHEEL_ANIM_MS);
+        if (list.contains(mx, my)) {
+            worldScroll.wheel((float) verticalAmount);
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
@@ -2400,12 +2321,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // them before the hidden chat field/suggestion layer can see the click,
         // and consume root clicks so ChatScreen's composer never gets focus.
         if (!isWorldChatPage()) {
+            UiLayout root = rootLayout();
+            if (button == 0 && overScrollbarTrack(root, mx, my, rootScroll)) {
+                rootScroll.beginDrag(my);
+                return true;
+            }
             if (button == 0 && handleBottomTabClick(mx, my)) {
                 return true;
             }
             if (topPage() == AppPage.CHAT_LIST
                     && button == 0
-                    && conversationListPage.mouseClicked(mx, my, rootLayout())) {
+                    && conversationListPage.mouseClicked(mx, my, root)) {
                 return true;
             }
             return true;
@@ -2520,10 +2446,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         chatField.setFocused(false);
 
         // Scrollbar drag start
-        if (button == 0 && overScrollbarTrack(layout, mx, my)) {
-            draggingScrollbar = true;
-            dragStartY = my;
-            dragStartScroll = scrollY;
+        if (button == 0 && overScrollbarTrack(layout, mx, my, worldScroll)) {
+            worldScroll.beginDrag(my);
             return true;
         }
 
@@ -2613,9 +2537,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        // Root pages have no world-chat selection/scrollbar drag state, and must
-        // not forward drags to the hidden composer either.
+        // Root pages have no world-chat selection state, but they do share the
+        // scrollbar drag model; do not forward drags to the hidden composer.
         if (!isWorldChatPage()) {
+            if (button == 0 && rootScroll.isDragging()) {
+                rootScroll.dragTo(toVirtualY(mouseY), rootLayout().list.h());
+                return true;
+            }
             return false;
         }
         // Any drag while a click is pending must suppress the click-on-release,
@@ -2656,9 +2584,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        // Root pages have no world-chat click-on-release/scrollbar handling, and
-        // must not forward releases to the hidden composer either.
+        // Root pages have no world-chat click-on-release handling, but the
+        // root scrollbar drag still ends here.
         if (!isWorldChatPage()) {
+            if (button == 0 && rootScroll.isDragging()) {
+                rootScroll.endDrag();
+                return true;
+            }
             return false;
         }
         if (button == 0) {
@@ -2686,8 +2618,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 return true;
             }
         }
-        if (draggingScrollbar && button == 0) {
-            draggingScrollbar = false;
+        if (worldScroll.isDragging() && button == 0) {
+            worldScroll.endDrag();
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -3024,7 +2956,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             inputSetText("");
             replyTarget = null;
             inputFocused = true;
-            scrollToBottom = true;
+            worldScroll.stickToBottom();
         }
     }
 
@@ -3202,8 +3134,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         List<String> lines = wrappedInput(current.inputTextMaxWidth());
         int targetLines = Math.min(UiTokens.INPUT_MAX_LINES, Math.max(1, lines.size()));
         float targetExtra = (targetLines - 1) * lineH;
-        if (Math.abs(targetExtra - inputExtraH) > 0.5F && scrollTarget >= maxScroll - 3.0F) {
-            scrollToBottom = true;
+        if (Math.abs(targetExtra - inputExtraH) > 0.5F
+                && worldScroll.getTarget() >= worldScroll.getMaxScroll() - 3.0F) {
+            worldScroll.stickToBottom();
         }
         inputHeightAnim.animateTo(UiMotion.INPUT_GROW_MS, targetExtra);
         inputHeightAnim.update(frameDt);
