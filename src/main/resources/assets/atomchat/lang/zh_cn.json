@@ -1,6 +1,8 @@
 {
   "atomchat.screen.title": "AtomChat",
   "atomchat.channel.world": "世界频道",
+  "atomchat.conversation.world": "世界频道",
+  "atomchat.conversation.world.subtitle": "点击进入公共聊天",
   "atomchat.tab.chat": "聊天",
   "atomchat.tab.profile": "个人",
   "atomchat.tab.settings": "设置",

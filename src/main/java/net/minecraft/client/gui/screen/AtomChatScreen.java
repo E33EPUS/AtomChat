@@ -14,6 +14,7 @@ import com.atom.chat.image.ImageUploader;
 import com.atom.chat.nav.AppPage;
 import com.atom.chat.nav.AtomChatState;
 import com.atom.chat.nav.NavigationStack;
+import com.atom.chat.page.ConversationListPage;
 import com.atom.chat.page.PageHost;
 import com.atom.chat.page.PlaceholderPage;
 import com.atom.chat.font.FontManager;
@@ -86,7 +87,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private final NavigationStack<AppPage> navigation;
 
-    private final PlaceholderPage chatPlaceholderPage = new PlaceholderPage(AppPage.CHAT_LIST);
+    private final ConversationListPage conversationListPage = new ConversationListPage(this);
     private final PlaceholderPage profilePage = new PlaceholderPage(AppPage.PROFILE);
     private final PlaceholderPage settingsPage = new PlaceholderPage(AppPage.SETTINGS);
 
@@ -761,7 +762,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private void drawRootPage(Canvas canvas, UiLayout layout) {
         if (topPage() == AppPage.CHAT_LIST) {
-            chatPlaceholderPage.render(canvas, layout);
+            conversationListPage.render(canvas, layout);
         } else if (topPage() == AppPage.PROFILE) {
             profilePage.render(canvas, layout);
         } else if (topPage() == AppPage.SETTINGS) {
@@ -2382,6 +2383,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // world-chat handling below.
         if (!isWorldChatPage()) {
             if (button == 0 && handleBottomTabClick(mx, my)) {
+                return true;
+            }
+            if (topPage() == AppPage.CHAT_LIST && conversationListPage.mouseClicked(mx, my, rootLayout())) {
                 return true;
             }
             if (topPage() == AppPage.PROFILE || topPage() == AppPage.SETTINGS) {

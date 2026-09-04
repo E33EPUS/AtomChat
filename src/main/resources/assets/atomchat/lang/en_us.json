@@ -1,6 +1,8 @@
 {
   "atomchat.screen.title": "AtomChat",
   "atomchat.channel.world": "World Channel",
+  "atomchat.conversation.world": "World Channel",
+  "atomchat.conversation.world.subtitle": "Tap to open the public chat",
   "atomchat.tab.chat": "Chat",
   "atomchat.tab.profile": "Profile",
   "atomchat.tab.settings": "Settings",
