@@ -106,8 +106,15 @@ public final class UiTokens {
     public static final float MENU_W = s(110);
     public static final float MENU_H = s(64);
 
-    // Bottom tab bar (root pages only; hidden on detail pages)
-    public static final float TAB_BAR_H = s(64);
+    // Bottom tab bar (root pages only; hidden on detail pages). The bar height
+    // is derived from the icon/label stack so rendering never needs to guess.
+    public static final float TAB_ICON_TOP = s(7);
+    public static final float TAB_ICON_SIZE = s(22);
+    public static final float TAB_LABEL_GAP = s(2);
+    public static final float TAB_LABEL_FONT = s(11);
+    public static final float TAB_BOTTOM_PAD = s(5);
+    public static final float TAB_BAR_H = TAB_ICON_TOP + TAB_ICON_SIZE + TAB_LABEL_GAP
+            + s(13) + TAB_BOTTOM_PAD;
     /** Vertical inset between the root content list and content rows/controls. */
     public static final float ROOT_CONTENT_GAP = s(10);
 

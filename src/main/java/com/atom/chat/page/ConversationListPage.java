@@ -35,15 +35,6 @@ public final class ConversationListPage {
     }
 
     public void render(Canvas canvas, UiLayout layout) {
-        SkiaDraw.drawRoundedRect(canvas, layout.header.x(), layout.header.y(),
-                layout.header.w(), layout.header.h(), UiTokens.HEADER_RADIUS,
-                Color.makeARGB(60, 255, 255, 255));
-        Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
-        SkiaFontRenderer.drawTextCentered(canvas, titleFont, tr("atomchat.tab.chat"),
-                layout.header.x() + layout.header.w() / 2.0F,
-                layout.header.y() + layout.header.h() / 2.0F,
-                Color.makeARGB(255, 255, 255, 255));
-
         UiLayout.Rect row = rowRect(layout);
         SkiaDraw.drawRoundedRect(canvas, row.x(), row.y(), row.w(), row.h(),
                 s(12), Color.makeARGB(60, 255, 255, 255));
