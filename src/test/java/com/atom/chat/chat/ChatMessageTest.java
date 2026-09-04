@@ -1,9 +1,11 @@
 package com.atom.chat.chat;
 
+import com.atom.chat.text.RichText;
 import net.minecraft.text.Text;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatMessageTest {
     @Test
@@ -18,5 +20,45 @@ class ChatMessageTest {
         ChatMessage msg = new ChatMessage(Text.literal("<Alice> hi"), false, false,
                 null, null, null, "Alice", "Alice", null);
         assertEquals("hi", msg.getContentText());
+    }
+
+    @Test
+    void richPartsAreStored() {
+        RichText sender = RichText.literal("Alice");
+        RichText content = RichText.literal("hi").linkifyUrls();
+        ChatMessage msg = new ChatMessage(Text.literal("<Alice> hi"), false, false,
+                null, null, null, "Alice", "Alice", "hi", sender, content);
+        assertEquals("Alice", msg.getSenderRich().getString());
+        assertEquals("hi", msg.getContentRich().getString());
+    }
+
+    @Test
+    void legacyConstructorBuildsPlainRichParts() {
+        ChatMessage msg = new ChatMessage(Text.literal("<Alice> hi"), false, false,
+                null, null, null, "Alice", "Alice", "hi");
+        assertEquals("Alice", msg.getSenderRich().getString());
+        assertEquals("hi", msg.getContentRich().getString());
+    }
+
+    @Test
+    void systemMessageHasEmptySenderRich() {
+        ChatMessage msg = new ChatMessage(Text.literal("Server: hello"), false, true,
+                null, null, null, null, null, null);
+        assertTrue(msg.getSenderRich().isEmpty());
+        assertEquals("Server: hello", msg.getContentRich().getString());
+    }
+
+    @Test
+    void displayTextComesFromRichContent() {
+        ChatMessage msg = new ChatMessage(Text.literal("prefix"), false, false,
+                null, null, null, "Alice", "Alice", "plain", RichText.literal("Alice"),
+                RichText.literal("rich hi"));
+        assertEquals("rich hi", msg.getDisplayText());
+    }
+
+    @Test
+    void legacyQuotedConstructorPreservesDisplayText() {
+        ChatMessage msg = new ChatMessage(Text.literal("「引用 @Alice: hi」hello"), true, "Alice", "hi");
+        assertEquals("hello", msg.getDisplayText());
     }
 }
