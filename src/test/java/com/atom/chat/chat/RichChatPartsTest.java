@@ -59,6 +59,17 @@ class RichChatPartsTest {
     }
 
     @Test
+    void sliceContentLinkifiesBareUrls() {
+        Text line = Text.literal("[萌新]player>>see https://example.com/x now");
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "player", "player", "see https://example.com/x now", false))
+                .orElseThrow();
+        assertEquals("see https://example.com/x now", parts.content().getString());
+        assertTrue(parts.content().runs().stream().anyMatch(r -> r.style().getClickEvent() != null
+                && r.style().getClickEvent().getAction() == ClickEvent.Action.OPEN_URL));
+    }
+
+    @Test
     void emptyWhenMetaHasNoUsableName() {
         Text line = Text.literal("[系统]公告: 欢迎");
         assertTrue(ChatPipeline.sliceRichText(line, new SenderMeta(null, null, null, null, true)).isEmpty());
