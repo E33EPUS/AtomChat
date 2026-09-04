@@ -314,7 +314,7 @@ RichText senderRich = meta.senderComponent() != null ? RichText.of(meta.senderCo
 RichText contentRich = meta.contentComponent() != null ? RichText.of(meta.contentComponent()).linkifyUrls() : RichText.literal(content);
 ```
 
-`onGameMessage` 文本守卫路径没有组件，先用 Task 5 的 `ChatPipeline.sliceRichText` 切片；切片失败则保持系统灰字（已知玩家要求不满足）。
+`onGameMessage` 文本守卫路径没有组件，本轮先继续用 `RichText.literal(content)` 保持现状；Task 5 会把它替换为 `ChatPipeline.sliceRichText` 样式保留切片。
 
 - [ ] **Step 5: 运行测试确认通过**
 - [ ] **Step 6: Commit**
@@ -331,6 +331,7 @@ git commit -m "Carry styled sender and content components through capture"
 **Files:**
 - Modify: `src/main/java/com/atom/chat/chat/MessagePresentation.java`
 - Modify: `src/main/java/com/atom/chat/chat/ChatPipeline.java`
+- Modify: `src/main/java/com/atom/chat/mixin/ChatHudMixin.java`
 - Test: `src/test/java/com/atom/chat/chat/RichChatPartsTest.java`
 
 **Interfaces:**
@@ -346,7 +347,7 @@ git commit -m "Carry styled sender and content components through capture"
 void slicesDecoratedLine() {
     Text line = Text.literal("[萌新]player>>谁能给我钻石？")
             .setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/msg player ")));
-    RichChatParts parts = ChatPipeline.sliceRichText(line, SenderMeta.fromStrings(null, "player", "player", "谁能给我钻石？", false))
+    RichChatParts parts = ChatPipeline.sliceRichText(line, new SenderMeta(null, "player", "player", "谁能给我钻石？", false))
             .orElseThrow();
     assertEquals("[萌新]player", parts.sender().getString());
     assertEquals("谁能给我钻石？", parts.content().getString());
@@ -364,11 +365,23 @@ void slicesDecoratedLine() {
 4. `sender = full.slice(0, labelEnd)`，`content = full.slice(contentStart, full.length()).linkifyUrls()`。
 5. 解析失败返回 `Optional.empty()`。
 
-- [ ] **Step 4: 运行测试确认通过**
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: 接入 `ChatHudMixin`**
+
+在 Task 4 保留的“无组件文本守卫路径”中，不再直接用 `RichText.literal(content)`，改为：
+
+```java
+RichChatParts sliced = ChatPipeline.sliceRichText(message, meta);
+RichText senderRich = sliced != null ? sliced.sender() : RichText.empty();
+RichText contentRich = sliced != null ? sliced.content().linkifyUrls() : RichText.literal(content);
+```
+
+切片失败（名字不在已知玩家/不是玩家行）保持系统灰字，不误归玩家。
+
+- [ ] **Step 5: 运行测试确认通过**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/main/java/com/atom/chat/chat/MessagePresentation.java src/main/java/com/atom/chat/chat/ChatPipeline.java src/test/java/com/atom/chat/chat/RichChatPartsTest.java
+git add src/main/java/com/atom/chat/chat/MessagePresentation.java src/main/java/com/atom/chat/chat/ChatPipeline.java src/main/java/com/atom/chat/mixin/ChatHudMixin.java src/test/java/com/atom/chat/chat/RichChatPartsTest.java
 git commit -m "Slice styled sender and content from decorated chat lines"
 ```
 
