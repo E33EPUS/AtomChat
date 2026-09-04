@@ -37,6 +37,24 @@ class MessagePresentationTest {
     }
 
     @Test
+    void includesBracketSuffixDecorationInDisplayLabel() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("[VIP]Steve[AFK] >> hi", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("[VIP]Steve[AFK]", line.get().displayLabel());
+        assertEquals("hi", line.get().content());
+    }
+
+    @Test
+    void includesParenthesizedSuffixDecorationInDisplayLabel() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("Steve(VIP) : hi", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("Steve(VIP)", line.get().displayLabel());
+        assertEquals("hi", line.get().content());
+    }
+
+    @Test
     void longestNameWinsOverSubstring() {
         Optional<MessagePresentation.PlayerLine> line =
                 MessagePresentation.parseDecoratedPlayerLine("Steve2: hi", List.of("Steve", "Steve2"));

@@ -141,14 +141,63 @@ public final class MessagePresentation {
             }
         }
 
+        int labelEnd = labelTailEnd(text, after);
         int sep = skipSeparators(text, after);
         if (sep <= after || sep >= text.length()) {
             return Optional.empty();
         }
 
-        String displayLabel = text.substring(0, idx + cleanName.length());
+        String displayLabel = text.substring(0, labelEnd);
         return Optional.of(new PlayerLine(cleanName, displayLabel, text.substring(sep).strip(),
-                idx, after, after, sep));
+                idx, after, labelEnd, sep));
+    }
+
+    /**
+     * Finds the end of the player label tail after the bare matched name.
+     *
+     * <p>Label tails may contain § color-code pairs and whole bracket
+     * decorations such as {@code [AFK]}, {@code (VIP)}, {@code <AFK>} or
+     * {@code 【挂机】}. Whitespace is traversed but is not included as part of
+     * the label unless a decoration follows it, so trailing separator space is
+     * left to {@link #skipSeparators}.
+     */
+    private static int labelTailEnd(String text, int from) {
+        int labelEnd = from;
+        int i = from;
+        while (i < text.length()) {
+            char ch = text.charAt(i);
+            if (ch == '§' && i + 1 < text.length()) {
+                i += 2;
+                labelEnd = i;
+                continue;
+            }
+            char close = closeFor(ch);
+            if (close != '\0') {
+                int end = text.indexOf(close, i + 1);
+                if (end > i && end - i <= 32) {
+                    i = end + 1;
+                    labelEnd = i;
+                    continue;
+                }
+                break;
+            }
+            if (Character.isWhitespace(ch)) {
+                i++;
+                continue;
+            }
+            break;
+        }
+        return labelEnd;
+    }
+
+    private static char closeFor(char open) {
+        return switch (open) {
+            case '[' -> ']';
+            case '(' -> ')';
+            case '<' -> '>';
+            case '【' -> '】';
+            default -> '\0';
+        };
     }
 
     /**

@@ -39,6 +39,26 @@ class RichChatPartsTest {
     }
 
     @Test
+    void sliceKeepsBracketSuffixDecorationInSender() {
+        Text line = Text.literal("[VIP]Steve[AFK] >> hi");
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "Steve", "Steve", "hi", false))
+                .orElseThrow();
+        assertEquals("[VIP]Steve[AFK]", parts.sender().getString());
+        assertEquals("hi", parts.content().getString());
+    }
+
+    @Test
+    void sliceKeepsParenthesizedSuffixDecorationInSender() {
+        Text line = Text.literal("Steve(VIP) : hi");
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "Steve", "Steve", "hi", false))
+                .orElseThrow();
+        assertEquals("Steve(VIP)", parts.sender().getString());
+        assertEquals("hi", parts.content().getString());
+    }
+
+    @Test
     void emptyWhenMetaHasNoUsableName() {
         Text line = Text.literal("[系统]公告: 欢迎");
         assertTrue(ChatPipeline.sliceRichText(line, new SenderMeta(null, null, null, null, true)).isEmpty());
