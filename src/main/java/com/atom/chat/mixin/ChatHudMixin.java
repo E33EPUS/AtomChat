@@ -5,6 +5,7 @@ import com.atom.chat.chat.ChatPipeline;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.chat.MessageCapture;
 import com.atom.chat.chat.SenderMeta;
+import com.atom.chat.text.RichText;
 import net.minecraft.client.gui.screen.AtomChatScreen;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -60,8 +61,15 @@ public class ChatHudMixin {
         if (displayName == null) {
             displayName = meta.senderName();
         }
+        RichText senderRich = meta.senderComponent() != null
+                ? RichText.of(meta.senderComponent())
+                : RichText.empty();
+        RichText contentRich = meta.contentComponent() != null
+                ? RichText.of(meta.contentComponent()).linkifyUrls()
+                : RichText.literal(content);
         ChatStore.get().add(new ChatMessage(message, false, meta.system(), null, null,
-                meta.senderUuid(), displayName, meta.profileName(), content));
+                meta.senderUuid(), displayName, meta.profileName(), content,
+                senderRich, contentRich));
     }
 
     private static boolean isOwn(SenderMeta meta, String raw, MinecraftClient client) {

@@ -1,5 +1,7 @@
 package com.atom.chat.chat;
 
+import net.minecraft.text.Style;
+import net.minecraft.text.Text;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -19,5 +21,19 @@ class SenderMetaTest {
         UUID uuid = UUID.randomUUID();
         SenderMeta meta = new SenderMeta(uuid, "Steve", "Steve", "hi", false);
         assertEquals(uuid, meta.senderUuid());
+    }
+
+    @Test
+    void carriesStyledComponents() {
+        Text sender = Text.literal("Alice").setStyle(Style.EMPTY.withUnderline(true));
+        SenderMeta meta = new SenderMeta(null, "Alice", "Alice", "hi", false, sender, Text.literal("hi"));
+        assertEquals(sender, meta.senderComponent());
+    }
+
+    @Test
+    void legacyConstructorLeavesComponentsNull() {
+        SenderMeta meta = new SenderMeta(null, "Alice", "Alice", "hi", false);
+        assertNull(meta.senderComponent());
+        assertNull(meta.contentComponent());
     }
 }

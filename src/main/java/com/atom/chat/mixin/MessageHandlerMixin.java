@@ -52,7 +52,8 @@ public class MessageHandlerMixin {
         UUID uuid = message.getSender() != null ? message.getSender() : gameProfile.getId();
         String profile = gameProfile.getName();
         String content = message.getContent().getString();
-        MessageCapture.set(new SenderMeta(uuid, profile, profile, content, false));
+        MessageCapture.set(new SenderMeta(uuid, profile, profile, content, false,
+                params.name(), message.getContent()));
     }
 
     /**
@@ -75,7 +76,8 @@ public class MessageHandlerMixin {
                     profile = info.getProfile().getName();
                 }
             }
-            MessageCapture.set(new SenderMeta(uuid, display, profile, null, false));
+            MessageCapture.set(new SenderMeta(uuid, display, profile, null, false,
+                    params.name(), message));
             return;
         }
         SenderMeta parsed = ChatPipeline.tryParsePlayerLine(decorated);

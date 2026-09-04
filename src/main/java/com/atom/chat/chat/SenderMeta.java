@@ -1,5 +1,7 @@
 package com.atom.chat.chat;
 
+import net.minecraft.text.Text;
+
 import java.util.UUID;
 
 /**
@@ -7,22 +9,34 @@ import java.util.UUID;
  * Minecraft decorates the line for the chat HUD. It travels through a short
  * TTL handoff to {@link ChatHudMixin}, which builds the final {@link ChatMessage}.
  *
- * @param senderUuid   real player UUID when known, else {@code null} (nil UUID is
- *                     stored as null to keep "unknown" explicit)
- * @param senderName   display name to show in the bubble (tab/nick/decorated name
- *                     when known, otherwise profile/raw name)
- * @param profileName  real profile name used for skin/identity lookups
- * @param contentText  message body without sender decorations (may be null when
- *                     the consumer must fall back to the full decorated line)
- * @param system       true when the line is a system/broadcast message
+ * @param senderUuid       real player UUID when known, else {@code null} (nil UUID is
+ *                         stored as null to keep "unknown" explicit)
+ * @param senderName       display name to show in the bubble (tab/nick/decorated name
+ *                         when known, otherwise profile/raw name)
+ * @param profileName      real profile name used for skin/identity lookups
+ * @param contentText      message body without sender decorations (may be null when
+ *                         the consumer must fall back to the full decorated line)
+ * @param system           true when the line is a system/broadcast message
+ * @param senderComponent  optional decorated sender {@link Text} captured before the
+ *                         final HUD line is built; {@code null} when only text parsing
+ *                         is available (system/text-guard paths)
+ * @param contentComponent optional message-body {@link Text} captured before the final
+ *                         HUD line is built; {@code null} when only text parsing is
+ *                         available
  */
 public record SenderMeta(UUID senderUuid, String senderName, String profileName,
-                         String contentText, boolean system) {
+                         String contentText, boolean system, Text senderComponent,
+                         Text contentComponent) {
     public SenderMeta {
         senderUuid = senderUuid != null && senderUuid.equals(NIL_UUID) ? null : senderUuid;
         senderName = clean(senderName);
         profileName = clean(profileName);
         contentText = clean(contentText);
+    }
+
+    public SenderMeta(UUID senderUuid, String senderName, String profileName,
+                      String contentText, boolean system) {
+        this(senderUuid, senderName, profileName, contentText, system, null, null);
     }
 
     private static final UUID NIL_UUID = new UUID(0L, 0L);
