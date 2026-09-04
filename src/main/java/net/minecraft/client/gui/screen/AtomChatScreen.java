@@ -73,6 +73,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class AtomChatScreen extends ChatScreen {
+    /** Which context menu is open: normal message bubble actions or player-avatar actions. */
+    private enum ContextMenuMode { BUBBLE, AVATAR }
+
     private final String originalChatText;
     private final SkiaGraphics graphics = new SkiaGraphics();
     private final ImageUploader imageUploader = new ImageUploader();
@@ -95,10 +98,11 @@ public class AtomChatScreen extends ChatScreen {
     private ChatMessage contextMessage;
     private float contextX;
     private float contextY;
+    private ContextMenuMode contextMenuMode = ContextMenuMode.BUBBLE;
 
     // Per-cell hover fade shared by the emoji / kaomoji / emote grids.
     private final Map<Integer, Float> cellHover = new HashMap<>();
-    private final float[] contextMenuHover = {0.0F, 0.0F, 0.0F};
+    private final float[] contextMenuHover = new float[4];
     // Emoji tab transition: double-layer content slide + sliding indicator.
     private final Animator tabContentAnim = new Animator(Easing::easeInOutCubic);
     private final Animator tabIndicatorAnim = new Animator(Easing::easeInOutCubic);
@@ -137,6 +141,14 @@ public class AtomChatScreen extends ChatScreen {
             + " M7 6 L7 9 M10 6 L10 9";
     private static final String ICON_SAVE_SVG = "M10 3 L10 11 M7 8 L10 11 L13 8"
             + " M4 15 L4 17 L16 17 L16 15";
+    // Avatar context-menu icons, same 20x20 line-icon language.
+    private static final String ICON_MENTION_SVG = "M10 3 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14"
+            + " M10 8 v3"
+            + " M7.5 10.5 a2.5 2.5 0 1 0 5 0 v-.5";
+    private static final String ICON_WHISPER_SVG = "M3 4 L17 4 L17 14 L10 14 L6 18 L7 14 L3 14 Z";
+    private static final String ICON_TP_SVG = "M3 17 L17 3 M17 3 L10 3 M17 3 L17 10";
+    private static final String ICON_BLOCK_SVG = "M10 3 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14"
+            + " M4.5 4.5 L15.5 15.5";
     private static final io.github.humbleui.skija.Path ICON_IMAGE_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_IMAGE_SVG);
     private static final io.github.humbleui.skija.Path ICON_EMOJI_PATH =
@@ -149,6 +161,14 @@ public class AtomChatScreen extends ChatScreen {
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_QUOTE_SVG);
     private static final io.github.humbleui.skija.Path ICON_SAVE_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_SAVE_SVG);
+    private static final io.github.humbleui.skija.Path ICON_MENTION_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_MENTION_SVG);
+    private static final io.github.humbleui.skija.Path ICON_WHISPER_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_WHISPER_SVG);
+    private static final io.github.humbleui.skija.Path ICON_TP_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_TP_SVG);
+    private static final io.github.humbleui.skija.Path ICON_BLOCK_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_BLOCK_SVG);
 
     private static final Pattern CICODE = Pattern.compile(
             "\\[\\[CICode,url=([^,\\]]+),name=([^,\\]]*)(?:,w=(\\d+),h=(\\d+))?\\]\\]");
@@ -177,6 +197,7 @@ public class AtomChatScreen extends ChatScreen {
     private float emojiAnim;
     private float contextAnim;
     private ChatMessage lastContextMessage;
+    private ContextMenuMode lastContextMenuMode = ContextMenuMode.BUBBLE;
     private long frameDt = 16;
     private long lastFrameMs = System.currentTimeMillis();
     private boolean draggingScrollbar;
@@ -1860,8 +1881,10 @@ public class AtomChatScreen extends ChatScreen {
             }
             return;
         }
-        boolean imageMessage = extractImageUrl(shown.getRawText()) != null;
-        int rows = imageMessage ? 3 : 2;
+        ContextMenuMode mode = contextMessage != null ? contextMenuMode : lastContextMenuMode;
+        boolean avatarMenu = mode == ContextMenuMode.AVATAR;
+        boolean imageMessage = !avatarMenu && extractImageUrl(shown.getRawText()) != null;
+        int rows = avatarMenu ? 4 : (imageMessage ? 3 : 2);
         float rowH = UiTokens.MENU_H / 2.0F;
         float menuH = rowH * rows;
         float menuW = UiTokens.MENU_W;
@@ -1893,16 +1916,8 @@ public class AtomChatScreen extends ChatScreen {
                     SkiaDraw.drawRoundedRect(canvas, menuX + s(4), rowY + s(4), menuW - s(8), rowH - s(8),
                             s(6), Color.makeARGB((int) (55.0F * hov), 255, 255, 255));
                 }
-                String label = switch (row) {
-                    case 0 -> tr("atomchat.context.copy");
-                    case 1 -> tr("atomchat.context.quote");
-                    default -> tr("atomchat.context.save");
-                };
-                io.github.humbleui.skija.Path icon = switch (row) {
-                    case 0 -> ICON_COPY_PATH;
-                    case 1 -> ICON_QUOTE_PATH;
-                    default -> ICON_SAVE_PATH;
-                };
+                String label = avatarMenu ? avatarContextLabel(row) : bubbleContextLabel(row, imageMessage);
+                io.github.humbleui.skija.Path icon = avatarMenu ? avatarContextIcon(row) : bubbleContextIcon(row, imageMessage);
                 drawIconCentered(canvas, icon, menuX + s(18), rowY + rowH / 2.0F, s(16), textPrimary());
                 SkiaFontRenderer.drawText(canvas, menuFont, label, menuX + s(36),
                         SkiaFontRenderer.centerBaselineY(menuFont, rowY + rowH / 2.0F), textPrimary());
@@ -1910,6 +1925,58 @@ public class AtomChatScreen extends ChatScreen {
             canvas.restore();
         }
         canvas.restore();
+    }
+
+    private static String bubbleContextLabel(int row, boolean imageMessage) {
+        if (!imageMessage) {
+            return switch (row) {
+                case 0 -> tr("atomchat.context.copy");
+                case 1 -> tr("atomchat.context.quote");
+                default -> tr("atomchat.context.save");
+            };
+        }
+        return switch (row) {
+            case 0 -> tr("atomchat.context.copy");
+            case 1 -> tr("atomchat.context.quote");
+            case 2 -> tr("atomchat.context.save");
+            default -> "";
+        };
+    }
+
+    private static io.github.humbleui.skija.Path bubbleContextIcon(int row, boolean imageMessage) {
+        if (!imageMessage) {
+            return switch (row) {
+                case 0 -> ICON_COPY_PATH;
+                case 1 -> ICON_QUOTE_PATH;
+                default -> ICON_SAVE_PATH;
+            };
+        }
+        return switch (row) {
+            case 0 -> ICON_COPY_PATH;
+            case 1 -> ICON_QUOTE_PATH;
+            case 2 -> ICON_SAVE_PATH;
+            default -> ICON_SAVE_PATH;
+        };
+    }
+
+    private static String avatarContextLabel(int row) {
+        return switch (row) {
+            case 0 -> tr("atomchat.context.mention");
+            case 1 -> tr("atomchat.context.whisper");
+            case 2 -> tr("atomchat.context.tp");
+            case 3 -> tr("atomchat.context.block");
+            default -> "";
+        };
+    }
+
+    private static io.github.humbleui.skija.Path avatarContextIcon(int row) {
+        return switch (row) {
+            case 0 -> ICON_MENTION_PATH;
+            case 1 -> ICON_WHISPER_PATH;
+            case 2 -> ICON_TP_PATH;
+            case 3 -> ICON_BLOCK_PATH;
+            default -> ICON_MENTION_PATH;
+        };
     }
 
     /**
@@ -1920,8 +1987,30 @@ public class AtomChatScreen extends ChatScreen {
     private void closeContextMenu() {
         if (contextMessage != null) {
             lastContextMessage = contextMessage;
+            lastContextMenuMode = contextMenuMode;
             contextMessage = null;
         }
+    }
+
+    /** Avatar menus only make sense for another player with a real sender identity. */
+    private static boolean canOpenAvatarMenu(ChatMessage msg) {
+        if (msg == null || msg.isSystem() || msg.isOwn()) {
+            return false;
+        }
+        return msg.getSenderName() != null || msg.getProfileName() != null;
+    }
+
+    /**
+     * Avatar context-menu actions. Row 0 (@ mention) is already wired because it
+     * is the direct replacement for the old single-left-click behavior. Whisper /
+     * Teleport / Block intentionally do nothing yet — the menu framework is the
+     * current step, and each action is wired in its own feature pass.
+     */
+    private void performAvatarMenuAction(int row, ChatMessage message) {
+        if (row == 0) {
+            inputAppend("@" + messageSenderName(message) + " ");
+        }
+        // TODO(feature): row 1 whisper, row 2 teleport, row 3 block.
     }
 
     private void copyToClipboard(String text) {
@@ -2173,12 +2262,14 @@ public class AtomChatScreen extends ChatScreen {
         }
 
         // Context menu click. Remember the target before dismissing so a
-        // right-click on the same bubble toggles instead of reopening.
+        // right-click on the same bubble/avatar toggles instead of reopening.
         ChatMessage menuBefore = contextMessage;
+        ContextMenuMode menuBeforeMode = contextMenuMode;
         if (contextMessage != null) {
             float menuW = UiTokens.MENU_W;
-            boolean imageMessage = extractImageUrl(contextMessage.getRawText()) != null;
-            int rows = imageMessage ? 3 : 2;
+            boolean avatarMenu = contextMenuMode == ContextMenuMode.AVATAR;
+            boolean imageMessage = !avatarMenu && extractImageUrl(contextMessage.getRawText()) != null;
+            int rows = avatarMenu ? 4 : (imageMessage ? 3 : 2);
             float rowH = UiTokens.MENU_H / 2.0F;
             float menuH = rowH * rows;
             float menuX = Math.min(contextX, panelX + panelWidth() - menuW - s(8));
@@ -2187,7 +2278,9 @@ public class AtomChatScreen extends ChatScreen {
                     && (float) my >= menuY && (float) my <= menuY + menuH;
             if (inside && button == 0) {
                 int row = (int) ((my - menuY) / rowH);
-                if (row == 0) {
+                if (avatarMenu) {
+                    performAvatarMenuAction(row, contextMessage);
+                } else if (row == 0) {
                     copyToClipboard(contextMessage.getContentText());
                 } else if (row == 1) {
                     replyTarget = contextMessage;
@@ -2249,11 +2342,27 @@ public class AtomChatScreen extends ChatScreen {
             pendingClickMoved = false;
         }
 
-        // Message interactions. Right-click only opens the bubble menu when the
-        // pointer is actually on the bubble, not on the name band or avatar.
+        // Message interactions. Left avatar click only arms the double-click
+        // poke; single-click @ is deliberately gone (use the right-click menu).
+        // Right-click opens the bubble menu only when the pointer is actually on
+        // the bubble; right-click on a real player's avatar opens the avatar menu.
         for (MessageHit hit : hits) {
             if (my < hit.y() || my > hit.bottom()) {
                 continue;
+            }
+            if (button == 1 && hit.avatarSize() > 0F
+                    && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
+                    && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()
+                    && canOpenAvatarMenu(hit.message())) {
+                // Right-clicking the avatar the avatar menu is already on closes it.
+                if (menuBefore == hit.message() && menuBeforeMode == ContextMenuMode.AVATAR) {
+                    return true;
+                }
+                contextMenuMode = ContextMenuMode.AVATAR;
+                contextMessage = hit.message();
+                contextX = mx;
+                contextY = my;
+                return true;
             }
             if (button == 1 && !hit.message().isSystem()
                     && mx >= hit.bubbleX() && mx <= hit.bubbleX() + hit.bubbleWidth()
@@ -2262,6 +2371,7 @@ public class AtomChatScreen extends ChatScreen {
                 if (menuBefore == hit.message()) {
                     return true;
                 }
+                contextMenuMode = ContextMenuMode.BUBBLE;
                 contextMessage = hit.message();
                 contextX = mx;
                 contextY = my;
@@ -2290,7 +2400,8 @@ public class AtomChatScreen extends ChatScreen {
                     }
                 }
             }
-            if (button == 0 && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
+            if (button == 0 && hit.avatarSize() > 0F
+                    && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
                     && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()) {
                 long now = System.currentTimeMillis();
                 if (now - lastAvatarClickTime < 350 && lastAvatarClickIndex == hit.index()) {
@@ -2300,8 +2411,6 @@ public class AtomChatScreen extends ChatScreen {
                 } else {
                     lastAvatarClickTime = now;
                     lastAvatarClickIndex = hit.index();
-                    inputAppend("@" + messageSenderName(hit.message()) + " ");
-                    inputFocused = true;
                 }
                 return true;
             }
