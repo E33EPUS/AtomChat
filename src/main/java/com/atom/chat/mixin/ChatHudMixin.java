@@ -1,5 +1,6 @@
 package com.atom.chat.mixin;
 
+import com.atom.chat.chat.ChatClassifier;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatPipeline;
 import com.atom.chat.chat.ChatStore;
@@ -35,8 +36,16 @@ public class ChatHudMixin {
 
         SenderMeta meta = MessageCapture.consume();
         if (meta == null) {
-            // No channel-level identity: keep the old tolerant fallback so a
-            // mod/server path we do not intercept still shows something sane.
+            // No channel-level identity: translation-key system lines are
+            // authoritative and must stay system even if their rendered text
+            // happens to look like a player line. Other routes keep the old
+            // tolerant text fallback so unhandled player/private/unknown
+            // messages still show something sane.
+            if (ChatClassifier.classifyByKey(message) == ChatClassifier.Route.SYSTEM) {
+                ChatStore.get().add(new ChatMessage(message, false, true, null, null,
+                        null, null, null, null));
+                return;
+            }
             FallbackIdentity fb = parseAngleFallback(raw);
             if (fb != null && client.player != null && fb.name().equals(client.player.getName().getString())) {
                 // Own message echo: already added locally by AtomChatScreen.

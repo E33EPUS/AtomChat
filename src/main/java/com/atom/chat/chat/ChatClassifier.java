@@ -15,6 +15,13 @@ import java.util.UUID;
  * <p>Trimmed port of e33chat's ChatClassifier (MIT, same author).
  */
 public final class ChatClassifier {
+    public enum Route {
+        PLAYER,
+        SYSTEM,
+        PRIVATE,
+        UNKNOWN
+    }
+
     private ChatClassifier() {
     }
 
@@ -41,22 +48,56 @@ public final class ChatClassifier {
     }
 
     /**
-     * @return true for vanilla system/broadcast lines that must never be claimed
-     *         as player chat (advancements/deaths/joins/admin/emote/team).
+     * Classifies a vanilla chat message by its translation key.
+     *
+     * <p>PLAYER covers signed/team player chat; PRIVATE is reserved for future
+     * private-message UI; SYSTEM covers vanilla broadcasts that must not be
+     * claimed as player chat; anything else is UNKNOWN and may be inspected by
+     * the tolerant text fallback.
      */
-    public static boolean isVanillaBroadcast(Text message) {
+    public static Route classifyByKey(Text message) {
         if (message.getContent() instanceof net.minecraft.text.TranslatableTextContent tc) {
             String key = tc.getKey();
-            return key.startsWith("chat.type.advancement.")
-                    || key.startsWith("death.")
-                    || key.startsWith("multiplayer.player.")
-                    || key.startsWith("commands.")
-                    || key.equals("chat.type.admin")
-                    || key.equals("chat.type.announcement")
-                    || key.equals("chat.type.emote")
-                    || key.startsWith("chat.type.team.");
+            if (isPlayerKey(key)) {
+                return Route.PLAYER;
+            }
+            if (isPrivateKey(key)) {
+                return Route.PRIVATE;
+            }
+            if (isSystemKey(key)) {
+                return Route.SYSTEM;
+            }
         }
-        return false;
+        return Route.UNKNOWN;
+    }
+
+    /**
+     * @return true for vanilla system/broadcast lines that must never be claimed
+     *         as player chat (advancements/deaths/joins/admin/emote/commands).
+     */
+    public static boolean isVanillaBroadcast(Text message) {
+        return classifyByKey(message) == Route.SYSTEM;
+    }
+
+    private static boolean isPlayerKey(String key) {
+        return key.equals("chat.type.text")
+                || key.equals("chat.type.team.text")
+                || key.equals("chat.type.team.sent");
+    }
+
+    private static boolean isPrivateKey(String key) {
+        return key.equals("commands.message.display.incoming")
+                || key.equals("commands.message.display.outgoing");
+    }
+
+    private static boolean isSystemKey(String key) {
+        return key.startsWith("chat.type.advancement.")
+                || key.startsWith("death.")
+                || key.startsWith("multiplayer.player.")
+                || key.startsWith("commands.")
+                || key.equals("chat.type.admin")
+                || key.equals("chat.type.announcement")
+                || key.equals("chat.type.emote");
     }
 
     /**
