@@ -1,6 +1,12 @@
 {
   "atomchat.screen.title": "AtomChat",
   "atomchat.channel.world": "World Channel",
+  "atomchat.tab.chat": "Chat",
+  "atomchat.tab.profile": "Profile",
+  "atomchat.tab.settings": "Settings",
+  "atomchat.page.chat.placeholder": "Chat list (coming soon)",
+  "atomchat.page.profile.placeholder": "Profile (coming soon)",
+  "atomchat.page.settings.placeholder": "Settings (coming soon)",
   "atomchat.reply.to": "Reply to @%s: %s",
   "atomchat.input.placeholder": "Type a message or drag an image here...",
   "atomchat.input.uploading": "Uploading image…",

@@ -14,6 +14,8 @@ import com.atom.chat.image.ImageUploader;
 import com.atom.chat.nav.AppPage;
 import com.atom.chat.nav.AtomChatState;
 import com.atom.chat.nav.NavigationStack;
+import com.atom.chat.page.PageHost;
+import com.atom.chat.page.PlaceholderPage;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.mixin.MouseHandlerAccessor;
 import com.atom.chat.render.Animator;
@@ -75,7 +77,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class AtomChatScreen extends ChatScreen {
+public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** Which context menu is open: normal message bubble actions or player-avatar actions. */
     private enum ContextMenuMode { BUBBLE, AVATAR }
 
@@ -83,6 +85,10 @@ public class AtomChatScreen extends ChatScreen {
     public enum AtomChatOpenMode { DIRECT_WORLD, RESTORE }
 
     private final NavigationStack<AppPage> navigation;
+
+    private final PlaceholderPage chatPlaceholderPage = new PlaceholderPage(AppPage.CHAT_LIST);
+    private final PlaceholderPage profilePage = new PlaceholderPage(AppPage.PROFILE);
+    private final PlaceholderPage settingsPage = new PlaceholderPage(AppPage.SETTINGS);
 
     private final String originalChatText;
     private final SkiaGraphics graphics = new SkiaGraphics();
@@ -177,6 +183,24 @@ public class AtomChatScreen extends ChatScreen {
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_TP_SVG);
     private static final io.github.humbleui.skija.Path ICON_BLOCK_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_BLOCK_SVG);
+
+    // Shell icons: bottom tabs and the future back affordance, same 20x20
+    // line-icon language as the toolbar/menus above.
+    private static final String ICON_TAB_CHAT_SVG = "M4 3 L16 3 L16 13 L10 13 L6 17 L7 13 L4 13 Z";
+    private static final String ICON_TAB_PROFILE_SVG = "M10 3 a3.5 3.5 0 1 1 0 7 a3.5 3.5 0 1 1 0 -7"
+            + " M4 17 C4 13.5 6.5 11.5 10 11.5 C13.5 11.5 16 13.5 16 17";
+    private static final String ICON_TAB_SETTINGS_SVG = "M10 6.5 a3.5 3.5 0 1 0 0 7 a3.5 3.5 0 1 0 0 -7"
+            + " M10 2.5 v2 M10 15.5 v2 M3.5 10 h2 M14.5 10 h2"
+            + " M5.3 5.3 l1.4 1.4 M13.3 13.3 l1.4 1.4 M14.7 5.3 l-1.4 1.4 M6.7 13.3 l-1.4 1.4";
+    private static final String ICON_BACK_SVG = "M4 10 L10 4 M4 10 L10 16 M4 10 L18 10";
+    private static final io.github.humbleui.skija.Path ICON_TAB_CHAT_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_TAB_CHAT_SVG);
+    private static final io.github.humbleui.skija.Path ICON_TAB_PROFILE_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_TAB_PROFILE_SVG);
+    private static final io.github.humbleui.skija.Path ICON_TAB_SETTINGS_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_TAB_SETTINGS_SVG);
+    private static final io.github.humbleui.skija.Path ICON_BACK_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_BACK_SVG);
 
     private static final Pattern CICODE = Pattern.compile(
             "\\[\\[CICode,url=([^,\\]]+),name=([^,\\]]*)(?:,w=(\\d+),h=(\\d+))?\\]\\]");
@@ -298,6 +322,29 @@ public class AtomChatScreen extends ChatScreen {
                 navigation.push(saved.get(i));
             }
         }
+    }
+
+    private AppPage topPage() {
+        return navigation.peek();
+    }
+
+    private boolean isWorldChatPage() {
+        return topPage() == AppPage.WORLD_CHAT;
+    }
+
+    @Override
+    public void pushPage(AppPage page) {
+        navigation.push(page);
+    }
+
+    @Override
+    public void popPage() {
+        navigation.pop();
+    }
+
+    @Override
+    public void switchRoot(AppPage root) {
+        navigation.replaceWithRoot(root);
     }
 
     public String getOriginalChatText() {
@@ -562,6 +609,17 @@ public class AtomChatScreen extends ChatScreen {
                     panel.w() - strokeWidth * 2.0F, panel.h() - strokeWidth * 2.0F, UiTokens.PANEL_RADIUS - strokeWidth), bg);
         }
 
+        // Root pages (CHAT_LIST / PROFILE / SETTINGS) share the panel chrome but
+        // draw their own header/body and the bottom tab bar instead of the
+        // world-chat composer/message stack.
+        if (!isWorldChatPage()) {
+            UiLayout root = rootLayout();
+            drawRootPage(canvas, root);
+            drawBottomTabBar(canvas, root);
+            drawBezel(canvas, layout);
+            return;
+        }
+
         // Header: inset card, same style as the input bar.
         try (Paint header = new Paint().setColor(Color.makeARGB(60, 255, 255, 255))) {
             canvas.drawRRect(RRect.makeXYWH(layout.header.x(), layout.header.y(), layout.header.w(), layout.header.h(), UiTokens.HEADER_RADIUS), header);
@@ -681,10 +739,70 @@ public class AtomChatScreen extends ChatScreen {
         drawContextMenu(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
 
         // Bezel ring last: nothing at the panel edge can sit on top of it.
+        drawBezel(canvas, layout);
+    }
+
+    /**
+     * White phone-style ring around the panel. Drawn last on both world-chat
+     * and root pages so no component can sit on top of the clean edge.
+     */
+    private void drawBezel(Canvas canvas, UiLayout layout) {
+        UiLayout.Rect panel = layout.rect();
+        float strokeWidth = s(3);
         try (Paint border = new Paint().setMode(PaintMode.STROKE).setStrokeWidth(strokeWidth).setColor(0xFFFFFFFF)) {
             canvas.drawRRect(RRect.makeXYWH(panel.x() + strokeWidth / 2.0F, panel.y() + strokeWidth / 2.0F,
                     panel.w() - strokeWidth, panel.h() - strokeWidth, UiTokens.PANEL_RADIUS), border);
         }
+    }
+
+    private UiLayout rootLayout() {
+        return UiLayout.ofRoot(panelX(), panelY(), panelWidth(), panelHeight());
+    }
+
+    private void drawRootPage(Canvas canvas, UiLayout layout) {
+        if (topPage() == AppPage.CHAT_LIST) {
+            chatPlaceholderPage.render(canvas, layout);
+        } else if (topPage() == AppPage.PROFILE) {
+            profilePage.render(canvas, layout);
+        } else if (topPage() == AppPage.SETTINGS) {
+            settingsPage.render(canvas, layout);
+        }
+    }
+
+    private void drawBottomTabBar(Canvas canvas, UiLayout layout) {
+        UiLayout.Rect bar = layout.tabBar;
+        if (bar.w() <= 0.0F) {
+            return;
+        }
+        SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), s(18),
+                Color.makeARGB(60, 255, 255, 255));
+        Font tabFont = FontManager.font(UiTokens.FONT_QUOTE);
+        AppPage[] roots = {AppPage.CHAT_LIST, AppPage.PROFILE, AppPage.SETTINGS};
+        io.github.humbleui.skija.Path[] icons = {
+                ICON_TAB_CHAT_PATH, ICON_TAB_PROFILE_PATH, ICON_TAB_SETTINGS_PATH
+        };
+        String[] labels = {
+                tr("atomchat.tab.chat"), tr("atomchat.tab.profile"), tr("atomchat.tab.settings")
+        };
+        for (int i = 0; i < 3; i++) {
+            float cellCenterX = bar.x() + bar.w() * (i + 0.5F) / 3.0F;
+            drawIconCentered(canvas, icons[i], cellCenterX, bar.y() + s(18), s(20), textPrimary());
+            SkiaFontRenderer.drawTextCentered(canvas, tabFont, labels[i], cellCenterX,
+                    bar.y() + bar.h() - s(12), textPrimary());
+        }
+    }
+
+    /** Routes a root-page click on one of the three bottom tab cells. */
+    private boolean handleBottomTabClick(float vmx, float vmy) {
+        UiLayout.Rect bar = rootLayout().tabBar;
+        if (bar.w() <= 0.0F || vmx < bar.x() || vmx > bar.right() || vmy < bar.y() || vmy > bar.bottom()) {
+            return false;
+        }
+        int index = Math.max(0, Math.min(2,
+                (int) ((vmx - bar.x()) / (bar.w() / 3.0F))));
+        AppPage root = index == 0 ? AppPage.CHAT_LIST : (index == 1 ? AppPage.PROFILE : AppPage.SETTINGS);
+        switchRoot(root);
+        return true;
     }
 
     private static float s(float v) {
@@ -2257,6 +2375,21 @@ public class AtomChatScreen extends ChatScreen {
         float panelX = panelX();
         float panelY = panelY();
         UiLayout layout = layout();
+
+        // Root pages have no world-chat composer/message interactions. The
+        // bottom tab bar is their only interactive chrome for now; placeholder
+        // profile/settings pages consume clicks so nothing falls through to the
+        // world-chat handling below.
+        if (!isWorldChatPage()) {
+            if (button == 0 && handleBottomTabClick(mx, my)) {
+                return true;
+            }
+            if (topPage() == AppPage.PROFILE || topPage() == AppPage.SETTINGS) {
+                // Placeholder pages consume clicks inside the panel.
+                return true;
+            }
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
 
         // The emoji toggle button is tested before the panel's own "click outside
         // dismisses" rule, otherwise closing and reopening in the same click nets

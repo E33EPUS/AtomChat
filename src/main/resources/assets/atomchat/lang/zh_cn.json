@@ -1,6 +1,12 @@
 {
   "atomchat.screen.title": "AtomChat",
   "atomchat.channel.world": "世界频道",
+  "atomchat.tab.chat": "聊天",
+  "atomchat.tab.profile": "个人",
+  "atomchat.tab.settings": "设置",
+  "atomchat.page.chat.placeholder": "会话列表（开发中）",
+  "atomchat.page.profile.placeholder": "个人档案（开发中）",
+  "atomchat.page.settings.placeholder": "设置（开发中）",
   "atomchat.reply.to": "回复 @%s: %s",
   "atomchat.input.placeholder": "请输入文本或拖动图片...",
   "atomchat.input.uploading": "图片上传中…",
