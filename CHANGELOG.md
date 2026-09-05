@@ -2,7 +2,7 @@
 
 ## v0.1.7
 
-### 中文
+### 更改/修复
 
 - **设置磁贴改方形**：四个磁贴从横矩形改为正方形，SVG 图标与文案作为一组垂直居中（图标在上、单行文案在下），移除副标题描述。
 - **关于页重排**：每个条目改为「标题上 / 值下」两行，修复第三方组件名与值互相覆盖。
@@ -16,7 +16,7 @@
 - **链接卡片提示重做**：「点击跳转」改为主字号纯白、垂直居中，作为卡片的主动作而非脚注。
 - **外观图标重绘**：从调色板改为三段调节滑杆（与「调整」分组语义一致，原图案点在磁贴尺寸下发虚）。
 
-### English
+### Change/Fix
 
 - **Square settings tiles**: the four tiles changed from wide rectangles to squares, with the SVG glyph and a single label grouped and vertically centred (icon above, one text line below); the subtitle captions are gone.
 - **About page relayout**: each entry is now two lines (title above, value below), fixing the third-party component names overlapping their values.
@@ -32,7 +32,7 @@
 
 ## v0.1.6
 
-### 中文
+### 更改/修复
 
 - **设置页上线**：底栏「设置」不再是占位页，改为 Win11 风格的 2×2 磁贴主页（外观 / 聊天 / 隐私与屏蔽 / 关于），每个磁贴带自绘线性 SVG 图标、标题与副标题说明。
 - **设置子页**：点击磁贴进入对应设置界面，复用与公屏/私聊一致的全宽 push/pop 转场；左上角返回箭头（或 Esc）返回，底部不再绘制 tab 栏，列表吃满面板高度。
@@ -43,8 +43,7 @@
 - **隐私语义可选**：屏蔽玩家原本会直接丢弃其公屏消息；现可关闭「隐藏被屏蔽玩家的消息」让公屏仍可见，但会话卡片仍灰化、私聊仍只读。
 - **布局**：`UiLayout` 新增 `DETAIL` 模式（无输入栏、无 tab 栏），并补充几何单测锁定列表恰好回收 tab 栏高度。
 
-### English
-
+### Change/Fix
 - **Settings page ships**: the Settings tab is no longer a placeholder but a Windows-11-style 2x2 tile grid (Appearance / Chat / Privacy & blocking / About), each tile with a hand-drawn line icon, title and caption.
 - **Settings sub-pages**: tapping a tile opens the section, reusing the same full-width push/pop transition as the public/private pages; back arrow (or Esc) returns, the tab bar is gone and the list uses the full panel height.
 - **Toggle switch**: every option card carries an iOS-proportioned switch (140ms easeOutCubic knob, accent blue when on, translucent white when off, pure white knob).
@@ -56,7 +55,7 @@
 
 ## v0.1.6
 
-### 中文
+### 更改/修复
 
 - **私聊名字去交互**：私聊页里对方名字不再有下划线/可点击，保留颜色与装饰；公屏名字点击行为不变。
 - **远端引用解析**：收到带 `「引用 @名字: 内容」` 前缀的公屏/私聊消息时，接收端会解析成引用胶囊 + 正文，不再把整段前缀当正文显示。
@@ -68,7 +67,7 @@
 - **引用图片不刷 URL**：引用图片消息时，引用内容改为绿色 `[图片]`/`[Image]`，不会把图片 URL/CICode 放进引用胶囊。
 - **公屏↔私聊切屏动画**：从公屏头像右键“私聊”进入/返回私聊时，消息列表现在使用与根页一致的全宽 push/pop 动画。
 
-### English
+### Change/Fix
 
 - **Private sender names are no longer interactive**: in private chats the other player's name no longer shows as an underlined clickable link; public chat names keep their click behaviour.
 - **Remote quote parsing**: incoming public/private messages with a `「引用 @name: text」` prefix now reconstruct the quote capsule and body instead of showing the raw prefix as bubble text.
@@ -83,7 +82,7 @@
 ## v0.1.5
 
 
-### 中文
+### 更改/修复
 
 - **根页会话列表重写（QQ 同款）**：Public 固定置顶，随后按规则列出当前服务器全部在线玩家，再补“最近私聊过但现在离线”的玩家；无分组标题，列表支持滚动。
 - **玩家卡片**：显示真实 ID、皮肤圆形头像（预留 `PlayerAvatarSource` 接口，后续可接自定义头像）、最近消息预览、时间；右上角未读红点计数（>99 显示 99+），屏蔽玩家整卡黑白滤镜。
@@ -97,7 +96,7 @@
 - **导航状态恢复**：Y 键重开会恢复上次页面栈，包括正在浏览的私聊会话目标。
 - **未读体系**：Public 与每个私聊会话都维护未读数，进入会话动画开始时清零；根列表实时从 Tab 名单刷新上下线。
 
-### English
+### Change/Fix
 
 - **Root conversation list rewrite (QQ style)**: Public stays pinned at the top, then every online player on the current server is listed by rule, followed by recently-chatted players who are now offline; no group headers, scrolling supported.
 - **Player cards**: real profile ID, circular skin avatar (behind a `PlayerAvatarSource` interface ready for custom avatars), latest message preview and time; unread red badge on the right (>99 becomes 99+); blocked players get a full-card grayscale filter.
@@ -114,7 +113,7 @@
 ## v0.1.4
 
 
-### 中文
+### 更改/修复
 
 - **头像右键菜单框架**：右键真实玩家头像弹出菜单（@ 提及 / 私聊 / 传送 / 屏蔽）；@ 已接入，其余动作预留；左键单击头像不再插入 @，双击仍为 QQ poke。
 - **导航壳**：AtomChat 升级为同面板页面栈；根页为会话列表，底部 `聊天 / 个人 / 设置` tab；默认聊天键（T）直接打开公屏，新键位（默认 Y）打开上次所在页面；世界频道详情页带 SVG 返回箭头。
@@ -133,7 +132,7 @@
 - **页面切换动画**：进入/返回公屏采用 200ms easeInOutCubic 双向全宽 push/pop——根页与详情页主体同时左右移动；上栏作为固定“状态栏”不随动画移动，只切换标题与返回键可见性。
 - **公屏图标放大**：卡片图标容器 s36→s44、内层地球 SVG s20→s26，四周统一 s10 留白，与圆角卡片间距按公式计算。
 
-### English
+### Change/Fix
 
 - **Avatar context-menu framework**: right-click a real player avatar opens a menu (Mention / Whisper / Teleport / Block); Mention is wired, the rest are placeholders for upcoming features. Left single-click no longer inserts @; double-click still triggers the QQ-style poke.
 - **Navigation shell**: AtomChat now has an in-panel page stack. The root is a conversation list with Chat / Profile / Settings bottom tabs; the normal chat key (T) opens Public directly, and a new key (default Y) restores the last opened page. The Public detail page has an SVG back arrow.
@@ -154,7 +153,7 @@
 
 ## v0.1.3
 
-### 中文
+### 更改/修复
 
 - **富文本聊天渲染**：玩家名/正文支持颜色、下划线、点击与悬停；可点击 `/tell`、Xaero 坐标、FTB 接受/拒绝、外部链接；裸 `http(s)` 自动识别为可点击链接并在悬停时显示 URL。
 - **原版 HUD 占位**：`[[CICode,...]]` 图片代码在原版聊天栏显示为绿色 `[图片]`，不再刷一长串 URL；引用消息显示为蓝色 `[引用]`，保留发送者前缀。
@@ -166,7 +165,7 @@
 - **稳定性修复**：修复 AWT headless 导致图片选择器打不开；修复 0.1.2 中 HUD 重写未声明 cancellable 导致发送图片后被踢出单人游戏的问题。
 - **消息不被误吞**：Xaero waypoint/路径分析等机器协议消息强制走系统通道；无频道身份、仅文本像“自己”的消息不再被 own-echo 误杀，遵循 e33chat“宁可不杀不可错杀”原则。
 
-### English
+### Change/Fix
 
 - **Rich-text chat rendering**: player names/bodies support colors, underlines, click actions and hover tooltips; clickable `/tell`, Xaero coordinates, FTB accept/deny and external links work; bare `http(s)` URLs become clickable links with a hover URL tooltip.
 - **Compact vanilla HUD placeholders**: `[[CICode,...]]` image codes now show as green `[Image]` instead of a long URL, and quote replies show as blue `[Quote]` while keeping the sender prefix.
