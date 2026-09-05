@@ -52,6 +52,17 @@ public final class ConversationListPage {
     private static final float ICON_INSET = UiTokens.s(10);
     private static final float DIVIDER_H = UiTokens.SETTINGS_LABEL_H;
 
+    /**
+     * Player-card order, hoisted out of {@link #rows()} so the comparator chain
+     * is built once instead of being re-assembled (and re-allocated) every frame.
+     */
+    private static final Comparator<Row> PLAYER_ORDER = Comparator
+            .comparing((Row r) -> r.online() ? 0 : 1)
+            .thenComparing(r -> r.online() ? 0 : (r.unread() > 0 ? 0 : 1))
+            .thenComparing(r -> r.online() && r.latest() == null ? 1 : 0)
+            .thenComparing(r -> r.latest() != null ? -r.latest().getTimestamp() : 0L)
+            .thenComparing(r -> r.latest() == null ? r.title().toLowerCase(java.util.Locale.ROOT) : "");
+
     private final PageHost host;
     private float rowHover;
     /** Row the current {@link #rowHover} alpha belongs to; fades out on exit. */
@@ -118,12 +129,7 @@ public final class ConversationListPage {
         // first (latest activity descending), static/no-history by name; offline
         // section after online. Public is always row 0.
         List<Row> sortedPlayers = new ArrayList<>(all.subList(1, all.size()));
-        sortedPlayers.sort(Comparator
-                .comparing((Row r) -> r.online() ? 0 : 1)
-                .thenComparing(r -> r.online() ? 0 : (r.unread() > 0 ? 0 : 1))
-                .thenComparing(r -> r.online() && r.latest() == null ? 1 : 0)
-                .thenComparing(r -> r.latest() != null ? -r.latest().getTimestamp() : 0L)
-                .thenComparing(r -> r.latest() == null ? r.title().toLowerCase(java.util.Locale.ROOT) : ""));
+        sortedPlayers.sort(PLAYER_ORDER);
         List<Row> result = new ArrayList<>();
         result.add(new Row(RowKind.PUBLIC, null, latestPublic(), ChatStore.publicUnread(), true, false));
         if (!sortedPlayers.isEmpty()) {

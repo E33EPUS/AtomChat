@@ -25,13 +25,39 @@ public final class SkiaFontRenderer {
     private SkiaFontRenderer() {
     }
 
+    /**
+     * Bounded string→width cache. Text shaping is by far the hottest CPU path
+     * in this UI: every label measures itself every frame (and truncation
+     * measures repeatedly), each measurement walks the string code point by
+     * code point resolving font fallbacks. Labels repeat across frames, so a
+     * small LRU removes most of that work. Keyed by the font's size because
+     * {@link com.atom.chat.font.FontManager} hands out one shared Font per size.
+     */
+    private static final int WIDTH_CACHE_MAX = 4096;
+    private static final java.util.Map<String, Float> WIDTH_CACHE = java.util.Collections
+            .synchronizedMap(new java.util.LinkedHashMap<>(256, 0.75F, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Float> eldest) {
+                    return size() > WIDTH_CACHE_MAX;
+                }
+            });
+
     public static float getStringWidth(Font font, String text) {
+        if (text == null || text.isEmpty()) {
+            return 0.0F;
+        }
+        String key = text + "@" + font.getSize();
+        Float cached = WIDTH_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
         float width = 0.0F;
         for (TextSegment segment : parseColoredText(text)) {
             if (!segment.text.isEmpty()) {
                 width += measureRuns(font, segment.text);
             }
         }
+        WIDTH_CACHE.put(key, width);
         return width;
     }
 
@@ -44,11 +70,29 @@ public final class SkiaFontRenderer {
         if (text == null || text.isEmpty() || maxWidth <= 0.0F || getStringWidth(font, text) <= maxWidth) {
             return text == null ? "" : text;
         }
-        String t = text;
-        while (t.length() > 1 && getStringWidth(font, t + "…") > maxWidth) {
-            t = t.substring(0, t.length() - 1);
+        // Binary search over the prefix length: O(log n) measurements instead
+        // of the O(n²) walk the per-character loop used to cost.
+        String ellipsis = "…";
+        int lo = 1;
+        int hi = text.length() - 1;
+        int best = 1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            if (getStringWidth(font, text.substring(0, mid) + ellipsis) <= maxWidth) {
+                best = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
         }
-        return t + "…";
+        // Never cut a surrogate pair in half.
+        while (best > 1 && Character.isLowSurrogate(text.charAt(best))) {
+            best--;
+        }
+        if (best > 1 && Character.isHighSurrogate(text.charAt(best - 1))) {
+            best--;
+        }
+        return text.substring(0, best) + ellipsis;
     }
 
     public static float getHeight(Font font) {

@@ -17,7 +17,22 @@ public final class SettingsCatalog {
     private SettingsCatalog() {
     }
 
+    /**
+     * The catalog is static configuration, but the UI asks for it several
+     * times per frame (render, measure, hit-test, drag). The entries themselves
+     * are live — their getters/setters read and write the config on every call —
+     * so caching the immutable lists costs nothing and changes nothing.
+     */
+    private static final java.util.Map<SettingsSection, List<SettingsItem>> ITEM_CACHE =
+            new java.util.EnumMap<>(SettingsSection.class);
+    private static final java.util.Map<SettingsSection, List<SettingsSlider>> SLIDER_CACHE =
+            new java.util.EnumMap<>(SettingsSection.class);
+
     public static List<SettingsItem> items(SettingsSection section) {
+        return ITEM_CACHE.computeIfAbsent(section, SettingsCatalog::buildItems);
+    }
+
+    private static List<SettingsItem> buildItems(SettingsSection section) {
         return switch (section) {
             case APPEARANCE -> List.of(
                     new SettingsItem("blur",
@@ -63,6 +78,10 @@ public final class SettingsCatalog {
      * qualify — a slider wired to nothing would be worse than a missing one.
      */
     public static List<SettingsSlider> sliders(SettingsSection section) {
+        return SLIDER_CACHE.computeIfAbsent(section, SettingsCatalog::buildSliders);
+    }
+
+    private static List<SettingsSlider> buildSliders(SettingsSection section) {
         return switch (section) {
             case APPEARANCE -> List.of(
                     new SettingsSlider("opacity",

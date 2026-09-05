@@ -17,6 +17,7 @@
 - **外观图标重绘**：从调色板改为三段调节滑杆（与「调整」分组语义一致，原图案点在磁贴尺寸下发虚）。
 - **壁纸卡片动词同款**：「选择图片 / 清除」与链接卡片的「点击跳转」一致，改为主字号纯白、右侧垂直居中。
 - **修复空态误判**：聊天页会话列表滚动后如果所有卡片都滚出视野，会错误地画出「无在线玩家」空态；现在改为按数据（是否存在玩家行）判断，而不是按屏幕上可见的卡片。
+- **性能优化**：文字测量新增 4096 条 LRU 缓存（文字整形是 UI 层最热的 CPU 路径，同一标签每帧都在重复测量）；截断算法从 O(n²) 次测量改为二分查找；设置目录（开关/滑块定义）与玩家卡排序比较器改为只构建一次，不再每帧重建。
 
 ### Change/Fix
 
@@ -33,6 +34,7 @@
 - **Appearance icon redrawn**: palette replaced by three adjustment sliders, matching the Adjustments group; the old dots went fuzzy at tile size.
 - **Wallpaper card verbs match**: "Choose" / "Clear" now use the same title-sized, white, vertically-centred style as the link cards' "Open" cue.
 - **Fixed a false empty state**: scrolling the conversation list until every card left the viewport wrongly showed the "No players online" state; it is now decided from the data (whether player rows exist), not from what is visible.
+- **Performance**: text measurement now goes through a 4096-entry LRU cache (text shaping is the hottest CPU path in the UI — identical labels were being re-shaped every frame); truncation switched from O(n²) measurements to a binary search; the settings catalog (switch/slider definitions) and the player-card sort comparator are built once instead of per frame.
 
 ## v0.1.6
 
