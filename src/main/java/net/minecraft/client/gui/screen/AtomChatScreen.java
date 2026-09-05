@@ -1811,13 +1811,23 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // cards (translucent white over the panel), so it reads as one family.
         SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), Color.makeARGB(60, 255, 255, 255));
         SkiaDraw.drawRoundedRect(canvas, pillX + UiTokens.QUOTE_PAD_X, pillY + s(3), barW, UiTokens.QUOTE_HEIGHT - s(6), barW / 2.0F, accent());
+        float textStartX = pillX + UiTokens.QUOTE_PAD_X + barW + s(4);
+        float centerBaselineY = SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F);
         boolean imageQuote = msg.getQuoteText() != null
                 && isImagePlaceholder(msg.getQuoteText());
-        int quoteColor = imageQuote
-                ? Color.makeARGB(255, 85, 255, 85)
-                : textPrimary();
-        SkiaFontRenderer.drawText(canvas, quoteFont, display, pillX + UiTokens.QUOTE_PAD_X + barW + s(4),
-                SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F), quoteColor);
+        if (imageQuote) {
+            // Only the [图片]/[Image] placeholder is green; the quoted player's
+            // name and the colon stay in the normal primary colour.
+            String fullNamePart = name + ": ";
+            float placeholderW = SkiaFontRenderer.getStringWidth(quoteFont, msg.getQuoteText());
+            String namePart = truncateToWidth(quoteFont, fullNamePart, Math.max(0.0F, textMaxW - placeholderW));
+            SkiaFontRenderer.drawText(canvas, quoteFont, namePart, textStartX, centerBaselineY, textPrimary());
+            float namePartW = SkiaFontRenderer.getStringWidth(quoteFont, namePart);
+            SkiaFontRenderer.drawText(canvas, quoteFont, msg.getQuoteText(), textStartX + namePartW,
+                    centerBaselineY, Color.makeARGB(255, 85, 255, 85));
+        } else {
+            SkiaFontRenderer.drawText(canvas, quoteFont, display, textStartX, centerBaselineY, textPrimary());
+        }
     }
 
     private static boolean isImagePlaceholder(String text) {
