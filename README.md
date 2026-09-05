@@ -11,7 +11,7 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.3-informational">
+  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.7-informational">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
@@ -21,7 +21,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：**v0.1.3 已发布**。可从 [Releases](https://github.com/E33EPUS/atomchat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**v0.1.7 已发布**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 
@@ -52,7 +52,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | Fabric API | 必需 | 任意兼容 1.21.1 的版本 |
 | Java | 必需 | 21+ |
 
-1. 从 [Releases](https://github.com/E33EPUS/atomchat/releases) 下载 v0.1.3 JAR，或按 [开发与构建](#开发与构建) 自行构建
+1. 从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载 v0.1.7 JAR，或按 [开发与构建](#开发与构建) 自行构建
 2. 将 JAR 放入 `.minecraft/mods/`
 3. 启动游戏，按聊天键（默认 `T` / `/`）打开 AtomChat
 
@@ -78,6 +78,12 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 - 🧹 **原版 HUD 占位** — 面板外的原版聊天栏把图片代码显示为绿色 `[图片]`，引用显示为蓝色 `[引用]`，不再刷长串代码
 - 😀 **表情 / 颜文字 / 表情包** — 三个标签页带滑动指示器与全宽 push 切换动画；表情包从 `<config>/atomchat/emotes/` 持久化（png/jpg/jpeg，最多 10 个），`+` 号选择图片，悬停 `×` 删除
 - 📋 **复制 / 引用 / 保存** — 右键消息复制、引用；图片消息可保存原图；菜单带 20×20 SVG 线性图标
+- 🧭 **手机式导航** — 底部三个标签页（聊天 / 个人 / 设置）与页面级推入/弹出转场，公屏与私聊之间同款切换动画
+- 👥 **在线玩家与私聊** — 会话列表按「公屏 → 在线玩家 → 最近离线」排序，玩家卡带真实 ID、皮肤头像、在线/离线状态点与未读红点；私聊走 `/msg`，分会话存储草稿与滚动位置，离线/屏蔽只读
+- ⚙️ **设置页** — Win11 风格 2×2 磁贴主页（外观 / 聊天 / 隐私与屏蔽 / 关于），点击进入子页；开关为 iOS 比例滑块动画，全部选项**即时生效并立即写盘，无需重启**
+- 🎛️ **可调项** — 背景模糊、界面动画（装饰动效总闸）、背景不透明度、面板宽度（400–600）、界面缩放（x0.75–x1.50，即时缩放整套 UI）、消息入场动画、双击头像戳一戳
+- 🖼️ **自定义壁纸** — 从本地选一张图片作为面板背景，自动降采样（长边 ≤1024，后台解码不卡帧）；与背景模糊互斥，不透明度滑块用于压暗壁纸保证文字可读
+- 🚫 **屏蔽管理** — 设置内可视化屏蔽名单（头像 + 名字 + 一键取消）；「隐藏被屏蔽玩家的消息」可关，关掉后公屏仍可见但私聊保持屏蔽
 - ✏️ **多行输入** — 输入框最高两行，超出后内部滚动；Up/Down 在行间移动光标，单行时沿用原版聊天历史
 - 🎨 **SVG 图标与统一动效** — 图片 / 表情 / 发送按钮为内嵌 SVG 线性图标
 - 🌍 **本地化** — 支持中英双语，切换MC系统语言即可生效

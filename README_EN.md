@@ -11,7 +11,7 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.3-informational">
+  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.7-informational">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
@@ -21,7 +21,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija)
 
 The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **v0.1.3 released**. Download it from [Releases](https://github.com/E33EPUS/atomchat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.1.7 released**. Download it from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -52,7 +52,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 | Fabric API | Required | any 1.21.1 compatible version |
 | Java | Required | 21+ |
 
-1. Download the v0.1.3 JAR from [Releases](https://github.com/E33EPUS/atomchat/releases), or build it yourself under [Development & Building](#development--building)
+1. Download the v0.1.7 JAR from [Releases](https://github.com/E33EPUS/AtomChat/releases), or build it yourself under [Development & Building](#development--building)
 2. Put the JAR in `.minecraft/mods/`
 3. Launch the game and press the chat key (default `T` / `/`) to open AtomChat
 
@@ -78,6 +78,12 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 - 🧹 **Compact vanilla HUD placeholders** — outside the panel, the vanilla chat shows image codes as green `[Image]` and quotes as blue `[Quote]` instead of raw long codes
 - 😀 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist in `<config>/atomchat/emotes/` (png/jpg/jpeg, max 10), added through the `+` cell and deleted by hovering `×`
 - 📋 **Copy / Quote / Save** — right-click to copy or quote; image messages can be saved; the context menu uses 20×20 SVG line icons
+- 🧭 **Phone-style navigation** — three bottom tabs (Chats / You / Settings) with page-level push/pop transitions; the same animation carries public ↔ private switches
+- 👥 **Online players & private chat** — the conversation list orders Public → online players → recent offline, with real IDs, skin avatars, online/offline dots and unread badges; private chat uses `/msg`, keeps per-conversation drafts and scroll state, and is read-only for offline or blocked players
+- ⚙️ **Settings page** — a Windows 11 style 2×2 tile grid (Appearance / Chat / Privacy & blocking / About) opening into sub-pages; switches use an iOS-proportioned slide and every option **applies and persists instantly, no restart**
+- 🎛️ **Adjustable options** — background blur, interface animations (decorative-motion master), background opacity, panel width (400–600), interface scale (x0.75–x1.50, rescales the whole UI live), message entrance animation, double-tap avatar poke
+- 🖼️ **Custom wallpaper** — pick a local image as the panel background, downsampled automatically (long edge ≤1024, decoded off-thread); mutually exclusive with blur, and the opacity slider darkens it for readability
+- 🚫 **Block management** — a visual block list in settings (avatar + name + one-tap unblock); "Hide blocked players' messages" can be turned off so they stay visible in public chat while private stays blocked
 - ✏️ **Multi-line input** — up to two visible lines, then internal scrolling; Up/Down move between lines, single-line drafts keep vanilla history cycling
 - 🎨 **SVG icons & unified motion** — image / emoji / send buttons use inline SVG line icons
 - 🌍 **Localization** — supports Simplified Chinese and English; switch the game language to apply
