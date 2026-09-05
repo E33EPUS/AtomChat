@@ -431,14 +431,17 @@ public final class SettingsSectionPage {
                 SkiaFontRenderer.truncate(titleFont, tr(row.item().titleKey()), maxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
                 Color.makeARGB(255, 255, 255, 255));
+        Font verbFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
         SkiaFontRenderer.drawText(canvas, subFont,
                 SkiaFontRenderer.truncate(subFont, subtitle,
-                        maxW - SkiaFontRenderer.getStringWidth(subFont, verb) - s(12)), textX,
+                        maxW - SkiaFontRenderer.getStringWidth(verbFont, verb) - s(12)), textX,
                 SkiaFontRenderer.centerBaselineY(subFont, rect.y() + s(37)),
                 Color.makeARGB(200, 170, 170, 186));
-        SkiaFontRenderer.drawTextRight(canvas, subFont, verb,
-                rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(37),
-                Color.makeARGB(170, 170, 170, 186));
+        // Same treatment as the link cards' "Open": full-weight, centred —
+        // the card's call to action, not a footnote.
+        SkiaFontRenderer.drawTextRight(canvas, verbFont, verb,
+                rect.right() - UiTokens.SETTINGS_ROW_PAD,
+                rect.y() + rect.h() / 2.0F, Color.makeARGB(255, 255, 255, 255));
     }
 
     /**

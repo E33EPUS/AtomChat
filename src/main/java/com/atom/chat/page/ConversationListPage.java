@@ -206,7 +206,9 @@ public final class ConversationListPage {
         float listTop = layout.list.y() + UiTokens.ROOT_CONTENT_GAP;
         int hovered = -1;
         float emptyTop = 0.0F;
-        boolean drewCard = false;
+        // Decided from the data, not from what happens to be on screen — a
+        // scrolled view can hide every card without the list being empty.
+        boolean hasPlayers = rows.stream().anyMatch(r -> r.kind() == RowKind.PLAYER);
         canvas.save();
         try {
             SkiaDraw.clip(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h(), 0.0F);
@@ -227,7 +229,6 @@ public final class ConversationListPage {
                         // is what made the highlight snap in instead of fading.
                         drawRow(canvas, row, layout.list.x(), y, layout.list.w(),
                                 i == hoverRowIndex ? rowHover : 0.0F, i);
-                        drewCard = row.kind() == RowKind.PLAYER || drewCard;
                         if (row.kind() == RowKind.PUBLIC) {
                             emptyTop = y + h + ROW_GAP;
                         }
@@ -251,7 +252,7 @@ public final class ConversationListPage {
 
         // No conversation partner at all: an illustrated empty state instead of
         // a bare list with one card and a lot of nothing.
-        if (!drewCard) {
+        if (!hasPlayers) {
             UiLayout.Rect area = new UiLayout.Rect(layout.list.x(), emptyTop,
                     layout.list.w(), Math.max(s(120), layout.list.bottom() - emptyTop));
             SettingsSectionPage.drawEmptyState(canvas, area, "atomchat.conversation.no_players");

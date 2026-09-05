@@ -15,6 +15,8 @@
 - **关于页新增 Hero 卡**：顶部一张更高的卡片，左侧白色圆角底板内嵌 Mod logo，右侧 AtomChat 字标（图片接口已预留，未来可整体替换为艺术字 logo）；logo 已降采样到 256px（681KB → 33KB）。
 - **链接卡片提示重做**：「点击跳转」改为主字号纯白、垂直居中，作为卡片的主动作而非脚注。
 - **外观图标重绘**：从调色板改为三段调节滑杆（与「调整」分组语义一致，原图案点在磁贴尺寸下发虚）。
+- **壁纸卡片动词同款**：「选择图片 / 清除」与链接卡片的「点击跳转」一致，改为主字号纯白、右侧垂直居中。
+- **修复空态误判**：聊天页会话列表滚动后如果所有卡片都滚出视野，会错误地画出「无在线玩家」空态；现在改为按数据（是否存在玩家行）判断，而不是按屏幕上可见的卡片。
 
 ### Change/Fix
 
@@ -29,6 +31,8 @@
 - **About-page hero card**: a taller card on top with the mod logo on a white rounded plate and the AtomChat wordmark beside it (the image slot is an interface, ready for an art-text logo later). The logo is downsampled to 256px (681KB → 33KB).
 - **Link-card hint reworked**: the "Open" cue is now title-sized, pure white and vertically centred — a call to action, not a footnote.
 - **Appearance icon redrawn**: palette replaced by three adjustment sliders, matching the Adjustments group; the old dots went fuzzy at tile size.
+- **Wallpaper card verbs match**: "Choose" / "Clear" now use the same title-sized, white, vertically-centred style as the link cards' "Open" cue.
+- **Fixed a false empty state**: scrolling the conversation list until every card left the viewport wrongly showed the "No players online" state; it is now decided from the data (whether player rows exist), not from what is visible.
 
 ## v0.1.6
 
