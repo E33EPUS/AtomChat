@@ -33,6 +33,7 @@ public final class ColorPickerOverlay {
     private SettingsColor target;
     private boolean active;
     private float anim;
+    private boolean closing;
     private long lastFrameMs = System.currentTimeMillis();
     /** Until when the hex shows "Copied" instead of the value. */
     private long copiedUntil;
@@ -64,6 +65,7 @@ public final class ColorPickerOverlay {
     }
 
     public void open(SettingsColor color) {
+        this.closing = false;
         this.target = color;
         float[] hsv = ColorUtil.rgbToHsv(color.value());
         this.hue = hsv[0];
@@ -78,14 +80,19 @@ public final class ColorPickerOverlay {
     }
 
     public void cancel() {
-        active = false;
+        // Symmetric fade-out (0.1.10 audit): keep active so the overlay keeps
+        // swallowing input until the fade has fully played.
+        closing = true;
     }
 
     private void confirm() {
+        if (closing) {
+            return;
+        }
         if (target != null) {
             target.apply(ColorUtil.hsvToRgb(hue, sat, bri));
         }
-        active = false;
+        closing = true;
     }
 
     // ----------------------------- card geometry -----------------------------
@@ -241,6 +248,9 @@ public final class ColorPickerOverlay {
 
     /** A click while active. Consumes everything inside the panel. */
     public void onClick(float vmx, float vmy, UiLayout.Rect panel) {
+        if (closing) {
+            return;
+        }
         if (inButton(vmx, vmy, confirmCx(panel), panel)) {
             confirm();
             return;
@@ -284,7 +294,7 @@ public final class ColorPickerOverlay {
 
     /** Continues an SV-square or hue-bar drag. */
     public void onDrag(float vmx, float vmy, UiLayout.Rect panel) {
-        if (dragMode < 0) {
+        if (closing || dragMode < 0) {
             return;
         }
         Rect sv = svRect(panel);
@@ -317,7 +327,12 @@ public final class ColorPickerOverlay {
         long now = System.currentTimeMillis();
         float dt = Math.min(50.0F, Math.max(1.0F, now - lastFrameMs));
         lastFrameMs = now;
-        anim = UiMotion.approach(anim, 1.0F, dt, Animations.ms(UiMotion.POPUP_MS));
+        anim = UiMotion.approach(anim, closing ? 0.0F : 1.0F, dt, Animations.ms(UiMotion.POPUP_MS));
+        if (closing && anim <= 0.02F) {
+            active = false;
+            closing = false;
+            return;
+        }
         if (anim < 0.01F) {
             return;
         }

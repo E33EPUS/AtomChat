@@ -53,7 +53,7 @@ public class AtomChatConfig {
     public int accentColor = 0xFF4A90E2;
     public int bubbleTextColor = 0xFFFFFFFF;
     public int ownBubbleColor = 0xFF1E90FF;
-    public int otherBubbleColor = 0xFF343A44;
+    public int otherBubbleColor = 0xFF2C3E50;
     public int panelBgColor = 0xEE16191F;
     public int textPrimaryColor = 0xFFFFFFFF;
     public int textSecondaryColor = 0xDCAAAABA;

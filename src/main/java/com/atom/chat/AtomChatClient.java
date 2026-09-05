@@ -1,6 +1,7 @@
 package com.atom.chat;
 
 import com.atom.chat.config.AtomChatConfig;
+import com.atom.chat.image.ImageLoader;
 import com.atom.chat.render.PanelBlurRenderer;
 import com.atom.chat.wallpaper.WallpaperStore;
 import net.fabricmc.api.ClientModInitializer;
@@ -36,6 +37,10 @@ public class AtomChatClient implements ClientModInitializer {
         WallpaperStore.init(
                 net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
                         .resolve("atomchat/wallpaper"));
+        ImageLoader.get().init(
+                net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                        .resolve("atomchat/image-cache"));
+        com.atom.chat.net.AvatarCompanionClient.init();
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
             @Override
             public Identifier getFabricId() {
@@ -51,6 +56,7 @@ public class AtomChatClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             com.atom.chat.page.ProfilePage.noteJoin();
+            com.atom.chat.net.AvatarCompanionClient.onJoin();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             PrivateChatStore.reset();

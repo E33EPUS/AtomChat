@@ -11,6 +11,10 @@ public class AtomChat implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // Avatar companion: codecs on both logical sides, receivers on the
+        // game-server side (dedicated server or an integrated double-open).
+        com.atom.chat.net.AvatarPayloads.register();
+        com.atom.chat.net.AvatarCompanionServer.register();
         LOGGER.info("AtomChat initialized");
     }
 

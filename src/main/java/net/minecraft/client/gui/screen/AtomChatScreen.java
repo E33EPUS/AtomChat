@@ -117,6 +117,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if ("avatar".equals(targetId)) {
                 if (avatarStore.setPng(pngBytes)) {
                     AvatarImage.release();
+                    // Companion push: silently skipped when the server has no
+                    // companion (presence is only YES after a data response).
+                    if (client.player != null) {
+                        com.atom.chat.net.AvatarCompanionClient.uploadOwnAvatar(
+                                client.player.getUuid(), pngBytes);
+                    }
                 }
             } else if ("wallpaper".equals(targetId)) {
                 if (WallpaperStore.setPng(pngBytes)) {
@@ -405,6 +411,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private int lastAvatarClickIndex = -1;
     private int pokeIndex = -1;
     private long pokeStartTime;
+    /** Single-click→profile competition window (QQ standard), in ms. */
+    private static final long AVATAR_CLICK_WINDOW_MS = 300;
+    private long pendingAvatarClickTime;
+    private int pendingAvatarClickIndex = -1;
+    private ChatMessage pendingAvatarClickMessage;
 
     // Message text drag-selection state (Skia-drawn highlight; Ctrl+C copies).
     private ChatMessage selectionMessage;
@@ -663,12 +674,30 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return pushing ? travel * (1.0F - progress) : travel * progress;
     }
 
+    /** Opens the profile root page for another player (avatar single click). */
+    private void openProfileFor(ChatMessage msg) {
+        if (msg == null || msg.isSystem() || msg.isOwn()) {
+            return;
+        }
+        PlayerRef player = PlayerRef.of(msg.getSenderUuid(), msg.getProfileName());
+        if (player == null || player.realName() == null) {
+            return;
+        }
+        profilePage.setSubject(player);
+        switchRoot(AppPage.PROFILE);
+    }
+
     @Override
     public void switchRoot(AppPage root) {
         if (!root.isRoot()) {
             return;
         }
         AppPage from = topPage();
+        // Leaving the profile root falls back to the local player's page; the
+        // injected subject (open-profile-for-other-player) is transient.
+        if (from == AppPage.PROFILE && root != AppPage.PROFILE) {
+            profilePage.resetSubject();
+        }
         saveCurrentDraft();
         rootScroll.reset();
         // With decorative motion off the tab change is instant: no indicator
@@ -1132,6 +1161,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         long nowMs = System.currentTimeMillis();
         frameDt = Math.min(50L, Math.max(1L, nowMs - lastFrameMs));
         lastFrameMs = nowMs;
+        // Single-click→profile competition window: fire when no second click
+        // arrived within the threshold.
+        if (pendingAvatarClickMessage != null) {
+            if (closing) {
+                pendingAvatarClickMessage = null;
+            } else if (nowMs - pendingAvatarClickTime >= AVATAR_CLICK_WINDOW_MS) {
+                ChatMessage pending = pendingAvatarClickMessage;
+                pendingAvatarClickMessage = null;
+                pendingAvatarClickIndex = -1;
+                openProfileFor(pending);
+            }
+        }
         syncScrollMotion();
         float emojiTarget = emojiOpen ? 1.0F : 0.0F;
         emojiAnim = UiMotion.approach(emojiAnim, emojiTarget, frameDt, Animations.ms(UiMotion.POPUP_MS));
@@ -2244,7 +2285,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS, otherBubble());
 
-        Image image = ImageLoader.get().get(imageUrl);
+        Image image = ImageLoader.get().get(imageUrl, true);
         if (image != null) {
             // No aspect fix-up here: the CICode carries the intrinsic size, so
             // the bubble already has the image's proportions and the bitmap is
@@ -3739,17 +3780,29 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
                     && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()) {
                 long now = System.currentTimeMillis();
-                if (now - lastAvatarClickTime < 350 && lastAvatarClickIndex == hit.index()) {
+                boolean pokeEnabled = Animations.avatarPoke() && Animations.enabled();
+                boolean doubleClick = pokeEnabled
+                        && lastAvatarClickIndex == hit.index()
+                        && now - lastAvatarClickTime < AVATAR_CLICK_WINDOW_MS;
+                if (doubleClick) {
+                    // Double click → poke; cancels the pending single click.
                     lastAvatarClickTime = 0;
-                    // With the poke (or decorative motion) off, a double click
-                    // on the avatar does nothing at all — no invisible shake.
-                    if (Animations.avatarPoke() && Animations.enabled()) {
-                        pokeIndex = hit.index();
-                        pokeStartTime = now;
-                    }
-                } else {
+                    pendingAvatarClickMessage = null;
+                    pokeIndex = hit.index();
+                    pokeStartTime = now;
+                } else if (pokeEnabled) {
+                    // QQ-style competition window: the single click waits for
+                    // the double-click threshold before opening the profile.
                     lastAvatarClickTime = now;
                     lastAvatarClickIndex = hit.index();
+                    pendingAvatarClickTime = now;
+                    pendingAvatarClickIndex = hit.index();
+                    pendingAvatarClickMessage = hit.message();
+                } else {
+                    // With poke (or decorative motion) off a double click does
+                    // nothing, so there is nothing to compete with: jump at once.
+                    lastAvatarClickTime = 0;
+                    openProfileFor(hit.message());
                 }
                 return true;
             }

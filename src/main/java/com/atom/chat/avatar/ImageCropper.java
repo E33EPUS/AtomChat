@@ -62,6 +62,7 @@ public final class ImageCropper {
     private float frameW;
     private float frameH;
     private float anim;
+    private boolean closing;
     private boolean transformReady;
     private long lastFrameMs = System.currentTimeMillis();
 
@@ -102,6 +103,7 @@ public final class ImageCropper {
         this.frameH = circle ? frameW : frameH;
         dragging = false;
         anim = 0.0F;
+        closing = false;
         decoded = null;
         transformReady = false;
         if (source == null || !Files.isRegularFile(source)) {
@@ -134,14 +136,24 @@ public final class ImageCropper {
     }
 
     public void cancel() {
+        if (closing) {
+            return;
+        }
         String id = targetId;
-        close();
         callback.onCancel(id);
+        // The decoded bitmap stays alive through the fade-out; the resources
+        // are released in finishClose() once the animation has played.
+        beginClose();
     }
 
-    private void close() {
-        active = false;
+    private void beginClose() {
+        closing = true;
         dragging = false;
+    }
+
+    private void finishClose() {
+        active = false;
+        closing = false;
         GENERATION.incrementAndGet();
         if (decoded != null) {
             decoded.close();
@@ -216,6 +228,9 @@ public final class ImageCropper {
 
     /** A click: buttons, double-click reset, otherwise starts a pan. Consumes. */
     public void onClick(float vmx, float vmy, UiLayout.Rect panel) {
+        if (closing) {
+            return;
+        }
         long now = System.currentTimeMillis();
         boolean doubleClick = now - lastClickMs < DOUBLE_CLICK_MS;
         lastClickMs = now;
@@ -243,7 +258,7 @@ public final class ImageCropper {
 
     /** Continues a pan; coordinates are virtual UI space. */
     public void onDrag(float vmx, float vmy, UiLayout.Rect panel) {
-        if (!dragging || decoded == null || !transformReady) {
+        if (closing || !dragging || decoded == null || !transformReady) {
             return;
         }
         float[] p = CropMath.clampCover(decodeW, decodeH, scale,
@@ -259,7 +274,7 @@ public final class ImageCropper {
 
     /** Wheel zoom anchored at the frame centre; consumes the event. */
     public void onScroll(UiLayout.Rect panel, double verticalAmount) {
-        if (decoded == null || !transformReady) {
+        if (closing || decoded == null || !transformReady) {
             return;
         }
         float factor = verticalAmount > 0 ? 1.12F : 1.0F / 1.12F;
@@ -305,8 +320,8 @@ public final class ImageCropper {
             }
         }
         String id = targetId;
-        close();
         callback.onConfirm(id, bytes);
+        beginClose();
     }
 
     public void render(Canvas canvas, UiLayout.Rect panel, float vmx, float vmy) {
@@ -316,7 +331,14 @@ public final class ImageCropper {
         long now = System.currentTimeMillis();
         float dt = Math.min(50.0F, Math.max(1.0F, now - lastFrameMs));
         lastFrameMs = now;
-        anim = UiMotion.approach(anim, 1.0F, dt, Animations.ms(UiMotion.POPUP_MS));
+        // Symmetric fade-out (0.1.10 audit): the close request reverses the
+        // open curve; the overlay stays active so it keeps swallowing input
+        // until the fade has fully played.
+        anim = UiMotion.approach(anim, closing ? 0.0F : 1.0F, dt, Animations.ms(UiMotion.POPUP_MS));
+        if (closing && anim <= 0.02F) {
+            finishClose();
+            return;
+        }
         if (anim < 0.01F) {
             return;
         }

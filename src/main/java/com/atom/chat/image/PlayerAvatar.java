@@ -17,11 +17,15 @@ public final class PlayerAvatar {
     }
 
     public static Image face(UUID uuid, String name) {
-        // The local custom avatar takes precedence over the skin; every other
-        // player (and the no-avatar case) falls through to the skin source.
+        // Local custom avatar → server-companion avatar → skin. Every miss
+        // falls through, so the skin always stays the final fallback.
         Image own = OwnPlayerAvatarSource.INSTANCE.face(uuid, name);
         if (own != null) {
             return own;
+        }
+        Image companion = CompanionPlayerAvatarSource.INSTANCE.face(uuid, name);
+        if (companion != null) {
+            return companion;
         }
         PlayerAvatarSource current = source;
         return current != null ? current.face(uuid, name) : null;

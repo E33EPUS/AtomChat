@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.10
+
+### 新增
+
+- **服务端 companion：自定义头像跨端可见**（同 jar 双端入口，e33chat「装了才生效」理念）：双开联机（内置服务端）或独立 Fabric 服装 AtomChat 后，玩家可互相看到自定义头像。协议三条：本机设置头像后自动上传（≤256KB PNG、限频 60s、校验 uuid 防伪造 + PNG 魔数）；他人头像懒加载（渲染遇到未缓存的 uuid 才请求，去重 + 3s 探测超时 → 无 companion 服务器本会话静默降级为皮肤）；无头像负缓存 30s。缓存按会话存活（进服清空重拉），头像变更重进后生效，服务端零状态。
+- **单击对方头像跳转其个人档案**：QQ 式竞争窗口——单击后 300ms 内无第二次点击 → 跳对方档案页（身份卡/信息行按对方数据渲染）；双击仍是戳一戳。戳一戳或界面动画关闭时双击本就无动作，单击免窗口立即跳。离开档案页自动回到自己的档案。
+- **调色盘与裁剪器对称淡出**：HSV 调色盘、图片裁剪器补齐关闭动画（倒放打开曲线，110ms；淡出期间输入仍被吞掉，动画播完才真正关闭）。至此全部浮层淡入淡出对称。
+
+### 更改
+
+- **ImageLoader 四件套**（图片性能）：①只有滚进可视区的图片才发起下载（刷屏不再被动并发全下）②解码降采样到长边 ≤768（20MP 照片从 ~80MB 常驻内存降到 ~2MB，画质仍远超气泡显示尺寸）③内存 LRU 48 张 + 失败负缓存 60s（坏图不再每帧重试）④磁盘缓存 `config/atomchat/image-cache/`（重进不重下）。头像侧本就按皮肤永久缓存（每皮肤 64×64 只读一次 GL），未动。
+- **对方气泡默认色**改为 `#2C3E50` 深蓝灰（与配置文件已持久化值一致；新装用户直接生效）。
+
+### Change
+
+- **Server companion: cross-client custom avatars** (same-jar dual entrypoint, the e33chat "works only where installed" philosophy): with AtomChat on both ends of a double-open LAN session (integrated server) or on a dedicated Fabric server, players see each other's custom avatars. Three payloads: auto-upload on set (≤256KB PNG, 60s rate limit, sender-uuid anti-spoof + PNG magic check), lazy per-uuid requests with dedup and a 3s probe timeout (silent skin degradation on servers without the companion), and a 30s negative cache for no-avatar answers. Cache lives for one session (wiped on join); an avatar change shows up after re-entering; the server keeps zero state.
+- **Single click opens another player's profile**: QQ-style 300ms competition window — the single click opens the profile only if no second click arrives; double click still pokes. With poke (or decorative motion) off, the click jumps immediately.
+- **Symmetric fade-outs for the HSV colour picker and image cropper** (reverse of the open curve, 110ms; input stays swallowed until the fade finishes). Every overlay now fades both ways.
+
+- **ImageLoader hardening**: ①images download only when scrolled into view (a spam burst no longer queues the whole scrollback) ②decoded bitmaps downscale to a ≤768px long edge (~80MB → ~2MB for a 20MP photo) ③48-entry memory LRU + 60s negative cache for failures ④disk cache under `config/atomchat/image-cache/`. Avatar rendering already cached per skin (one GL readback each) and was left as is.
+- **Others' bubble default colour** is now `#2C3E50`.
+
 ## v0.1.9
 
 ### 新增

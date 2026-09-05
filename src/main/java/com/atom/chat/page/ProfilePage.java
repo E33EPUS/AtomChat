@@ -102,6 +102,11 @@ public final class ProfilePage {
         this.subject = newSubject;
     }
 
+    /** Clears the injected subject; the page falls back to the local player. */
+    public void resetSubject() {
+        this.subject = null;
+    }
+
     public PlayerRef subject() {
         return subject;
     }
