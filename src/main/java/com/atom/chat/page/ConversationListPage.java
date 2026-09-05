@@ -9,6 +9,7 @@ import com.atom.chat.font.FontManager;
 import com.atom.chat.image.PlayerAvatar;
 import com.atom.chat.render.SkiaDraw;
 import com.atom.chat.render.SkiaFontRenderer;
+import com.atom.chat.settings.SettingsSectionPage;
 import com.atom.chat.ui.AppIcons;
 import com.atom.chat.ui.UiLayout;
 import com.atom.chat.ui.UiMotion;
@@ -49,13 +50,16 @@ public final class ConversationListPage {
     private static final float AVATAR = UiTokens.s(44);
     private static final float AVATAR_RADIUS = UiTokens.s(12);
     private static final float ICON_INSET = UiTokens.s(10);
+    private static final float DIVIDER_H = UiTokens.SETTINGS_LABEL_H;
 
     private final PageHost host;
     private float rowHover;
+    /** Row the current {@link #rowHover} alpha belongs to; fades out on exit. */
+    private int hoverRowIndex = -1;
     private int hoveredIndex = -1;
     private long lastFrameMs = System.currentTimeMillis();
 
-    public enum RowKind { PUBLIC, PLAYER }
+    public enum RowKind { PUBLIC, PLAYER, DIVIDER }
 
     public record Row(RowKind kind, PlayerRef player, ChatMessage latest,
                       int unread, boolean online, boolean blocked) {
@@ -122,8 +126,15 @@ public final class ConversationListPage {
                 .thenComparing(r -> r.latest() == null ? r.title().toLowerCase(java.util.Locale.ROOT) : ""));
         List<Row> result = new ArrayList<>();
         result.add(new Row(RowKind.PUBLIC, null, latestPublic(), ChatStore.publicUnread(), true, false));
+        if (!sortedPlayers.isEmpty()) {
+            result.add(divider());
+        }
         result.addAll(sortedPlayers);
         return result;
+    }
+
+    static Row divider() {
+        return new Row(RowKind.DIVIDER, null, null, 0, false, false);
     }
 
     private static List<PlayerRef> onlinePlayers() {
@@ -173,7 +184,18 @@ public final class ConversationListPage {
         if (rows.isEmpty()) {
             return UiTokens.ROOT_CONTENT_GAP;
         }
-        return UiTokens.ROOT_CONTENT_GAP + rows.size() * ROW_H + (rows.size() - 1) * ROW_GAP;
+        float total = UiTokens.ROOT_CONTENT_GAP;
+        int cards = 0;
+        for (Row row : rows) {
+            if (row.kind() == RowKind.DIVIDER) {
+                total += DIVIDER_H;
+            } else {
+                total += ROW_H;
+                cards++;
+            }
+        }
+        total += (rows.size() - 1) * ROW_GAP;
+        return total;
     }
 
     public void render(Canvas canvas, UiLayout layout, float vmx, float vmy, float scrollY) {
@@ -183,55 +205,111 @@ public final class ConversationListPage {
         List<Row> rows = rows();
         float listTop = layout.list.y() + UiTokens.ROOT_CONTENT_GAP;
         int hovered = -1;
+        float emptyTop = 0.0F;
+        boolean drewCard = false;
         canvas.save();
         try {
             SkiaDraw.clip(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h(), 0.0F);
+            float y = listTop;
             for (int i = 0; i < rows.size(); i++) {
-                float y = listTop + i * (ROW_H + ROW_GAP) - scrollY;
-                if (y + ROW_H < layout.list.y() || y > layout.list.bottom()) {
-                    continue;
+                Row row = rows.get(i);
+                float h = row.kind() == RowKind.DIVIDER ? DIVIDER_H : ROW_H;
+                if (y + h >= layout.list.y() && y <= layout.list.bottom()) {
+                    if (row.kind() == RowKind.DIVIDER) {
+                        drawDivider(canvas, layout.list.x(), y, layout.list.w(), h);
+                    } else {
+                        boolean over = vmx >= layout.list.x() && vmx <= layout.list.right()
+                                && vmy >= y && vmy <= y + ROW_H;
+                        if (over) {
+                            hovered = i;
+                        }
+                        // Animated value only — see drawRow; forcing 1 while hovered
+                        // is what made the highlight snap in instead of fading.
+                        drawRow(canvas, row, layout.list.x(), y, layout.list.w(),
+                                i == hoverRowIndex ? rowHover : 0.0F, i);
+                        drewCard = row.kind() == RowKind.PLAYER || drewCard;
+                        if (row.kind() == RowKind.PUBLIC) {
+                            emptyTop = y + h + ROW_GAP;
+                        }
+                    }
                 }
-                boolean over = vmx >= layout.list.x() && vmx <= layout.list.right()
-                        && vmy >= y && vmy <= y + ROW_H;
-                if (over) {
-                    hovered = i;
-                }
-                drawRow(canvas, rows.get(i), layout.list.x(), y, layout.list.w(), over, i);
+                y += h + ROW_GAP;
             }
         } finally {
             canvas.restore();
         }
         hoveredIndex = hovered;
+        // One shared alpha plus the row it belongs to. Moving between adjacent
+        // cards keeps it at 1 (no blink); entering fades in and leaving fades
+        // out over the same 90ms the toolbar buttons use.
         rowHover = UiMotion.approach(rowHover, hovered >= 0 ? 1.0F : 0.0F, dt, UiMotion.HOVER_MS);
+        if (hovered >= 0) {
+            hoverRowIndex = hovered;
+        } else if (rowHover <= 0.0F) {
+            hoverRowIndex = -1;
+        }
+
+        // No conversation partner at all: an illustrated empty state instead of
+        // a bare list with one card and a lot of nothing.
+        if (!drewCard) {
+            UiLayout.Rect area = new UiLayout.Rect(layout.list.x(), emptyTop,
+                    layout.list.w(), Math.max(s(120), layout.list.bottom() - emptyTop));
+            SettingsSectionPage.drawEmptyState(canvas, area, "atomchat.conversation.no_players");
+        }
+    }
+
+    /** Centred section heading with a rule on each side, matching the settings page. */
+    private void drawDivider(Canvas canvas, float x, float y, float w, float h) {
+        Font font = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
+        int lineColor = Color.makeARGB(190, 170, 170, 186);
+        String text = tr("atomchat.conversation.private_group");
+        float textW = SkiaFontRenderer.getStringWidth(font, text);
+        float cy = y + h / 2.0F;
+        float gap = s(12);
+        float inset = s(4);
+        float leftEnd = x + inset + (w - inset * 2.0F - textW - gap * 2.0F) / 2.0F;
+        float rightStart = leftEnd + textW + gap * 2.0F;
+        float lineH = s(1.5F);
+        if (leftEnd > x + inset) {
+            SkiaDraw.drawRoundedRect(canvas, x + inset, cy - lineH / 2.0F,
+                    leftEnd - (x + inset), lineH, lineH / 2.0F, lineColor);
+        }
+        if (rightStart < x + w - inset) {
+            SkiaDraw.drawRoundedRect(canvas, rightStart, cy - lineH / 2.0F,
+                    x + w - inset - rightStart, lineH, lineH / 2.0F, lineColor);
+        }
+        SkiaFontRenderer.drawTextCentered(canvas, font, text, x + w / 2.0F, cy, lineColor);
     }
 
     /** Hit-tests rows using the same geometry as render. */
     public RowHit hit(float vmx, float vmy, UiLayout layout, float scrollY) {
         List<Row> rows = rows();
         float listTop = layout.list.y() + UiTokens.ROOT_CONTENT_GAP;
+        float y = listTop;
         for (int i = 0; i < rows.size(); i++) {
-            float y = listTop + i * (ROW_H + ROW_GAP) - scrollY;
-            RowHit hit = new RowHit(rows.get(i), i, layout.list.x(), y, layout.list.w(), ROW_H);
-            if (hit.contains(vmx, vmy)) {
-                return hit;
+            Row row = rows.get(i);
+            float h = row.kind() == RowKind.DIVIDER ? DIVIDER_H : ROW_H;
+            if (row.kind() != RowKind.DIVIDER) {
+                RowHit hit = new RowHit(row, i, layout.list.x(), y, layout.list.w(), ROW_H);
+                if (hit.contains(vmx, vmy)) {
+                    return hit;
+                }
             }
+            y += h + ROW_GAP;
         }
         return null;
     }
 
-    private void drawRow(Canvas canvas, Row row, float x, float y, float w, boolean hover, int index) {
-        float hoverAlpha = (hover && index == hoveredIndex) ? 1.0F : 0.0F;
-        if (hover) {
-            hoverAlpha = Math.max(hoverAlpha, rowHover);
-        }
+    /** Draws one row; {@code hoverAlpha} is the animated 0..1 highlight. */
+    private void drawRow(Canvas canvas, Row row, float x, float y, float w, float hoverAlpha, int index) {
         if (row.blocked()) {
-            drawBlockedRow(canvas, row, x, y, w, hover, hoverAlpha);
+            drawBlockedRow(canvas, row, x, y, w, hoverAlpha);
         } else {
-            drawNormalRow(canvas, row, x, y, w, hover, hoverAlpha);
+            drawNormalRow(canvas, row, x, y, w, hoverAlpha);
         }
     }
 
-    private void drawNormalRow(Canvas canvas, Row row, float x, float y, float w, boolean hover, float hoverAlpha) {
+    private void drawNormalRow(Canvas canvas, Row row, float x, float y, float w, float hoverAlpha) {
         SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, s(12), Color.makeARGB(60, 255, 255, 255));
         if (hoverAlpha > 0.01F) {
             SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, s(12),
@@ -240,7 +318,7 @@ public final class ConversationListPage {
         drawRowContent(canvas, row, x, y, w);
     }
 
-    private void drawBlockedRow(Canvas canvas, Row row, float x, float y, float w, boolean hover, float hoverAlpha) {
+    private void drawBlockedRow(Canvas canvas, Row row, float x, float y, float w, float hoverAlpha) {
         float[] matrix = {
                 0.2126F, 0.7152F, 0.0722F, 0, 0,
                 0.2126F, 0.7152F, 0.0722F, 0, 0,

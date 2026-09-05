@@ -2,6 +2,7 @@ package com.atom.chat.page;
 
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.nav.AppPage;
+import com.atom.chat.settings.SettingsSection;
 
 /**
  * Host interface implemented by the AtomChat shell screen so page classes can
@@ -15,6 +16,9 @@ public interface PageHost {
 
     /** Pushes a private conversation page. */
     void openPrivateChat(PlayerRef target);
+
+    /** Pushes one settings sub-page (外观 / 聊天 / 隐私 / 关于). */
+    void openSettingsSection(SettingsSection section);
 
     void popPage();
 

@@ -87,16 +87,20 @@ public class SkiaGraphics {
         draw(null, renderer);
     }
 
-    /**
-     * Draws the Skia UI after an optional raw-GL pre-pass.
-     *
-     * <p>The pre-pass runs after {@link GlStateUtil#save()} and before Skia
-     * paints anything, so it can safely mutate GL state and blur the world
-     * behind the panel; {@link GlStateUtil#restore()} cleans up afterwards.
-     * This is the only supported way to touch the main framebuffer from the
-     * AtomChat pipeline without owning Skia GPU resources.</p>
-     */
     public void draw(Runnable preUi, java.util.function.BiConsumer<Canvas, Image> renderer) {
+        draw(preUi, 0.0F, renderer);
+    }
+
+    /**
+     * Draws the Skia UI after an optional raw-GL pre-pass, with an explicit
+     * design density. AtomChat passes {@code baseDensity * uiScale} so its own
+     * scale option scales the whole panel uniformly — UiTokens constants stay
+     * untouched. The pre-pass runs after {@link GlStateUtil#save()} and before
+     * Skia paints anything; {@link GlStateUtil#restore()} cleans up afterwards.
+     *
+     * @param density {@code <= 0} falls back to the 1080p-anchored default.
+     */
+    public void draw(Runnable preUi, float density, java.util.function.BiConsumer<Canvas, Image> renderer) {
         RenderSystem.assertOnRenderThread();
         if (context == null || surface == null || canvas == null) {
             createSurface();
@@ -104,6 +108,9 @@ public class SkiaGraphics {
         if (canvas == null) {
             AtomChat.LOGGER.warn("Skia canvas is null after createSurface, skipping frame");
             return;
+        }
+        if (density <= 0.0F) {
+            density = Math.max(1.0F, MinecraftClient.getInstance().getFramebuffer().textureHeight / 1080.0F);
         }
 
         GlStateUtil.save();
@@ -119,7 +126,6 @@ public class SkiaGraphics {
 
         canvas.save();
         // Decouple from vanilla GUI scale: design density anchored at 1080p.
-        float density = Math.max(1.0F, MinecraftClient.getInstance().getFramebuffer().textureHeight / 1080.0F);
         canvas.scale(density, density);
         renderer.accept(canvas, snapshot);
         canvas.restore();

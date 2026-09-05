@@ -7,6 +7,17 @@ package com.atom.chat.ui;
  * geometry without launching the game.
  */
 public final class UiLayout {
+    /**
+     * Which chrome a page gets:
+     * <ul>
+     *   <li>{@code CHAT} — composer at the bottom, no tab bar (world/private).</li>
+     *   <li>{@code ROOT} — bottom tab bar, no composer (chat list / settings home).</li>
+     *   <li>{@code DETAIL} — neither: the list runs to the panel bottom, and the
+     *       header's back affordance is the only way out (settings sub-pages).</li>
+     * </ul>
+     */
+    public enum Mode { CHAT, ROOT, DETAIL }
+
     public final float panelX;
     public final float panelY;
     public final float panelW;
@@ -28,7 +39,7 @@ public final class UiLayout {
     /** Vertical center of the input text's FIRST visible line. */
     public final float inputTextCenterY;
 
-    private UiLayout(float panelX, float panelY, float panelW, float panelH, float inputExtraH, float replyH, boolean showInput) {
+    private UiLayout(float panelX, float panelY, float panelW, float panelH, float inputExtraH, float replyH, Mode mode) {
         this.panelX = panelX;
         this.panelY = panelY;
         this.panelW = panelW;
@@ -48,18 +59,22 @@ public final class UiLayout {
         float inputH = UiTokens.INPUT_HEIGHT + this.inputExtraH;
         float inputY = panelY + panelH - inputH - UiTokens.PANEL_BOTTOM_PAD;
 
-        this.tabBar = showInput
-                ? new Rect(0, 0, 0, 0)
-                : new Rect(panelX + UiTokens.LIST_PAD_X,
+        this.tabBar = mode == Mode.ROOT
+                ? new Rect(panelX + UiTokens.LIST_PAD_X,
                 panelY + panelH - UiTokens.TAB_BAR_H - UiTokens.PANEL_BOTTOM_PAD,
                 panelW - UiTokens.LIST_PAD_X * 2.0F,
-                UiTokens.TAB_BAR_H);
-        float bottomOfContent = showInput ? inputY : this.tabBar.y();
+                UiTokens.TAB_BAR_H)
+                : new Rect(0, 0, 0, 0);
+        float bottomOfContent = switch (mode) {
+            case CHAT -> inputY;
+            case ROOT -> this.tabBar.y();
+            case DETAIL -> panelY + panelH - UiTokens.PANEL_BOTTOM_PAD;
+        };
         this.list = new Rect(panelX + UiTokens.LIST_PAD_X, listTop,
                 panelW - UiTokens.LIST_PAD_X * 2.0F,
                 Math.max(0.0F, bottomOfContent - listTop));
 
-        if (showInput) {
+        if (mode == Mode.CHAT) {
             float replyY = inputY - this.replyH;
             this.replyBar = this.replyH > 0.0F
                     ? new Rect(panelX + UiTokens.LIST_PAD_X, replyY,
@@ -88,7 +103,7 @@ public final class UiLayout {
     }
 
     public static UiLayout of(float panelX, float panelY, float panelW, float panelH) {
-        return new UiLayout(panelX, panelY, panelW, panelH, 0.0F, 0.0F, true);
+        return new UiLayout(panelX, panelY, panelW, panelH, 0.0F, 0.0F, Mode.CHAT);
     }
 
     public static UiLayout of(float panelX, float panelY, float panelW, float panelH, float inputExtraH) {
@@ -96,11 +111,19 @@ public final class UiLayout {
     }
 
     public static UiLayout of(float panelX, float panelY, float panelW, float panelH, float inputExtraH, float replyH) {
-        return new UiLayout(panelX, panelY, panelW, panelH, inputExtraH, replyH, true);
+        return new UiLayout(panelX, panelY, panelW, panelH, inputExtraH, replyH, Mode.CHAT);
     }
 
     public static UiLayout ofRoot(float panelX, float panelY, float panelW, float panelH) {
-        return new UiLayout(panelX, panelY, panelW, panelH, 0.0F, 0.0F, false);
+        return new UiLayout(panelX, panelY, panelW, panelH, 0.0F, 0.0F, Mode.ROOT);
+    }
+
+    /**
+     * A pushed page with no composer and no tab bar: the list keeps the height
+     * the root layout would have handed to the tab bar.
+     */
+    public static UiLayout ofDetail(float panelX, float panelY, float panelW, float panelH) {
+        return new UiLayout(panelX, panelY, panelW, panelH, 0.0F, 0.0F, Mode.DETAIL);
     }
 
     public Rect rect() {

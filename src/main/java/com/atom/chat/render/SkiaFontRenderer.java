@@ -35,6 +35,22 @@ public final class SkiaFontRenderer {
         return width;
     }
 
+    /**
+     * Shortens {@code text} with a trailing ellipsis until it fits
+     * {@code maxWidth}. Single-line labels only — callers that need wrapping
+     * should use {@link #wrap(Font, String, float)} instead.
+     */
+    public static String truncate(Font font, String text, float maxWidth) {
+        if (text == null || text.isEmpty() || maxWidth <= 0.0F || getStringWidth(font, text) <= maxWidth) {
+            return text == null ? "" : text;
+        }
+        String t = text;
+        while (t.length() > 1 && getStringWidth(font, t + "…") > maxWidth) {
+            t = t.substring(0, t.length() - 1);
+        }
+        return t + "…";
+    }
+
     public static float getHeight(Font font) {
         var metrics = font.getMetrics();
         return metrics.getDescent() - metrics.getAscent() + metrics.getLeading();

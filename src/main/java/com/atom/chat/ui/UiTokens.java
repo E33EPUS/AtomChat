@@ -140,6 +140,54 @@ public final class UiTokens {
     /** Vertical inset between the root content list and content rows/controls. */
     public static final float ROOT_CONTENT_GAP = s(10);
 
+    // Settings home: a 2-column tile grid. Tile width is derived from the list
+    // width ((listW - TILE_GAP) / 2 = 188.75 at the default 420 panel), so the
+    // grid always fills the column exactly and never needs its own constant.
+    public static final int SETTINGS_TILE_COLS = 2;
+    /**
+     * Tiles are square: the side equals the computed tile width, so the grid is
+     * always 2x2 of perfect squares regardless of panel width. The glyph and
+     * its label form one centred group inside that square.
+     */
+    public static final float SETTINGS_TILE_GAP = s(10);
+    public static final float SETTINGS_TILE_RADIUS = s(12);
+    public static final float SETTINGS_TILE_ICON = s(34);
+    public static final float SETTINGS_TILE_TITLE = s(15);
+    public static final float SETTINGS_TILE_SUB = s(12);
+    /** Gap between the glyph and its label inside the centred group. */
+    public static final float SETTINGS_TILE_TEXT_GAP = s(10);
+
+    // Settings section rows (switch items, blocked players, about entries).
+    public static final float SETTINGS_ROW_H = s(56);
+    /** About-page hero card: logo plate on the left, wordmark on the right. */
+    public static final float SETTINGS_HERO_H = s(88);
+    public static final float SETTINGS_HERO_PLATE = s(56);
+    public static final float SETTINGS_HERO_FONT = s(24);
+    public static final float SETTINGS_ROW_GAP = s(8);
+    public static final float SETTINGS_ROW_PAD = s(14);
+    public static final float SETTINGS_ROW_RADIUS = s(12);
+    /** Group heading inside a section (e.g. the blocked-players list title). */
+    public static final float SETTINGS_LABEL_H = s(32);
+    /** Glyph size for the "nothing here" empty state under a group heading. */
+    public static final float SETTINGS_EMPTY_ICON = s(40);
+    /** Avatar inside a blocked-player row. */
+    public static final float SETTINGS_ROW_AVATAR = s(36);
+
+    // Slider row: title line on top, track below. The knob is deliberately a
+    // touch larger than the track so it reads as a handle, not a filled bar.
+    public static final float SETTINGS_SLIDER_ROW_H = s(64);
+    public static final float SETTINGS_SLIDER_TRACK_Y = s(40);
+    public static final float SLIDER_TRACK_H = s(6);
+    public static final float SLIDER_KNOB = s(18);
+
+    // Toggle switch. Geometry is iOS-proportioned: knob diameter is track
+    // height minus the two insets, so the travel is exactly
+    // SWITCH_W - SWITCH_KNOB - 2 * SWITCH_INSET = s(40) - s(18) - s(4) = 22.5.
+    public static final float SWITCH_W = s(40);
+    public static final float SWITCH_H = s(22);
+    public static final float SWITCH_KNOB = s(18);
+    public static final float SWITCH_INSET = s(2);
+
     // Panel background blur (gated by AtomChatConfig.blurEnabled). The tint sits
     // on top of the blurred snapshot so text stays legible without smothering
     // it — 0x66 read as a bare oil film over the world, 0x99 keeps the panel's

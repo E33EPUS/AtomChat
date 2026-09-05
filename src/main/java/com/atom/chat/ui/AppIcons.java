@@ -47,11 +47,49 @@ public final class AppIcons {
             + " M2 12h20"
             + " M12 2a15.3 15.3 0 0 1 4 10a15.3 15.3 0 0 1-4 10a15.3 15.3 0 0 1-4-10a15.3 15.3 0 0 1 4-10z";
 
+    // Settings home tiles. Same 20x20 open line language as the shell icons,
+    // just rendered larger; each glyph must read at a glance behind a label.
+    // Appearance: three adjustment sliders — the section is about tuning the
+    // look, and the palette dots were too faint to survive the tile size.
+    private static final String ICON_SETTINGS_APPEARANCE_SVG =
+            "M3 4.5h8.8 M16.2 4.5h1.8"
+            + " M15 2.8a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0 -3.4"
+            + " M3 10h2.3 M9.3 10h8.7"
+            + " M7.5 8.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0 -3.4"
+            + " M3 15.5h8.8 M16.2 15.5h1.8"
+            + " M15 13.8a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0 -3.4";
+    // Privacy: a shield outline, the universal "protected" silhouette.
+    private static final String ICON_SETTINGS_PRIVACY_SVG =
+            "M12 3l7 2.8v4.6c0 4.2-2.9 7.7-7 9.1c-4.1-1.4-7-4.9-7-9.1V5.8z";
+    // About: an information circle; the dot is a short round-capped dash so it
+    // survives stroke-width scaling at every size.
+    private static final String ICON_SETTINGS_ABOUT_SVG =
+            "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18"
+            + " M12 7.2v1.2"
+            + " M12 10.6v5.4";
+
     public static final Path ICON_BACK_PATH = Path.makeFromSVGString(ICON_BACK_SVG);
     public static final Path ICON_TAB_CHAT_PATH = Path.makeFromSVGString(ICON_TAB_CHAT_SVG);
     public static final Path ICON_TAB_PROFILE_PATH = Path.makeFromSVGString(ICON_TAB_PROFILE_SVG);
     public static final Path ICON_TAB_SETTINGS_PATH = Path.makeFromSVGString(ICON_TAB_SETTINGS_SVG);
     public static final Path ICON_GLOBE_PATH = Path.makeFromSVGString(ICON_GLOBE_SVG);
+    public static final Path ICON_SETTINGS_APPEARANCE_PATH = Path.makeFromSVGString(ICON_SETTINGS_APPEARANCE_SVG);
+    public static final Path ICON_SETTINGS_PRIVACY_PATH = Path.makeFromSVGString(ICON_SETTINGS_PRIVACY_SVG);
+    public static final Path ICON_SETTINGS_ABOUT_PATH = Path.makeFromSVGString(ICON_SETTINGS_ABOUT_SVG);
+
+    /**
+     * "Nothing here" glyph for an empty list: a tall panel with three text
+     * lines beside a shorter one — the same shape language as e33chat's
+     * no_online texture, redrawn as open line work.
+     */
+    private static final String ICON_NO_PLAYERS_SVG =
+            "M4.5 3.5H9.5A1.5 1.5 0 0 1 11 5V15A1.5 1.5 0 0 1 9.5 16.5H4.5A1.5 1.5 0 0 1 3 15V5A1.5 1.5 0 0 1 4.5 3.5Z"
+            + " M5.5 6.5H8.5"
+            + " M5.5 9H8.5"
+            + " M5.5 11.5H8.5"
+            + " M14.5 8H16A1.5 1.5 0 0 1 17.5 9.5V15A1.5 1.5 0 0 1 16 16.5H14.5A1.5 1.5 0 0 1 13 15V9.5A1.5 1.5 0 0 1 14.5 8Z";
+
+    public static final Path ICON_NO_PLAYERS_PATH = Path.makeFromSVGString(ICON_NO_PLAYERS_SVG);
 
     private AppIcons() {
     }

@@ -38,6 +38,12 @@ public final class UiMotion {
     public static final long TAB_MS = 200;
     /** Input bar growing/shrinking by one line. */
     public static final long INPUT_GROW_MS = 110;
+    /**
+     * Toggle-switch knob travel. Sits between hover (90) and tab push (200):
+     * this is a direct-manipulation control, so it has to read as a slide
+     * rather than a jump while still landing before the finger lifts.
+     */
+    public static final long TOGGLE_MS = 140;
 
     private UiMotion() {
     }

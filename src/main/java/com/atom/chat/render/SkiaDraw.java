@@ -75,6 +75,20 @@ public final class SkiaDraw {
     }
 
     /**
+     * Per-channel ARGB interpolation. Used where a control has to move between
+     * two colours instead of cross-fading two whole shapes — the toggle track
+     * warms from neutral white to the accent as the knob travels.
+     */
+    public static int lerpColor(int from, int to, float t) {
+        float c = Math.max(0.0F, Math.min(1.0F, t));
+        int a = Math.round(Color.getA(from) + (Color.getA(to) - Color.getA(from)) * c);
+        int r = Math.round(Color.getR(from) + (Color.getR(to) - Color.getR(from)) * c);
+        int g = Math.round(Color.getG(from) + (Color.getG(to) - Color.getG(from)) * c);
+        int b = Math.round(Color.getB(from) + (Color.getB(to) - Color.getB(from)) * c);
+        return Color.makeARGB(a, r, g, b);
+    }
+
+    /**
      * Cheap vertical white gradient used for hover capsules: one rounded rect
      * filled with a linear gradient from {@code topColor} at the top edge to
      * {@code bottomColor} at the bottom edge.

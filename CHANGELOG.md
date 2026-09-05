@@ -1,5 +1,59 @@
 # Changelog
 
+## v0.1.7
+
+### 中文
+
+- **设置磁贴改方形**：四个磁贴从横矩形改为正方形，SVG 图标与文案作为一组垂直居中（图标在上、单行文案在下），移除副标题描述。
+- **关于页重排**：每个条目改为「标题上 / 值下」两行，修复第三方组件名与值互相覆盖。
+- **关于页蓝链**：GitHub 仓库、MIT 许可证，以及 Skija / Skia / FlatLaf 三个组件全部可点击跳转（蓝色 + 下划线，用 MC 自带能力打开浏览器；全屏下浏览器会开在游戏后面）。
+- **新增滑块**：外观页新增三个连续值设置——背景不透明度（30–100%）、面板宽度（320–600）、界面缩放（x0.75–x1.50）。拖动手柄改值并即时写盘；点轨道一次 ±一个步进；拖动期间列表滚动被屏蔽。
+- **界面缩放为真实即时缩放**：在 Skia canvas 的设计密度上乘以系数，并同步作用到全部坐标换算（`uiDensity()` 单点收敛，鼠标、模糊 pre-pass、输入法锚点自动跟随）。UiTokens 常量保持类加载期求值，不做运行时重建。
+- **背景不透明度同时作用于模糊底与实色底**：一个滑块统一控制面板透出世界的程度，与「背景模糊」开关正交。
+- **返回时标题立即切换**：页面推入/弹出的顶栏标题改为始终显示目标页，返回动画第一帧就切到上一级标题，不再等滑出结束。
+- **面板宽度安全性确认**：Skia surface 按整个帧缓冲创建，面板只是每帧重算的矩形，改动宽度即时重排，不存在拉伸问题。
+- **关于页新增 Hero 卡**：顶部一张更高的卡片，左侧白色圆角底板内嵌 Mod logo，右侧 AtomChat 字标（图片接口已预留，未来可整体替换为艺术字 logo）；logo 已降采样到 256px（681KB → 33KB）。
+- **链接卡片提示重做**：「点击跳转」改为主字号纯白、垂直居中，作为卡片的主动作而非脚注。
+- **外观图标重绘**：从调色板改为三段调节滑杆（与「调整」分组语义一致，原图案点在磁贴尺寸下发虚）。
+
+### English
+
+- **Square settings tiles**: the four tiles changed from wide rectangles to squares, with the SVG glyph and a single label grouped and vertically centred (icon above, one text line below); the subtitle captions are gone.
+- **About page relayout**: each entry is now two lines (title above, value below), fixing the third-party component names overlapping their values.
+- **About page links**: the GitHub repository, the MIT license and the Skija / Skia / FlatLaf components are all clickable (blue + underline, opened through MC's browser hook; in fullscreen the browser opens behind the game).
+- **New sliders**: the Appearance section gains three continuous settings — background opacity (30–100%), panel width (320–600) and interface scale (x0.75–x1.50). Dragging the handle writes through to the config live; clicking the track nudges by one step; list scrolling is suppressed while dragging.
+- **Interface scale is really live**: the factor multiplies the Skia design density and every coordinate conversion through the single `uiDensity()` funnel (mouse, blur pre-pass and IME anchoring follow automatically). UiTokens constants stay class-initialised and are never rebuilt at runtime.
+- **Background opacity covers both backgrounds**: one slider governs how much world shows through, applied to the blurred tint and the solid fallback alike, orthogonal to the blur switch.
+- **Back titles switch immediately**: the pushed-page header now always names the destination, so a pop flips to the parent title on the first frame instead of waiting for the slide-out.
+- **Panel width is safe**: the Skia surface spans the whole framebuffer and the panel is just a per-frame rect, so changing width re-lays out instantly — no stretching involved.
+- **About-page hero card**: a taller card on top with the mod logo on a white rounded plate and the AtomChat wordmark beside it (the image slot is an interface, ready for an art-text logo later). The logo is downsampled to 256px (681KB → 33KB).
+- **Link-card hint reworked**: the "Open" cue is now title-sized, pure white and vertically centred — a call to action, not a footnote.
+- **Appearance icon redrawn**: palette replaced by three adjustment sliders, matching the Adjustments group; the old dots went fuzzy at tile size.
+
+## v0.1.6
+
+### 中文
+
+- **设置页上线**：底栏「设置」不再是占位页，改为 Win11 风格的 2×2 磁贴主页（外观 / 聊天 / 隐私与屏蔽 / 关于），每个磁贴带自绘线性 SVG 图标、标题与副标题说明。
+- **设置子页**：点击磁贴进入对应设置界面，复用与公屏/私聊一致的全宽 push/pop 转场；左上角返回箭头（或 Esc）返回，底部不再绘制 tab 栏，列表吃满面板高度。
+- **开关控件**：每个配置项卡片右侧带 iOS 比例开关（140ms easeOutCubic 滑块，开=主题蓝、关=半透明白、旋钮纯白）。
+- **配置热更新**：任意开关切换立即写回 `atomchat-client.json`，全部选项即时生效，无需重启游戏。
+- **新开关**：背景模糊、界面动画（装饰动效总闸）、消息入场动画、双击头像戳一戳、隐藏被屏蔽玩家的消息、调试模式。
+- **「界面动画」为真实开关**：此前 `animationEnabled` 字段从未被任何代码读取；现已接入消息入场、页面转场、面板开合、头像 poke 抖动与滚动吸底。hover 反馈与滚轮惯性保留，UI 不会失去响应感。
+- **隐私语义可选**：屏蔽玩家原本会直接丢弃其公屏消息；现可关闭「隐藏被屏蔽玩家的消息」让公屏仍可见，但会话卡片仍灰化、私聊仍只读。
+- **布局**：`UiLayout` 新增 `DETAIL` 模式（无输入栏、无 tab 栏），并补充几何单测锁定列表恰好回收 tab 栏高度。
+
+### English
+
+- **Settings page ships**: the Settings tab is no longer a placeholder but a Windows-11-style 2x2 tile grid (Appearance / Chat / Privacy & blocking / About), each tile with a hand-drawn line icon, title and caption.
+- **Settings sub-pages**: tapping a tile opens the section, reusing the same full-width push/pop transition as the public/private pages; back arrow (or Esc) returns, the tab bar is gone and the list uses the full panel height.
+- **Toggle switch**: every option card carries an iOS-proportioned switch (140ms easeOutCubic knob, accent blue when on, translucent white when off, pure white knob).
+- **Live config**: any toggle writes `atomchat-client.json` immediately; every option takes effect at once, no restart needed.
+- **New switches**: background blur, interface animations (decorative-motion master), message entrance, double-tap avatar poke, hide blocked players' messages, debug mode.
+- **"Interface animations" is a real switch**: the `animationEnabled` field was previously never read by any code; it now gates message entrances, page transitions, the panel open slide, the poke shake and scroll snapping. Hover feedback and wheel glide are kept so the UI never feels unresponsive.
+- **Optional privacy semantics**: blocking a player used to drop their public messages outright; turning off "Hide blocked players' messages" keeps them visible in public chat while the card stays greyed out and private chat stays read-only.
+- **Layout**: `UiLayout` gains a `DETAIL` mode (no composer, no tab bar) with unit tests asserting the list reclaims exactly the tab bar height.
+
 ## v0.1.6
 
 ### 中文

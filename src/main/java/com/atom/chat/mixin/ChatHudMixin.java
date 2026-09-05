@@ -11,6 +11,7 @@ import com.atom.chat.chat.PrivateChatParser;
 import com.atom.chat.chat.QuoteParser;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.SenderMeta;
+import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.text.ChatTextRewriter;
 import com.atom.chat.text.RichText;
 import net.minecraft.client.gui.screen.AtomChatScreen;
@@ -123,7 +124,8 @@ public class ChatHudMixin {
             // them makes real messages vanish from the panel; showing a possible
             // duplicate is the safer failure per e33chat's "宁可不杀" rule.
             String displayName = parsed.senderName() != null ? parsed.senderName() : parsed.profileName();
-            if (displayName != null && BlockList.isBlocked(displayName)) {
+            if (AtomChatConfig.get().hideBlockedMessages
+                    && displayName != null && BlockList.isBlocked(displayName)) {
                 return;
             }
             String parsedContent = parsed.contentText() != null ? parsed.contentText() : raw;
@@ -155,7 +157,8 @@ public class ChatHudMixin {
             return;
         }
         String blockName = meta.profileName() != null ? meta.profileName() : meta.senderName();
-        if (blockName != null && BlockList.isBlocked(blockName)) {
+        if (AtomChatConfig.get().hideBlockedMessages
+                && blockName != null && BlockList.isBlocked(blockName)) {
             return;
         }
 

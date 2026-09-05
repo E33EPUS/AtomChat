@@ -154,4 +154,38 @@ class UiLayoutTest {
     void compactRootPanelStillFits() {
         assertSaneRoot(UiLayout.ofRoot(24, 16, 360, 280));
     }
+
+    private static void assertSaneDetail(UiLayout l) {
+        UiLayout.Rect panel = l.rect();
+
+        assertTrue(panel.contains(l.header), "detail header inside panel");
+        assertTrue(panel.contains(l.list), "detail list inside panel");
+        assertTrue(l.inputBar.w() == 0.0F, "input bar is not used on pushed pages");
+        assertTrue(l.tabBar.w() == 0.0F, "tab bar is not used on pushed pages");
+        assertTrue(l.list.h() > 0, "detail content has room");
+
+        // Same top edge as every other page.
+        assertEquals(l.header.bottom() + UiTokens.PANEL_TOP_GAP, l.list.y(), EPS,
+                "detail list starts below the header plus PANEL_TOP_GAP");
+
+        // No tab bar means the list keeps the height the root layout would have
+        // handed to it — that is the whole point of a dedicated mode.
+        UiLayout root = UiLayout.ofRoot(l.rect().x(), l.rect().y(), l.rect().w(), l.rect().h());
+        assertEquals(root.tabBar.h(), l.list.h() - root.list.h(), EPS,
+                "detail list reclaims exactly the tab bar height");
+
+        // And it runs all the way to the panel bottom pad.
+        assertEquals(panel.bottom() - UiTokens.PANEL_BOTTOM_PAD, l.list.bottom(), EPS,
+                "detail list ends at the panel bottom pad");
+    }
+
+    @Test
+    void detailLayoutHasNeitherComposerNorTabBar() {
+        assertSaneDetail(UiLayout.ofDetail(24, 100, 525, 975));
+    }
+
+    @Test
+    void compactDetailPanelStillFits() {
+        assertSaneDetail(UiLayout.ofDetail(24, 16, 360, 280));
+    }
 }

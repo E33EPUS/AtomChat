@@ -2,6 +2,7 @@ package com.atom.chat;
 
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.render.PanelBlurRenderer;
+import com.atom.chat.wallpaper.WallpaperStore;
 import net.fabricmc.api.ClientModInitializer;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.chat.PrivateChatStore;
@@ -32,6 +33,9 @@ public class AtomChatClient implements ClientModInitializer {
         // class initialises, so it lives here at the very start of client init.
         System.setProperty("java.awt.headless", "false");
         AtomChatConfig.get();
+        WallpaperStore.init(
+                net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                        .resolve("atomchat/wallpaper"));
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
             @Override
             public Identifier getFabricId() {

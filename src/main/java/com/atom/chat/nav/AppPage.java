@@ -5,7 +5,12 @@ public enum AppPage {
     PROFILE("profile", true),
     SETTINGS("settings", true),
     WORLD_CHAT("world_chat", false),
-    PRIVATE_CHAT("private_chat", false);
+    PRIVATE_CHAT("private_chat", false),
+    /**
+     * One settings sub-page (外观 / 聊天 / 隐私 / 关于). Which one is carried by
+     * {@link NavPage#param()}, so adding a section never grows this enum.
+     */
+    SETTINGS_SECTION("settings_section", false);
 
     private final String id;
     private final boolean root;

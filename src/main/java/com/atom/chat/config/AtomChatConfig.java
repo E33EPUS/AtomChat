@@ -13,11 +13,41 @@ import java.nio.file.Path;
 public class AtomChatConfig {
     public static final AtomChatConfig DEFAULT = new AtomChatConfig();
 
-    public float panelWidth = 420.0F;
+    public float panelWidth = 440.0F;
     public float panelHeight = 780.0F;
     /** Rounded panel background blur (raw GL + core shader, outside Skia). */
     public boolean blurEnabled = true;
+    /**
+     * Master switch for decorative motion: message entrance, page/tab push,
+     * the panel open slide, the avatar poke shake and scroll snapping.
+     * Functional feedback (hover tint, wheel glide) is deliberately kept even
+     * when this is off, so the UI never stops responding to the pointer.
+     */
     public boolean animationEnabled = true;
+    /** QQ-style horizontal slide + fade when a message first enters the viewport. */
+    public boolean messageEntryAnimation = true;
+    /** Double-clicking another player's avatar performs the QQ-style poke shake. */
+    public boolean avatarPokeEnabled = true;
+    /**
+     * When true, public messages from blocked players are dropped at capture
+     * time. When false they are shown normally — the conversation card stays
+     * greyed out and private chat stays read-only either way, so a block
+     * always silences direct contact.
+     */
+    public boolean hideBlockedMessages = true;
+    /**
+     * Panel background opacity, 0..1. Applied to the solid fallback colour and
+     * to the blur tint alike, so one slider governs how much world shows
+     * through regardless of whether blur is on.
+     */
+    public float panelOpacity = 0.93F;
+    /**
+     * AtomChat-only UI scale multiplier on top of the vanilla GUI scale. It is
+     * applied at the Skia canvas and in every coordinate conversion, never to
+     * {@link com.atom.chat.ui.UiTokens} — those constants are class-init
+     * statics and could not change at runtime.
+     */
+    public float uiScale = 1.0F;
     /** Dumps avatar sampling PNGs to {@code <config>/atomchat/debug/} for color debugging. */
     public boolean debug = false;
     public int accentColor = 0xFF4A90E2;

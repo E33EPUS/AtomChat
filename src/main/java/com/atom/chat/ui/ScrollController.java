@@ -40,7 +40,19 @@ public final class ScrollController {
     private boolean firstFrameBottomSnap = true;
     private float lastViewportHeight = -1.0F;
 
+    /**
+     * Mirrors {@link Animations#enabled()}. Kept as a field rather than read
+     * straight from the config so this class stays pure and testable offline.
+     * Only snapping honours it — the wheel keeps gliding (see
+     * {@link #startScrollAnim(float, long, boolean)}).
+     */
+    private boolean decorativeMotion = true;
+
     public ScrollController() {
+    }
+
+    public void setDecorativeMotion(boolean enabled) {
+        this.decorativeMotion = enabled;
     }
 
     /** Clears every piece of scroll state, including drag and scrollbar fade. */
@@ -131,7 +143,7 @@ public final class ScrollController {
         if (animate) {
             scrollToBottom = true;
             scrollTarget = maxScroll;
-            startScrollAnim(scrollTarget, UiMotion.SCROLL_SNAP_MS);
+            startScrollAnim(scrollTarget, UiMotion.SCROLL_SNAP_MS, true);
         } else {
             scrollY = maxScroll;
             scrollTarget = maxScroll;
@@ -144,7 +156,9 @@ public final class ScrollController {
     public void wheel(float amount) {
         scrollToBottom = false;
         scrollTarget = Math.max(0.0F, Math.min(scrollTarget - amount * WHEEL_STEP, maxScroll));
-        startScrollAnim(scrollTarget, UiMotion.SCROLL_WHEEL_MS);
+        // The wheel is pointer feedback, not ornament: it keeps gliding even
+        // when decorative motion is off, otherwise scrolling feels broken.
+        startScrollAnim(scrollTarget, UiMotion.SCROLL_WHEEL_MS, false);
     }
 
     public boolean isDragging() {
@@ -195,7 +209,7 @@ public final class ScrollController {
         if (scrollToBottom || wasAtBottom) {
             scrollTarget = maxScroll;
             scrollToBottom = false;
-            startScrollAnim(scrollTarget, UiMotion.SCROLL_SNAP_MS);
+            startScrollAnim(scrollTarget, UiMotion.SCROLL_SNAP_MS, true);
         }
         if (scrollAnimActive) {
             float t = Math.min(1.0F, (nowMs - scrollAnimStart) / (float) scrollAnimMs);
@@ -228,7 +242,8 @@ public final class ScrollController {
         boolean nearTrack = vmx >= trackX - UiTokens.s(12) && vmx <= trackX + trackWidth + UiTokens.s(12)
                 && vmy >= list.y() - UiTokens.s(12) && vmy <= list.bottom() + UiTokens.s(12);
         boolean active = maxScroll > 0.0F && (dragging || nearTrack);
-        scrollBarAlpha = UiMotion.approach(scrollBarAlpha, active ? 1.0F : 0.0F, dt, UiMotion.SCROLLBAR_FADE_MS);
+        scrollBarAlpha = UiMotion.approach(scrollBarAlpha, active ? 1.0F : 0.0F, dt,
+                decorativeMotion ? UiMotion.SCROLLBAR_FADE_MS : 0L);
         if (scrollBarAlpha <= 0.0F) {
             return 0.0F;
         }
@@ -255,9 +270,14 @@ public final class ScrollController {
         return scrollActive;
     }
 
-    private void startScrollAnim(float to, long durationMs) {
+    /**
+     * @param decorative true for snap/follow (collapsed when decorative motion
+     *                   is off), false for wheel glide (always animated).
+     */
+    private void startScrollAnim(float to, long durationMs, boolean decorative) {
+        long ms = (decorative && !decorativeMotion) ? 0L : durationMs;
         scrollTarget = to;
-        if (Math.abs(scrollY - to) <= 0.5F) {
+        if (ms <= 0L || Math.abs(scrollY - to) <= 0.5F) {
             scrollY = to;
             scrollAnimActive = false;
             return;
@@ -268,7 +288,7 @@ public final class ScrollController {
         scrollAnimFrom = scrollY;
         scrollAnimTo = to;
         scrollAnimStart = System.currentTimeMillis();
-        scrollAnimMs = durationMs;
+        scrollAnimMs = ms;
         scrollAnimActive = true;
     }
 }

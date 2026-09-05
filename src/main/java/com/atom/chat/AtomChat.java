@@ -1,6 +1,7 @@
 package com.atom.chat;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,5 +12,21 @@ public class AtomChat implements ModInitializer {
     @Override
     public void onInitialize() {
         LOGGER.info("AtomChat initialized");
+    }
+
+    /**
+     * Friendly mod version for the settings about page. Read from the loader
+     * metadata rather than a hardcoded constant so it can never drift away
+     * from gradle.properties. Guarded because the container is absent outside
+     * a real Fabric launch.
+     */
+    public static String version() {
+        try {
+            return FabricLoader.getInstance().getModContainer(MOD_ID)
+                    .map(container -> container.getMetadata().getVersion().getFriendlyString())
+                    .orElse("unknown");
+        } catch (Throwable t) {
+            return "unknown";
+        }
     }
 }
