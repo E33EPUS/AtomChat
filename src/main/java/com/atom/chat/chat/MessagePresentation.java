@@ -50,10 +50,12 @@ public final class MessagePresentation {
         if (cleanName.isEmpty()) {
             return Optional.empty();
         }
-        int idx = text.indexOf(cleanName);
-        if (idx < 0) {
+        int[] hit = indexOfNameTolerant(text, cleanName);
+        if (hit == null) {
             return Optional.empty();
         }
+        int idx = hit[0];
+        int nameEndRaw = hit[1];
 
         // Broadcast-spoof guard: separators before the name mean a label like
         // "系统>>Steve" — real chat keeps only decorations before the name.
@@ -69,7 +71,7 @@ public final class MessagePresentation {
 
         int minLen = 3;
         if (idx > 0 && text.charAt(idx - 1) == '<') {
-            int closeAngle = text.indexOf('>', idx + cleanName.length());
+            int closeAngle = text.indexOf('>', nameEndRaw);
             if (closeAngle >= 0 && closeAngle - (idx - 1) <= 64) {
                 minLen = 1;
             }
@@ -79,7 +81,7 @@ public final class MessagePresentation {
             if (bracketClose >= 0 && idx - bracketClose <= 2) {
                 int bracketOpen = text.lastIndexOf('[', bracketClose);
                 if (bracketOpen >= 0) {
-                    int after = idx + cleanName.length();
+                    int after = nameEndRaw;
                     if (after < text.length()) {
                         char next = text.charAt(after);
                         if (next == ':' || next == '：') {
@@ -90,7 +92,7 @@ public final class MessagePresentation {
             }
         }
         if (minLen == 3) {
-            int after = idx + cleanName.length();
+            int after = nameEndRaw;
             if (after < text.length()) {
                 char next = text.charAt(after);
                 if (next == ':' || next == '：') {
@@ -112,7 +114,7 @@ public final class MessagePresentation {
             boolean prevIsColorCode = prev == '§' || (idx >= 2 && text.charAt(idx - 2) == '§');
             if (!prevIsColorCode && (Character.isLetterOrDigit(prev) || prev == '_')) {
                 int openAngle = text.lastIndexOf('<', idx);
-                int closeAngle = text.indexOf('>', idx + cleanName.length());
+                int closeAngle = text.indexOf('>', nameEndRaw);
                 if (openAngle >= 0 && closeAngle >= 0 && closeAngle - openAngle <= 64) {
                     // A letter immediately before the name inside <...> means the
                     // candidate is a suffix of a longer word (<Notch> matching
@@ -133,7 +135,7 @@ public final class MessagePresentation {
             }
         }
 
-        int after = idx + cleanName.length();
+        int after = nameEndRaw;
         if (after < text.length()) {
             char next = text.charAt(after);
             if (Character.isLetterOrDigit(next) || next == '_' || next == '-') {
@@ -166,11 +168,51 @@ public final class MessagePresentation {
         if (idx > 0 && text.charAt(idx - 1) == '<') {
             // The closing angle bracket is a separator, not part of the label;
             // the opening one must be dropped too so "<Steve> hi" reads "Steve"
-            // and "[VIP]<Steve> hi" reads "[VIP]Steve".
-            displayLabel = text.substring(0, idx - 1) + text.substring(idx, labelEnd);
+            // and "[VIP]<Steve> hi" reads "[VIP]Steve". § pairs are stripped
+            // here because this branch synthesises the label from a raw slice
+            // (with a split name it would otherwise show bare codes), while
+            // the non-angle path renders from already-clean rich text.
+            displayLabel = text.substring(0, idx - 1).replaceAll("§.", "")
+                    + text.substring(idx, labelEnd).replaceAll("§.", "");
         }
         return Optional.of(new PlayerLine(cleanName, displayLabel, text.substring(sep).strip(),
                 idx, after, labelEnd, sep));
+    }
+
+    /**
+     * G3 (e33chat parity): finds the candidate name in the raw line even when
+     * server-side decoration splits it with § color pairs — "S§6t§beve" for
+     * "Steve". A plain {@code indexOf(cleanName)} goes blind in that case.
+     *
+     * <p>Returns {@code {rawStart, rawEnd}} where rawStart is the index of the
+     * first real name character and rawEnd is the raw index right after the
+     * last one (interleaved § pairs included, trailing pairs excluded), or
+     * {@code null} when the name does not occur. The match must start at a
+     * real (non-§) character so leading decoration is never consumed.
+     */
+    static int[] indexOfNameTolerant(String text, String name) {
+        int n = text.length();
+        for (int i = 0; i < n; i++) {
+            if (text.charAt(i) != name.charAt(0)) {
+                continue;
+            }
+            int ti = i + 1;
+            boolean matched = true;
+            for (int k = 1; k < name.length(); k++) {
+                while (ti + 1 < n && text.charAt(ti) == '§') {
+                    ti += 2;
+                }
+                if (ti >= n || text.charAt(ti) != name.charAt(k)) {
+                    matched = false;
+                    break;
+                }
+                ti++;
+            }
+            if (matched) {
+                return new int[]{i, ti};
+            }
+        }
+        return null;
     }
 
     /**

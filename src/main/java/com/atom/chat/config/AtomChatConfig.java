@@ -72,6 +72,20 @@ public class AtomChatConfig {
     /** Global blocked-player real names, persisted locally. */
     public java.util.List<String> blockedPlayers = new java.util.ArrayList<>();
 
+    /**
+     * Client-side chat templates (e33chat parity), e.g. {@code "<{name}> {content}"}.
+     * Empty = disabled; the guards keep their current behaviour. Placeholders:
+     * {name} {display_name} {prefix} {suffix} {sep} {content} (exactly one
+     * {content}, any position). Hand-edit this file; templates are re-read when
+     * a chat screen opens.
+     */
+    public java.util.List<String> chatTemplates = new java.util.ArrayList<>();
+    /**
+     * Same syntax as {@link #chatTemplates} but claims incoming private-message
+     * lines (plugin-reformatted {@code /msg}) into the private panel.
+     */
+    public java.util.List<String> whisperTemplates = new java.util.ArrayList<>();
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AtomChatConfig instance;
 
@@ -80,6 +94,14 @@ public class AtomChatConfig {
             instance = load();
         }
         return instance;
+    }
+
+    /**
+     * Re-reads the config file. Called when a chat screen opens so hand-edited
+     * templates take effect without a game restart.
+     */
+    public static void reload() {
+        instance = load();
     }
 
     private static AtomChatConfig load() {

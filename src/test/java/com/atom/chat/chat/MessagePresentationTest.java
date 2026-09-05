@@ -131,4 +131,44 @@ class MessagePresentationTest {
         assertEquals("Steve", line.get().displayLabel());
         assertEquals("【滑稽】", line.get().content());
     }
+
+    // ---- G3: names split by § color pairs inside the text ----
+
+    @Test
+    void colorCodeSplitNameStillMatches() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("S§6t§beve: hi", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("Steve", line.get().playerName());
+        assertEquals("hi", line.get().content());
+    }
+
+    @Test
+    void colorCodeSplitNameOffsetsStayRaw() {
+        String text = "[VIP] S§6t§beve§r: hi there";
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine(text, List.of("Steve"));
+        assertTrue(line.isPresent());
+        // Offsets must be raw-line coordinates so RichText slicing keeps working.
+        assertEquals('S', text.charAt(line.get().nameStart()));
+        assertEquals('e', text.charAt(line.get().nameEnd() - 1));
+        assertEquals("hi there", text.substring(line.get().contentStart()));
+        assertEquals("[VIP] S§6t§beve§r", line.get().displayLabel());
+    }
+
+    @Test
+    void colorCodeSplitNameLongerCandidateWinsOverSuffix() {
+        // "Ste§6ve2" must not be claimed by candidate "Steve" (next-char check).
+        assertTrue(MessagePresentation.parseDecoratedPlayerLine(
+                "Ste§6ve2: hi", List.of("Steve")).isEmpty());
+    }
+
+    @Test
+    void colorCodeSplitNameInsideAngleBrackets() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("<S§6t§beve> hi", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("Steve", line.get().displayLabel());
+        assertEquals("hi", line.get().content());
+    }
 }

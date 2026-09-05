@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.1.9
+
+### 新增
+
+- **服务器格式模板**（e33chat 同款结构解，纯客户端配置）：守卫解析不出的系统通道消息可由用户自定义模板认领。在 `config/atomchat/atomchat-client.json` 手工配置 `chatTemplates` / `whisperTemplates`（打开聊天屏时生效，免重启）。占位符：`{name}`（玩家名，锚定在线/已知玩家）/ `{display_name}`（装饰名）/ `{prefix}` / `{suffix}` / `{sep}` / `{content}`（恰好一个、任意位置，支持后缀式）。多模板首匹配胜出。配置文件注释内含 EssentialsX / CMI / DeluxeChat / VentureChat 默认格式示例。
+- **插件私聊文本兜底**（e33chat G1 移植 + 扩展）：vanilla 翻译 key 之外的文本形态私聊（插件改写 /msg、机器人中继）现在能识别并进入私聊面板 + 未读红点。支持箭头系（EssentialsX `[Steve -> 我] hi`、CMI `[/msg from [Steve]]`、DeluxeChat `Steve -> 我 : hi`）与关键词系（`悄悄地对你说` / `whispers to you` / 你发出的 `你对X悄悄地说`）；只有当一端是自己（或 `我`/`me` 字面量）才认领，其余留给公屏守卫；发送方向按 PrivateEchoTracker 既有语义去重。对端经在线/离线记忆解析身份。
+- **解析失败诊断**（e33chat G4 同款）：`debug=true` 时整条认领链（权威 key → 文本私聊 → 守卫 → 模板）全部失手会在日志记一行原始消息，真实服务器上的未知格式可凭日志回修。
+
+### 修复
+
+- **多色 § 码嵌名失明**（e33chat G3 补全）：服务器把名字用色码拆开时（`S§6t§beve`），原实现用裸名对原文 `indexOf` 必然失配 → 消息掉灰字。现在名字匹配允许中间夹 § 码对，偏移保持原文坐标，富文本切片与装饰标签不受影响；尖括号路径的合成标签同步剥码。新增 4 项回归测试。
+
+### 更改
+
+- 模板编译全链路防御：占位符重复（`{name}{name}`）、缺 `{content}`、正则编译失败一律拒绝该模板并记日志，不再影响其它模板（e33chat 2.2.7 崩溃穿透教训）。
+- ⚠️ 环境坑存档：**JDK 21.0.11（2026-04 LTS）的 `java.util.regex` 不再接受命名捕获组名中的 `_` 与 `-`**（报 "named capturing group is missing trailing '>'"）。模板正则的组名全部改为无下划线（`gname`/`gdisp`/`gprefix`/`gsuffix`/`gcontent`）。
+
+### 新增测试
+
+- MessagePresentation +4（多色嵌名）/ WhisperTextParserTest 15 项 / ChatTemplatesTest 14 项，全量 210 项绿。
+
+### Change
+
+- **Server-format templates** (e33chat parity, client-side): user-defined templates can now claim system-channel lines the guards cannot parse. Hand-edit `chatTemplates` / `whisperTemplates` in `config/atomchat/atomchat-client.json` (effective when a chat screen opens, no restart). Placeholders: `{name}` (anchored to known players) / `{display_name}` / `{prefix}` / `{suffix}` / `{sep}` / `{content}` (exactly one, any position — suffix style supported). First match wins. Real plugin default formats (EssentialsX / CMI / DeluxeChat / VentureChat) ship as config comment examples.
+- **Plugin whisper text fallback** (e33chat G1 port + extension): text-shaped private messages beyond vanilla translation keys (plugin-reformatted /msg, bot relays) now enter the private panel with the unread badge. Arrow family (EssentialsX / CMI / DeluxeChat) and keyword family (`whispers to you`, Chinese variants) are supported; a line is only claimed when one side is the local player; outgoing echoes follow the existing PrivateEchoTracker semantics.
+- **Parse-miss diagnostics** (e33chat G4 parity): with `debug=true`, a line the whole claim chain fails on is logged verbatim so unknown real-server formats can be fixed from the log alone.
+
+### Fix
+
+- **Color-code split names went blind** (e33chat G3 completion): when a server splits a name with § pairs (`S§6t§beve`), the old `indexOf(cleanName)` on the raw line always failed and the message degraded to a gray capsule. Name matching now tolerates interleaved § pairs while keeping raw-line offsets for rich-text slicing; 4 regression tests added.
+- Template compilation is fully defensive: duplicate placeholders, a missing `{content}` or a broken regex reject just that template with a log line (the e33chat 2.2.7 crash-through lesson).
+- ⚠️ Environment note: **JDK 21.0.11 (2026-04 LTS) no longer accepts `_` or `-` in named capturing groups**; template group names are underscore-free accordingly.
+
 ## v0.1.8
 
 ### 新增

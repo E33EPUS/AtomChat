@@ -1,17 +1,21 @@
 package com.atom.chat.mixin;
 
+import com.atom.chat.AtomChat;
 import com.atom.chat.chat.BlockList;
 import com.atom.chat.chat.ChatClassifier;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatPipeline;
 import com.atom.chat.chat.ChatStore;
+import com.atom.chat.chat.ChatTemplates;
 import com.atom.chat.chat.MessageCapture;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatParser;
+import com.atom.chat.chat.PrivateEchoTracker;
 import com.atom.chat.chat.QuoteParser;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.SeenPlayers;
 import com.atom.chat.chat.SenderMeta;
+import com.atom.chat.chat.WhisperTextParser;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.text.ChatTextRewriter;
 import com.atom.chat.text.RichText;
@@ -20,6 +24,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.ChatHud;
 import net.minecraft.client.gui.hud.MessageIndicator;
+import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.network.message.MessageSignatureData;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
@@ -113,8 +118,20 @@ public class ChatHudMixin {
                 addSystemMessage(message);
                 return;
             }
+            // Text-layer whisper fallback (plugin-reformatted /msg, bot relays).
+            // Must run BEFORE the player-line guard: its separator skipping
+            // would mis-claim "[Steve -> me] hi" as a public bubble from Steve.
+            if (atomchat$tryTextWhisper(raw, message, client)) {
+                return;
+            }
             SenderMeta parsed = ChatPipeline.tryParsePlayerLine(raw);
             if (parsed == null) {
+                // Guard failed: user-configured templates get the last claim
+                // before the line degrades to a gray system bubble.
+                parsed = atomchat$tryChatTemplate(raw);
+            }
+            if (parsed == null) {
+                atomchat$logParseMiss(raw);
                 addSystemMessage(message);
                 return;
             }
@@ -200,6 +217,89 @@ public class ChatHudMixin {
                 quote != null ? quote.quoteText() : null,
                 meta.senderUuid(), displayName, meta.profileName(), body,
                 senderRich, contentRich));
+    }
+
+    /**
+     * G1 text-layer whisper fallback + user-configured whisper templates.
+     * Returns true when the line was claimed (routed into the private panel).
+     */
+    @Unique
+    private static boolean atomchat$tryTextWhisper(String raw, Text message, MinecraftClient client) {
+        String ownName = client.player != null ? client.player.getName().getString() : null;
+        WhisperTextParser.WhisperHit hit = WhisperTextParser.tryParse(raw, ownName);
+        if (hit == null) {
+            var cfg = AtomChatConfig.get();
+            if (cfg.whisperTemplates.isEmpty()) {
+                return false;
+            }
+            var match = ChatTemplates.matchWhisper(
+                    raw, cfg.whisperTemplates, ChatPipeline.onlineNameCandidates());
+            if (match.isEmpty()) {
+                return false;
+            }
+            var tm = match.get();
+            hit = new WhisperTextParser.WhisperHit(true, tm.displayLabel(), tm.content());
+        }
+        PlayerListEntry info = ChatClassifier.resolveOnlinePlayer(hit.partnerDisplay());
+        String profile = info != null ? info.getProfile().getName() : hit.partnerDisplay();
+        UUID uuid = info != null ? info.getProfile().getId()
+                : ChatClassifier.resolveUuid(hit.partnerDisplay());
+        SenderMeta whisperMeta;
+        if (hit.incoming()) {
+            whisperMeta = new SenderMeta(uuid, hit.partnerDisplay(), profile,
+                    hit.content(), false, true, profile, null, null);
+        } else {
+            // Outgoing echo: for sends made from the panel the local bubble
+            // already exists — drop only when the tracker confirms, otherwise
+            // store the line as our outgoing message (same semantics as the
+            // vanilla-key outgoing branch in PrivateChatParser).
+            PlayerRef partner = PlayerRef.of(uuid, profile);
+            if (PrivateEchoTracker.consumeIfMatch(partner)) {
+                return true;
+            }
+            if (client.player == null) {
+                return false;
+            }
+            String own = client.player.getName().getString();
+            whisperMeta = new SenderMeta(client.player.getUuid(), own, own,
+                    hit.content(), false, true, profile, null, null);
+        }
+        atomchat$routePrivate(message, whisperMeta, client);
+        return true;
+    }
+
+    /** Client-side template claim for chat lines the guards cannot express. */
+    @Unique
+    private static SenderMeta atomchat$tryChatTemplate(String raw) {
+        var cfg = AtomChatConfig.get();
+        if (cfg.chatTemplates.isEmpty()) {
+            return null;
+        }
+        var match = ChatTemplates.match(
+                raw, cfg.chatTemplates, ChatPipeline.onlineNameCandidates());
+        if (match.isEmpty()) {
+            return null;
+        }
+        var tm = match.get();
+        UUID uuid = ChatClassifier.resolveUuid(tm.playerName());
+        return new SenderMeta(uuid, tm.displayLabel(), tm.playerName(), tm.content(), false);
+    }
+
+    /**
+     * G4 (e33chat parity) miss diagnostics: when the whole claim chain fails
+     * and templates are configured, log the raw line so real-server formats
+     * that slip through can be fixed from the log alone. Gated behind the
+     * debug flag to keep public-chat log volume at zero.
+     */
+    @Unique
+    private static void atomchat$logParseMiss(String raw) {
+        var cfg = AtomChatConfig.get();
+        if (!cfg.debug) {
+            return;
+        }
+        boolean hasTemplates = !cfg.chatTemplates.isEmpty() || !cfg.whisperTemplates.isEmpty();
+        AtomChat.LOGGER.info("[atomchat] chat parse miss (guard{} matched nothing): {}",
+                hasTemplates ? "+templates" : "", raw);
     }
 
     @Unique

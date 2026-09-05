@@ -451,6 +451,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         super(originalChatText);
         this.originalChatText = originalChatText;
         this.worldDraft = originalChatText;
+        // Screen objects are constructed fresh on every open (init() re-runs on
+        // resize), so this is the right hook for picking up hand-edited config
+        // — chat/whisper templates take effect without a game restart.
+        AtomChatConfig.reload();
         this.navigation = new NavigationStack<>(NavPage.of(AppPage.CHAT_LIST));
         if (mode == AtomChatOpenMode.DIRECT_WORLD) {
             navigation.replaceWithRoot(NavPage.of(AppPage.CHAT_LIST));
