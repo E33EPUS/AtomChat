@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.1.8
+
+### 新增
+
+- **个人档案页**：底部「个人」标签从占位页换成真实页面——顶部身份卡（大号圆形头像 + 常驻「编辑」角标 + 玩家名），下方信息卡逐行展示名字 / UUID / 延迟 / 身份（是否 OP）/ 在线时长 / 游戏统计（挖掘·击杀·里程）/ 服务器地址，**点任意一行即复制该值**。延迟与身份取自玩家列表（原版协议只同步自己的权限等级，其他玩家隐藏该行）；单人世界显示「单人世界」。
+- **本机自定义头像**：点头像「编辑」角标选图，选完进入 **QQ 式裁剪界面**（面板内模态：居中圆圈固定、图片拖动平移、滚轮以圆心为锚缩放、双击重置，图片永远盖住圆圈不露边；底部对勾/叉双圆按钮，Esc 取消），确认后按可视区域裁剪为 256px PNG 存 `config/atomchat/avatar/`，清除恢复皮肤。生效范围为本机（档案页 + 自己的气泡）；跨端互通规划为服务端 companion 功能，companion 缺席时静默降级为皮肤（e33chat 优雅降级理念）。
+- **颜色配置**：外观页新增「颜色」分组——气泡文字颜色 / 自身气泡颜色 / 对方气泡颜色 / 界面文字颜色 / 强调色。每行为一排预设色板（点即生效并写盘），尾部「+」格打开 **HSV 调色盘**（饱和度×亮度方块 + 色相条，实时预览圆点 + 可复制的 hex 蓝链 + hex 输入框：实时应用、失焦自动应用合法值、Esc 先退聚焦）。手改配置文件中的自定义色会追加显示且可选。
+- **离线玩家识别**（移植自 e33chat）：记忆曾在聊天中出现的玩家（名字↔UUID，LRU 512）。机器人桥/中继转发的已下线玩家消息仍能解析为真实气泡与头像，而不是系统灰字；皮肤沿用名字键缓存的上次已知头像。
+- **Mod 图标与链接**：修复 ModMenu/PCL 读不到图标（补 `icon` 字段），补 `contact` 主页/议题/源码链接使 mod 列表的 website 与 issues 按钮可跳转。
+
+### 更改
+
+- **次要文字颜色不再单独配置**：从「界面文字颜色」自动派生（同色相、降饱和降亮度），两组文字永远协调；配置文件中的旧值将被忽略。
+- **底栏与输入按钮状态色**：底栏选中 tab 的图标变强调色（点击态）；表情按钮在面板展开期间保持强调色，图片/表情按钮按压瞬间高亮。
+- **图片按钮图标重绘**：从竖版照片改为横版图片字形。
+- 滑块数值（90% / x1.00 等）与色板色号文案改为纯白。
+
+### 修复
+
+- **颜文字消息被识别为系统灰字**：整条消息是一个平衡括号组时（如 `(￣▽￣)`、`(≧▽≦)`、`【滑稽】`），`MessagePresentation` 的分隔符跳过逻辑会把它当作名字后缀装饰（本意是解析 `[AFK]`/`(VIP)`）整段吞掉，导致解析失败。在 NCR 服务器上（玩家聊天经系统通道广播），回声捕获失败 → 再次解析仍失败 → 被当作系统消息渲染成灰色胶囊。现在括号跳过吞掉全部剩余文本时，自动回退为「括号组属于内容」，发送者标签收回为裸名字。
+- 新增 3 项 `MessagePresentation` 回归测试（尖括号/冒号/全角括号三种格式）。
+
+### Change
+
+- **Profile page**: the "Profile" tab now shows a real page — a hero identity card (large circular avatar with a persistent edit badge and the player name) above copyable info rows: name / UUID / ping / role (OP) / session time / stats (mined · kills · walked) / server address.
+- **Local custom avatar**: pick an image via the avatar's edit badge, crop it in a QQ-style modal (fixed centred circle, drag to pan, wheel zooms around the circle centre, double-click resets, the image always covers the frame), and the visible region is stored as a 256px PNG under `config/atomchat/avatar/`. Local-only for now; cross-client sync is planned as a server-companion feature and silently degrades to the skin when it is absent (the e33chat philosophy).
+- **Colour settings**: a new Colors group in Appearance — bubble text / your bubble / others' bubble / interface text / accent. Each row is a preset swatch strip (applies and saves instantly) with a trailing "+" opening an HSV picker (saturation×brightness square + hue bar, live preview dot, a copyable hex link and a hex input that applies live). Custom colours from a hand-edited config still render and stay selectable.
+- **Offline player memory** (ported from e33chat): players once seen in chat are remembered (name ↔ UUID, LRU 512) so relayed lines from offline players parse as real bubbles with their last-known skin instead of gray system capsules.
+- **Mod metadata**: fixed the icon not loading in ModMenu/PCL and made the website/issues buttons open the GitHub repository.
+- **Changed**: the secondary text colour is now derived from the interface text colour (same hue, desaturated and darkened) and is no longer a separate setting; the selected bottom-tab icon and the emoji button (while its panel is open) take the accent colour; the image button glyph was redrawn as a landscape photo; slider/swatch values are pure white.
+- **Fixed**: bracket-only kaomoji no longer render as gray system bubbles on NCR servers.
+
 ## v0.1.7
 
 ### 更改/修复

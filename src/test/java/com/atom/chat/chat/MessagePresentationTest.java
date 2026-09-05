@@ -104,4 +104,31 @@ class MessagePresentationTest {
         assertTrue(MessagePresentation.parseDecoratedPlayerLine(
                 "<Notch> hi", List.of("tch")).isEmpty());
     }
+
+    @Test
+    void bracketOnlyKaomojiIsContentNotLabel() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("<Steve> (￣▽￣)", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("Steve", line.get().displayLabel());
+        assertEquals("(￣▽￣)", line.get().content());
+    }
+
+    @Test
+    void bracketOnlyKaomojiColonFormat() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("Steve: (≧▽≦)", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("Steve", line.get().displayLabel());
+        assertEquals("(≧▽≦)", line.get().content());
+    }
+
+    @Test
+    void fullwidthBracketOnlyKaomojiIsContent() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("<Steve> 【滑稽】", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("Steve", line.get().displayLabel());
+        assertEquals("【滑稽】", line.get().content());
+    }
 }

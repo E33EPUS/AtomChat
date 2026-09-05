@@ -43,37 +43,41 @@ import java.util.Map;
  * hit-testing and measurement can never disagree.</p>
  */
 public final class SettingsSectionPage {
-    public enum RowKind { HERO, SWITCH, SLIDER, INFO, BLOCKED, LABEL, ACTION }
+    public enum RowKind { HERO, SWITCH, SLIDER, COLOR, INFO, BLOCKED, LABEL, ACTION }
 
     public record Row(RowKind kind, SettingsItem item, SettingsSlider slider,
-                      SettingsCatalog.InfoRow info, PlayerRef player, String labelKey,
-                      String actionId) {
+                      SettingsColor color, SettingsCatalog.InfoRow info, PlayerRef player,
+                      String labelKey, String actionId) {
         static Row ofSwitch(SettingsItem item) {
-            return new Row(RowKind.SWITCH, item, null, null, null, null, null);
+            return new Row(RowKind.SWITCH, item, null, null, null, null, null, null);
         }
 
         static Row ofSlider(SettingsSlider slider) {
-            return new Row(RowKind.SLIDER, null, slider, null, null, null, null);
+            return new Row(RowKind.SLIDER, null, slider, null, null, null, null, null);
+        }
+
+        static Row ofColor(SettingsColor color) {
+            return new Row(RowKind.COLOR, null, null, color, null, null, null, null);
         }
 
         static Row ofInfo(SettingsCatalog.InfoRow info) {
-            return new Row(RowKind.INFO, null, null, info, null, null, null);
+            return new Row(RowKind.INFO, null, null, null, info, null, null, null);
         }
 
         static Row ofBlocked(PlayerRef player) {
-            return new Row(RowKind.BLOCKED, null, null, null, player, null, null);
+            return new Row(RowKind.BLOCKED, null, null, null, null, player, null, null);
         }
 
         static Row ofLabel(String key) {
-            return new Row(RowKind.LABEL, null, null, null, null, key, null);
+            return new Row(RowKind.LABEL, null, null, null, null, null, key, null);
         }
 
         static Row ofHero() {
-            return new Row(RowKind.HERO, null, null, null, null, null, null);
+            return new Row(RowKind.HERO, null, null, null, null, null, null, null);
         }
 
         static Row ofAction(String actionId, SettingsItem item) {
-            return new Row(RowKind.ACTION, item, null, null, null, null, actionId);
+            return new Row(RowKind.ACTION, item, null, null, null, null, null, actionId);
         }
     }
 
@@ -113,6 +117,7 @@ public final class SettingsSectionPage {
     private static final String LABEL_MOD_INFO = "atomchat.settings.about.modinfo";
     private static final String LABEL_ADVANCED = "atomchat.settings.group.advanced";
     private static final String LABEL_ADJUST = "atomchat.settings.group.adjust";
+    private static final String LABEL_COLORS = "atomchat.settings.group.colors";
     private static final String ACTION_WALLPAPER_PICK = "wallpaper_pick";
     private static final String ACTION_WALLPAPER_CLEAR = "wallpaper_clear";
 
@@ -169,7 +174,7 @@ public final class SettingsSectionPage {
     public static float rowHeight(RowKind kind) {
         return switch (kind) {
             case LABEL -> UiTokens.SETTINGS_LABEL_H;
-            case SLIDER -> UiTokens.SETTINGS_SLIDER_ROW_H;
+            case SLIDER, COLOR -> UiTokens.SETTINGS_SLIDER_ROW_H;
             case HERO -> UiTokens.SETTINGS_HERO_H;
             default -> UiTokens.SETTINGS_ROW_H;
         };
@@ -195,6 +200,12 @@ public final class SettingsSectionPage {
         }
         for (SettingsSlider slider : SettingsCatalog.sliders(section)) {
             rows.add(Row.ofSlider(slider));
+        }
+        if (section == SettingsSection.APPEARANCE) {
+            rows.add(Row.ofLabel(LABEL_COLORS));
+            for (SettingsColor color : SettingsCatalog.colors(section)) {
+                rows.add(Row.ofColor(color));
+            }
         }
         if (section == SettingsSection.PRIVACY) {
             rows.add(Row.ofLabel(LABEL_BLOCKED));
@@ -355,11 +366,82 @@ public final class SettingsSectionPage {
             case HERO -> drawHero(canvas, rect);
             case SWITCH -> drawSwitch(canvas, row, rect, accent, dtMs);
             case SLIDER -> drawSlider(canvas, row, rect, accent);
+            case COLOR -> drawColor(canvas, row, rect);
             case INFO -> drawInfo(canvas, row, rect);
             case BLOCKED -> drawBlocked(canvas, row, rect, hover, buttonFont);
             case ACTION -> drawAction(canvas, row, rect, hover);
             default -> {
             }
+        }
+    }
+
+    /** Swatch strip geometry: centre Y within the row and the X step. */
+    private static float swatchCy(UiLayout.Rect rect) {
+        return rect.y() + s(42);
+    }
+
+    private static float swatchX(UiLayout.Rect rect, int index) {
+        return rect.x() + UiTokens.SETTINGS_ROW_PAD + UiTokens.s(9) + index * UiTokens.s(26);
+    }
+
+    private void drawColor(Canvas canvas, Row row, UiLayout.Rect rect) {
+        SettingsColor color = row.color();
+        Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
+        Font valueFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
+
+        SkiaFontRenderer.drawText(canvas, titleFont,
+                SkiaFontRenderer.truncate(titleFont, tr(color.titleKey()), rect.w() - UiTokens.SETTINGS_ROW_PAD * 2.0F),
+                rect.x() + UiTokens.SETTINGS_ROW_PAD,
+                SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(18)),
+                Color.makeARGB(255, 255, 255, 255));
+        SkiaFontRenderer.drawTextRight(canvas, valueFont,
+                String.format("#%06X", color.value() & 0xFFFFFF),
+                rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
+                Color.makeARGB(255, 255, 255, 255));
+
+        float r = UiTokens.s(9);
+        float cy = swatchCy(rect);
+        for (int i = 0; i < color.swatchCount(); i++) {
+            float scx = swatchX(rect, i);
+            int swatch = color.swatchColor(i);
+            SkiaDraw.drawRoundedRect(canvas, scx - r, cy - r, 2.0F * r, 2.0F * r, r, swatch);
+            if (swatch == color.value()) {
+                // Selection ring: white outline with a breathing gap.
+                try (Paint ring = new Paint().setColor(Color.makeARGB(255, 255, 255, 255))
+                        .setMode(PaintMode.STROKE).setStrokeWidth(s(2)).setAntiAlias(true)) {
+                    canvas.drawOval(io.github.humbleui.types.Rect.makeXYWH(
+                            scx - r - s(3), cy - r - s(3), 2.0F * (r + s(3)), 2.0F * (r + s(3))), ring);
+                }
+            }
+        }
+        // "+" cell: opens the custom colour picker (emote-grid plus language).
+        float px = swatchX(rect, color.swatchCount());
+        SkiaDraw.drawRoundedRect(canvas, px - r, cy - r, 2.0F * r, 2.0F * r, r,
+                Color.makeARGB(70, 255, 255, 255));
+        drawIconCentered(canvas, AppIcons.ICON_PLUS_PATH, px, cy, s(12),
+                Color.makeARGB(255, 255, 255, 255));
+    }
+
+    private static void drawIconCentered(Canvas canvas, io.github.humbleui.skija.Path icon,
+                                         float cx, float cy, float size, int color) {
+        io.github.humbleui.types.Rect b = icon.getBounds();
+        if (b == null || b.isEmpty()) {
+            return;
+        }
+        float sc = size / Math.max(b.getWidth(), b.getHeight());
+        canvas.save();
+        try {
+            canvas.translate(cx - (b.getLeft() + b.getRight()) / 2.0F * sc,
+                    cy - (b.getTop() + b.getBottom()) / 2.0F * sc);
+            canvas.scale(sc, sc);
+            try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
+                    .setMode(PaintMode.STROKE).setStrokeWidth(UiTokens.iconStroke(size) / sc)
+                    .setStrokeCap(PaintStrokeCap.ROUND)
+                    .setStrokeJoin(PaintStrokeJoin.ROUND)) {
+                canvas.drawPath(icon, paint);
+            }
+        } finally {
+            canvas.restore();
         }
     }
 
@@ -485,30 +567,6 @@ public final class SettingsSectionPage {
                 cx, top + icon + gap + textH / 2.0F, muted);
     }
 
-    private static void drawIconCentered(Canvas canvas, io.github.humbleui.skija.Path icon,
-                                         float cx, float cy, float size, int color) {
-        io.github.humbleui.types.Rect b = icon.getBounds();
-        if (b == null || b.isEmpty()) {
-            return;
-        }
-        float scale = size / Math.max(b.getWidth(), b.getHeight());
-        canvas.save();
-        try {
-            canvas.translate(cx - (b.getLeft() + b.getRight()) / 2.0F * scale,
-                    cy - (b.getTop() + b.getBottom()) / 2.0F * scale);
-            canvas.scale(scale, scale);
-            try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
-                    .setMode(PaintMode.STROKE)
-                    .setStrokeWidth(UiTokens.iconStroke(size) / scale)
-                    .setStrokeCap(PaintStrokeCap.ROUND)
-                    .setStrokeJoin(PaintStrokeJoin.ROUND)) {
-                canvas.drawPath(icon, paint);
-            }
-        } finally {
-            canvas.restore();
-        }
-    }
-
     private void drawSwitch(Canvas canvas, Row row, UiLayout.Rect rect, int accent, float dtMs) {
         SettingsItem item = row.item();
         ToggleSwitch control = switches.computeIfAbsent(item.id(), k -> new ToggleSwitch());
@@ -554,7 +612,7 @@ public final class SettingsSectionPage {
                 Color.makeARGB(255, 255, 255, 255));
         SkiaFontRenderer.drawTextRight(canvas, valueFont, slider.displayValue(),
                 rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
-                dragging ? accent : Color.makeARGB(210, 170, 170, 186));
+                dragging ? accent : Color.makeARGB(255, 255, 255, 255));
 
         UiLayout.Rect track = sliderTrackRect(rect);
         float t = knobPosition(slider, dragging);
@@ -765,6 +823,51 @@ public final class SettingsSectionPage {
     /** One {@link SettingsSlider#step()} in {@code direction} (-1 / +1). */
     public void nudgeSlider(SliderHit hit, int direction) {
         hit.row().slider().nudge(direction);
+    }
+
+    /** A colour swatch (or the "+" custom cell) under the pointer. */
+    public record ColorHit(SettingsColor color, int swatchIndex, int swatch, boolean plus) {
+    }
+
+    /**
+     * Colour swatch or the trailing "+" cell under the pointer, or null.
+     * Geometry mirrors {@link #drawColor}: the row's swatch strip is
+     * hit-tested swatch by swatch, not per row, so a click between swatches
+     * falls through.
+     */
+    public ColorHit colorHit(float vmx, float vmy, UiLayout layout, SettingsSection section, float scrollY) {
+        List<Row> rows = rows(section);
+        for (int rowIdx = 0; rowIdx < rows.size(); rowIdx++) {
+            Row row = rows.get(rowIdx);
+            if (row.kind() != RowKind.COLOR) {
+                continue;
+            }
+            SettingsColor color = row.color();
+            UiLayout.Rect rect = rowRect(rows, rowIdx, scrollY, layout);
+            float r = UiTokens.s(9);
+            float cy = swatchCy(rect);
+            float dy = vmy - cy;
+            if (Math.abs(dy) > r + UiTokens.s(4) || vmy < rect.y() || vmy > rect.bottom()) {
+                continue;
+            }
+            for (int i = 0; i < color.swatchCount(); i++) {
+                float dx = vmx - swatchX(rect, i);
+                if (Math.abs(dx) <= r + UiTokens.s(4)) {
+                    return new ColorHit(color, i, color.swatchColor(i), false);
+                }
+            }
+            // The "+" cell right after the last swatch.
+            float dx = vmx - swatchX(rect, color.swatchCount());
+            if (Math.abs(dx) <= r + UiTokens.s(4)) {
+                return new ColorHit(color, -1, 0, true);
+            }
+        }
+        return null;
+    }
+
+    /** Applies a colour swatch; writes through to the config immediately. */
+    public void applyColor(ColorHit hit) {
+        hit.color().apply(hit.swatch());
     }
 
     /** Applies a hit: flips a switch, opens a link, fires an action, or unblocks. */

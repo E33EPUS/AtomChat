@@ -173,6 +173,18 @@ public final class UiTokens {
     /** Avatar inside a blocked-player row. */
     public static final float SETTINGS_ROW_AVATAR = s(36);
 
+    // Profile page: hero identity card (large circular avatar with an edit
+    // badge) above an info-card list of copyable rows.
+    public static final float PROFILE_AVATAR = s(96);
+    public static final float PROFILE_AVATAR_HERO_H = s(180);
+    public static final float PROFILE_EDIT_BADGE = s(28);
+    public static final float PROFILE_NAME_FONT = s(20);
+    public static final float PROFILE_ROW_H = s(48);
+    public static final float PROFILE_ROW_PAD = s(14);
+    public static final float PROFILE_ROW_RADIUS = s(12);
+    public static final float PROFILE_ROW_FONT = s(15);
+    public static final float PROFILE_ROW_VALUE_FONT = s(13);
+
     // Slider row: title line on top, track below. The knob is deliberately a
     // touch larger than the track so it reads as a handle, not a filled bar.
     public static final float SETTINGS_SLIDER_ROW_H = s(64);

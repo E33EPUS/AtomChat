@@ -18,9 +18,14 @@ import com.atom.chat.nav.AppPage;
 import com.atom.chat.nav.AtomChatState;
 import com.atom.chat.nav.NavPage;
 import com.atom.chat.nav.NavigationStack;
+import com.atom.chat.avatar.AvatarImage;
+import com.atom.chat.avatar.AvatarStore;
+import com.atom.chat.avatar.ColorPickerOverlay;
+import com.atom.chat.avatar.ImageCropper;
+import com.atom.chat.image.OwnPlayerAvatarSource;
 import com.atom.chat.page.ConversationListPage;
 import com.atom.chat.page.PageHost;
-import com.atom.chat.page.PlaceholderPage;
+import com.atom.chat.page.ProfilePage;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.mixin.MouseHandlerAccessor;
 import com.atom.chat.render.Animator;
@@ -102,7 +107,48 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final NavigationStack<NavPage> navigation;
 
     private final ConversationListPage conversationListPage = new ConversationListPage(this);
-    private final PlaceholderPage profilePage = new PlaceholderPage(AppPage.PROFILE);
+    /** Local custom avatar for the profile page and own bubbles. */
+    private final AvatarStore avatarStore = new AvatarStore(
+            FabricLoader.getInstance().getConfigDir().resolve("atomchat/avatar"));
+    /** QQ-style crop overlay for avatar and wallpaper picks. */
+    private final ImageCropper imageCropper = new ImageCropper(new ImageCropper.Callback() {
+        @Override
+        public void onConfirm(String targetId, byte[] pngBytes) {
+            if ("avatar".equals(targetId)) {
+                if (avatarStore.setPng(pngBytes)) {
+                    AvatarImage.release();
+                }
+            } else if ("wallpaper".equals(targetId)) {
+                if (WallpaperStore.setPng(pngBytes)) {
+                    WallpaperImage.release();
+                }
+            }
+        }
+
+        @Override
+        public void onCancel(String targetId) {
+            // Nothing to clean up; the picked file is simply dropped.
+        }
+    });
+    /** Modal HSV colour picker opened from the settings colour rows. */
+    private final ColorPickerOverlay colorPicker = new ColorPickerOverlay(this::copyToClipboard);
+    private final ProfilePage profilePage = new ProfilePage(new ProfilePage.Handler() {
+        @Override
+        public void openAvatarPicker() {
+            pickAvatarFile();
+        }
+
+        @Override
+        public void clearAvatar() {
+            avatarStore.clear();
+            AvatarImage.release();
+        }
+
+        @Override
+        public void copyText(String text) {
+            copyToClipboard(text);
+        }
+    }, avatarStore);
     private final SettingsHomePage settingsHomePage = new SettingsHomePage();
     private final SettingsSectionPage settingsSectionPage = new SettingsSectionPage();
 
@@ -110,6 +156,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // Action cards (pick/clear wallpaper) need the shell's file picker,
         // which lives here rather than in the settings package.
         settingsSectionPage.setActionHandler(this::handleSettingsAction);
+        // The custom-avatar source needs the store instance created above.
+        OwnPlayerAvatarSource.attach(avatarStore);
+        // Role row: vanilla 1.21.1 only syncs the local player's own permission
+        // level; other players stay unknown (row hidden) until a server
+        // companion can answer for them.
+        profilePage.setRoleResolver((uuid, name) -> {
+            if (uuid != null && this.client.player != null
+                    && uuid.equals(this.client.player.getUuid())) {
+                return this.client.player.hasPermissionLevel(2);
+            }
+            return null;
+        });
     }
 
     /** Settings action cards: only the wallpaper pair exists today. */
@@ -136,14 +194,34 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 return;
             }
             this.client.execute(() -> {
-                if (WallpaperStore.set(file)) {
-                    WallpaperImage.release();
-                }
+                // Crop at the current panel aspect so what you frame is what
+                // the panel shows (cover-fit has nothing left to do).
+                UiLayout l = layout();
+                imageCropper.open(file, false, l.rect().w(), l.rect().h(), "wallpaper");
             });
         }, "AtomChat-WallpaperPicker");
         worker.setDaemon(true);
         worker.start();
     }
+    /** Picks a custom avatar off-thread; the cropper opens on the render side. */
+    private void pickAvatarFile() {
+        KeyBinding.unpressAll();
+        if (this.client.mouse != null) {
+            ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+        }
+        Thread worker = new Thread(() -> {
+            Path file = FilePicker.pickImage(this::suppressAutoIconify, this::restoreAutoIconify,
+                    AvatarStore::isSupportedName);
+            refocusWindow();
+            if (file == null) {
+                return;
+            }
+            this.client.execute(() -> imageCropper.open(file, true, 0.0F, 0.0F, "avatar"));
+        }, "AtomChat-AvatarPicker");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
     /** Root-page mouse coordinates in virtual UI space, for card hover rendering. */
     private float rootMouseX;
     private float rootMouseY;
@@ -226,9 +304,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     // paths are cheaper than a resource pipeline, stay crisp at every scale,
     // and are trivial to recolour for hover/pressed/theme states. The paths use
     // a 20x20 logical space; drawIcon() fits them into the button bounds.
-    private static final String ICON_IMAGE_SVG = "M5.5 3 C4.7 3 4 3.7 4 4.5 L4 15.5 C4 16.3 4.7 17 5.5 17 L14.5 17 C15.3 17 16 16.3 16 15.5 L16 4.5 C16 3.7 15.3 3 14.5 3 Z"
-            + " M7.5 6.5 m-1.3 0 a1.3 1.3 0 1 0 2.6 0 a1.3 1.3 0 1 0 -2.6 0"
-            + " M4.3 15.7 L8 11.6 L10.6 14.1 L13.8 10.4 L15.7 12.3";
+    // Landscape photo glyph: a wide rounded rect (14x9 on the 20 grid), sun
+    // top-left, mountains inside — the old one was portrait and read as a
+    // phone photo instead of an image.
+    private static final String ICON_IMAGE_SVG = "M5 5.5 L15 5.5 A1.5 1.5 0 0 1 16.5 7 L16.5 13 A1.5 1.5 0 0 1 15 14.5 L5 14.5 A1.5 1.5 0 0 1 3.5 13 L3.5 7 A1.5 1.5 0 0 1 5 5.5 Z"
+            + " M7 8.2 m-1.2 0 a1.2 1.2 0 1 0 2.4 0 a1.2 1.2 0 1 0 -2.4 0"
+            + " M4.5 13.6 L8.2 10.2 L10.6 12.3 L13 9.9 L15.5 12.1";
     private static final String ICON_EMOJI_SVG = "M10 3 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14"
             + " M7 8.6 v1.3 M13 8.6 v1.3"
             + " M6.8 12.2 C8.5 14.3 11.5 14.3 13.2 12.2";
@@ -1367,6 +1448,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private float measureRootContent(UiLayout root, AppPage page) {
         return switch (page) {
             case CHAT_LIST -> conversationListPage.measureContent(root);
+            case PROFILE -> profilePage.measureContent(root);
             case SETTINGS -> settingsHomePage.measureContent(root);
             default -> 0.0F;
         };
@@ -1388,6 +1470,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         detailScroll.updateAnimation(System.currentTimeMillis());
         settingsSectionPage.render(canvas, layout, section, vmx, vmy, detailScroll.getScrollY(), accent());
         drawScrollbar(canvas, layout, vmx, vmy, detailScroll);
+        // Modal overlays on top of the whole panel: the cropper must render on
+        // this path too — it is opened from here (wallpaper pick), and an
+        // active-but-unrendered modal eats every click and freezes the screen.
+        imageCropper.render(canvas, layout.rect(), vmx, vmy);
+        colorPicker.render(canvas, layout.rect(), vmx, vmy, accent());
     }
 
     /** Fixed header (with back affordance) for a pushed settings sub-page. */
@@ -1415,6 +1502,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         drawRootPage(canvas, root, rootPage);
         drawScrollbar(canvas, root, vmx, vmy, rootScroll);
         drawBottomTabBar(canvas, root, rootPage);
+        // Modal avatar cropper on top of everything inside the panel.
+        imageCropper.render(canvas, root.rect(), vmx, vmy);
+        colorPicker.render(canvas, root.rect(), vmx, vmy, accent());
     }
 
     private void drawRootPage(Canvas canvas, UiLayout layout, AppPage rootPage) {
@@ -1453,7 +1543,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         try {
             switch (page) {
                 case CHAT_LIST -> conversationListPage.render(canvas, layout, rootMouseX, rootMouseY, rootScroll.getScrollY());
-                case PROFILE -> profilePage.render(canvas, layout);
+                case PROFILE -> profilePage.render(canvas, layout, rootMouseX, rootMouseY, rootScroll.getScrollY());
                 case SETTINGS -> settingsHomePage.render(canvas, layout, rootMouseX, rootMouseY,
                         rootScroll.getScrollY());
                 case WORLD_CHAT, PRIVATE_CHAT ->
@@ -1529,7 +1619,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private String shellTitleFor(AppPage page) {
         return switch (page) {
             case CHAT_LIST -> tr("atomchat.tab.chat");
-            case PROFILE -> tr("atomchat.tab.profile");
+            case PROFILE -> tr("atomchat.page.profile.title");
             case SETTINGS -> tr("atomchat.tab.settings");
             case WORLD_CHAT -> tr("atomchat.channel.world");
             case PRIVATE_CHAT -> activePrivateTarget() != null
@@ -1540,7 +1630,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private void drawBottomTabBar(Canvas canvas, UiLayout layout, AppPage rootPage) {
         int selectedIndex = rootIndex(rootPage);
-        bottomTabBar.render(canvas, layout.tabBar, selectedIndex, textPrimary());
+        bottomTabBar.render(canvas, layout.tabBar, selectedIndex, textPrimary(), accent());
     }
 
     private void drawBottomTabBar(Canvas canvas, UiLayout layout) {
@@ -1579,7 +1669,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         buttonHover[id] = UiMotion.approach(buttonHover[id], hover ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
         int fill = Math.min(255, (int) (70 + buttonHover[id] * 45.0F + (buttonPressed(id) ? 50 : 0)));
         SkiaDraw.drawRoundedRect(canvas, bx, by, UiTokens.BUTTON_W, UiTokens.BUTTON_H, UiTokens.BUTTON_RADIUS, Color.makeARGB(fill, 255, 255, 255));
-        drawIcon(canvas, id == 0 ? ICON_IMAGE_PATH : ICON_EMOJI_PATH, bx, by, textPrimary());
+        // Active states take the accent colour: the emoji button while its
+        // panel is open (a toggle), any button for a moment after a press.
+        boolean activeTint = (id == 1 && emojiOpen) || buttonPressed(id);
+        drawIcon(canvas, id == 0 ? ICON_IMAGE_PATH : ICON_EMOJI_PATH, bx, by,
+                activeTint ? accent() : textPrimary());
     }
 
     private void drawSendButton(Canvas canvas, float bx, float by, int mouseX, int mouseY) {
@@ -1680,6 +1774,37 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      * edge (no CPU mask + clip double edge, and no placeholder bleeding through
      * the avatar). Falls back to a flat gray circle while the skin is missing.
      */
+    /**
+     * Draws the message avatar with the poke wobble armed when this message was
+     * just double-clicked: QQ-style rocking around the avatar centre (damped
+     * ±14° over two and a half oscillations in ~600ms) rather than a side-to-side
+     * slide. Decorative, so with motion off the poke never arms and this reduces
+     * to a plain draw.
+     */
+    private void drawAvatarWithPoke(Canvas canvas, ChatMessage msg, int index, float avatarX, float avatarY) {
+        if (pokeIndex == index && pokeStartTime > 0 && Animations.enabled()) {
+            long elapsed = System.currentTimeMillis() - pokeStartTime;
+            if (elapsed < 600) {
+                float t = elapsed / 600.0F;
+                float angle = (float) Math.sin(t * Math.PI * 5.0) * 14.0F * (1.0F - t);
+                float cx = avatarX + UiTokens.AVATAR_SIZE / 2.0F;
+                float cy = avatarY + UiTokens.AVATAR_SIZE / 2.0F;
+                canvas.save();
+                canvas.translate(cx, cy);
+                canvas.rotate(angle);
+                canvas.translate(-cx, -cy);
+                try {
+                    drawAvatar(canvas, msg, avatarX, avatarY);
+                } finally {
+                    canvas.restore();
+                }
+                return;
+            }
+            pokeIndex = -1;
+        }
+        drawAvatar(canvas, msg, avatarX, avatarY);
+    }
+
     private void drawAvatar(Canvas canvas, ChatMessage msg, float avatarX, float avatarY) {
         UUID uuid = msg.isOwn() ? (this.client.player != null ? this.client.player.getUuid() : null) : msg.getSenderUuid();
         String name = msg.isOwn() ? ownName() : msg.getProfileName();
@@ -1947,19 +2072,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
 
-        // Poke animation: shake avatar horizontally for ~600ms after double-click.
-        // The shake itself is decorative, so with motion off the poke is
-        // already suppressed at the click site and this block never arms.
-        if (pokeIndex == index && pokeStartTime > 0 && Animations.enabled()) {
-            long elapsed = System.currentTimeMillis() - pokeStartTime;
-            if (elapsed < 600) {
-                float offset = (float) Math.sin(elapsed / 40.0) * 6.0F * (1.0F - elapsed / 600.0F);
-                avatarX += offset;
-            } else {
-                pokeIndex = -1;
-            }
-        }
-        drawAvatar(canvas, msg, avatarX, avatarY);
+        // Poke animation: QQ-style wobble — the avatar rocks around its centre
+        // (damped ±14° over two and a half oscillations in ~600ms) instead of
+        // sliding side to side. The wobble itself is decorative, so with motion
+        // off the poke is already suppressed at the click site and this block
+        // never arms.
+        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
 
         if (hasQuote) {
             drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
@@ -1967,7 +2085,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.BUBBLE_RADIUS, msg.isOwn() ? ownBubble() : otherBubble());
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
         RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
-                lineHeight, textPrimary(), clickableSpans, true);
+                lineHeight, bubbleText(), clickableSpans, true);
 
         float bottom = bubbleTop + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, bubbleWidth, bottom);
@@ -2044,12 +2162,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             String fullNamePart = name + ": ";
             float placeholderW = SkiaFontRenderer.getStringWidth(quoteFont, msg.getQuoteText());
             String namePart = truncateToWidth(quoteFont, fullNamePart, Math.max(0.0F, textMaxW - placeholderW));
-            SkiaFontRenderer.drawText(canvas, quoteFont, namePart, textStartX, centerBaselineY, textPrimary());
+            SkiaFontRenderer.drawText(canvas, quoteFont, namePart, textStartX, centerBaselineY, bubbleText());
             float namePartW = SkiaFontRenderer.getStringWidth(quoteFont, namePart);
             SkiaFontRenderer.drawText(canvas, quoteFont, msg.getQuoteText(), textStartX + namePartW,
                     centerBaselineY, Color.makeARGB(255, 85, 255, 85));
         } else {
-            SkiaFontRenderer.drawText(canvas, quoteFont, display, textStartX, centerBaselineY, textPrimary());
+            SkiaFontRenderer.drawText(canvas, quoteFont, display, textStartX, centerBaselineY, bubbleText());
         }
     }
 
@@ -2116,7 +2234,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
         float avatarY = y + s(4);
-        drawAvatar(canvas, msg, avatarX, avatarY);
+        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
         if (hasQuote) {
             drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
         }
@@ -3072,6 +3190,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Wheel zooms the crop image around the circle centre while active.
+        if (imageCropper.isActive()) {
+            imageCropper.onScroll(layout().rect(), verticalAmount);
+            return true;
+        }
+        if (colorPicker.isActive()) {
+            colorPicker.onScroll(layout().rect(), verticalAmount);
+            return true;
+        }
         float mx = toVirtualX(mouseX);
         float my = toVirtualY(mouseY);
         if (!isWorldChatPage()) {
@@ -3280,6 +3407,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (closing) {
             return true;
         }
+        // The avatar cropper is modal: while it is open it owns every click.
+        if (imageCropper.isActive()) {
+            imageCropper.onClick(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+            return true;
+        }
+        // So is the colour picker.
+        if (colorPicker.isActive()) {
+            colorPicker.onClick(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+            return true;
+        }
         if (hasTextSelection() || selecting) {
             clearTextSelection();
         }
@@ -3338,6 +3475,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                         }
                         return true;
                     }
+                    SettingsSectionPage.ColorHit colorHit = settingsSectionPage.colorHit(
+                            mx, my, pageLayout, section, pageScroll.getScrollY());
+                    if (colorHit != null) {
+                        if (colorHit.plus()) {
+                            colorPicker.open(colorHit.color());
+                        } else {
+                            settingsSectionPage.applyColor(colorHit);
+                        }
+                        return true;
+                    }
                     SettingsSectionPage.RowHit hit = settingsSectionPage.hit(mx, my, pageLayout,
                             section, pageScroll.getScrollY());
                     if (hit != null && hit.onAction(mx, my)) {
@@ -3356,6 +3503,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     openSettingsSection(section);
                     return true;
                 }
+            }
+            if (topPage() == AppPage.PROFILE && button == 0) {
+                profilePage.onClick(mx, my, pageLayout, pageScroll.getScrollY());
             }
             if (topPage() == AppPage.CHAT_LIST) {
                 ConversationListPage.RowHit hit = conversationListPage.hit(mx, my, pageLayout, pageScroll.getScrollY());
@@ -3605,6 +3755,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        // Pan the avatar-crop image while the modal cropper is open.
+        if (imageCropper.isActive()) {
+            imageCropper.onDrag(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+            return true;
+        }
+        if (colorPicker.isActive()) {
+            colorPicker.onDrag(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+            return true;
+        }
         // Root pages have no world-chat selection state, but they do share the
         // scrollbar drag model; do not forward drags to the hidden composer.
         if (!isWorldChatPage()) {
@@ -3662,6 +3821,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         // Root pages have no world-chat click-on-release handling, but the
         // root scrollbar drag still ends here.
+        if (imageCropper.isActive()) {
+            imageCropper.endDrag();
+            return true;
+        }
+        if (colorPicker.isActive()) {
+            colorPicker.endDrag();
+            return true;
+        }
         if (!isWorldChatPage()) {
             settingsSectionPage.endSliderDrag();
             if (button == 0 && listScroll().isDragging()) {
@@ -3704,6 +3871,27 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // The cropper is modal: Esc cancels it, every other key is swallowed.
+        if (imageCropper.isActive()) {
+            if (keyCode == 256) {
+                imageCropper.cancel();
+            }
+            return true;
+        }
+        if (colorPicker.isActive()) {
+            if (colorPicker.isInputFocused()) {
+                // Focused hex input: Esc leaves the input (auto-applying a
+                // legal buffer), Backspace deletes, everything else swallowed.
+                if (keyCode == 256) {
+                    colorPicker.blurInput();
+                } else if (keyCode == 259) {
+                    colorPicker.onBackspace();
+                }
+            } else if (keyCode == 256) {
+                colorPicker.cancel();
+            }
+            return true;
+        }
         if (keyCode == 256) { // Esc: animated close
             dismissSuggestor();
             requestClose();
@@ -3799,6 +3987,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     @Override
     public boolean charTyped(char chr, int modifiers) {
         if (closing) {
+            return true;
+        }
+        // The colour picker's hex input swallows typed characters while active.
+        if (colorPicker.isActive()) {
+            colorPicker.onChar(chr);
+            return true;
+        }
+        if (imageCropper.isActive()) {
             return true;
         }
         // Root pages do not own the composer, so typing must not reach the
@@ -4202,7 +4398,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private int textSecondary() {
-        return AtomChatConfig.get().textSecondaryColor;
+        // Derived from the primary text colour; no longer a separate setting.
+        return AtomChatConfig.get().derivedTextSecondary();
+    }
+
+    /** Text inside a chat bubble (body rich text and quoted text). */
+    private int bubbleText() {
+        return AtomChatConfig.get().bubbleTextColor;
     }
 
     private int panelBg() {

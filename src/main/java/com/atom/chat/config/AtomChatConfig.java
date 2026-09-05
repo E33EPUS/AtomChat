@@ -51,11 +51,24 @@ public class AtomChatConfig {
     /** Dumps avatar sampling PNGs to {@code <config>/atomchat/debug/} for color debugging. */
     public boolean debug = false;
     public int accentColor = 0xFF4A90E2;
-    public int ownBubbleColor = 0xFF4A90E2;
+    public int bubbleTextColor = 0xFFFFFFFF;
+    public int ownBubbleColor = 0xFF1E90FF;
     public int otherBubbleColor = 0xFF343A44;
     public int panelBgColor = 0xEE16191F;
     public int textPrimaryColor = 0xFFFFFFFF;
     public int textSecondaryColor = 0xDCAAAABA;
+
+    /**
+     * 次要文字色 is no longer configurable: it derives from the primary text
+     * colour (same hue, desaturated and darkened) so the two can never drift
+     * into a broken pairing. A hand-edited textSecondaryColor in the file is
+     * simply ignored.
+     */
+    public int derivedTextSecondary() {
+        float[] hsv = com.atom.chat.avatar.ColorUtil.rgbToHsv(textPrimaryColor);
+        int rgb = com.atom.chat.avatar.ColorUtil.hsvToRgb(hsv[0], hsv[1] * 0.15F, hsv[2] * 0.72F);
+        return (rgb & 0x00FFFFFF) | 0xD8000000;
+    }
     /** Global blocked-player real names, persisted locally. */
     public java.util.List<String> blockedPlayers = new java.util.ArrayList<>();
 

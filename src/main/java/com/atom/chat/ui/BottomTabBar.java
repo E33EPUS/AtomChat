@@ -68,7 +68,8 @@ public final class BottomTabBar {
         }
     }
 
-    public void render(Canvas canvas, UiLayout.Rect bar, int selectedIndex, int textPrimary) {
+    public void render(Canvas canvas, UiLayout.Rect bar, int selectedIndex,
+                       int textPrimary, int accent) {
         if (bar == null || bar.w() <= 0.0F || bar.h() <= 0.0F) {
             return;
         }
@@ -107,8 +108,11 @@ public final class BottomTabBar {
         for (int i = 0; i < 3; i++) {
             float cellCenterX = bar.x() + cellWidth * (i + 0.5F);
             float iconCenterY = bar.y() + bar.h() / 2.0F;
+            // The selected tab's glyph takes the accent colour (on selection,
+            // not hover) so the tab state reads twice: pill + tinted icon.
+            int iconColor = i == selectedIndex ? accent : textPrimary;
             drawIconCentered(canvas, ICONS[i], cellCenterX, iconCenterY,
-                    UiTokens.TAB_ICON_SIZE, textPrimary);
+                    UiTokens.TAB_ICON_SIZE, iconColor);
         }
     }
 

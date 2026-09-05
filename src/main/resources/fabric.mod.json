@@ -9,6 +9,12 @@
   ],
   "license": "MIT",
   "environment": "*",
+  "icon": "assets/atomchat/logo.png",
+  "contact": {
+    "homepage": "https://github.com/E33EPUS/AtomChat",
+    "issues": "https://github.com/E33EPUS/AtomChat/issues",
+    "sources": "https://github.com/E33EPUS/AtomChat"
+  },
   "entrypoints": {
     "main": [
       "com.atom.chat.AtomChat"

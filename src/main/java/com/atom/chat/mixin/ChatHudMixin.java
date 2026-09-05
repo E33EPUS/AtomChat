@@ -10,6 +10,7 @@ import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatParser;
 import com.atom.chat.chat.QuoteParser;
 import com.atom.chat.chat.PrivateChatStore;
+import com.atom.chat.chat.SeenPlayers;
 import com.atom.chat.chat.SenderMeta;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.text.ChatTextRewriter;
@@ -148,6 +149,7 @@ public class ChatHudMixin {
                         parsed.senderUuid(), displayName, parsed.profileName(), body,
                         RichText.empty(), RichText.literal(body).linkifyUrls()));
             }
+            SeenPlayers.remember(parsed.senderUuid(), parsed.profileName(), displayName);
             return;
         }
 
@@ -178,6 +180,8 @@ public class ChatHudMixin {
                 senderRich = RichText.empty();
                 contentRich = RichText.literal(content);
             }
+            SeenPlayers.remember(meta.senderUuid(),
+                    meta.profileName() != null ? meta.profileName() : displayName, displayName);
         } else {
             senderRich = meta.senderComponent() != null
                     ? RichText.of(meta.senderComponent())
@@ -243,6 +247,7 @@ public class ChatHudMixin {
             PrivateChatStore.addOutgoing(partner, privateMessage);
         } else if (!BlockList.isBlocked(partner)) {
             PrivateChatStore.addIncoming(partner, privateMessage);
+            SeenPlayers.remember(partnerUuid, meta.profileName(), displayName);
         }
     }
 

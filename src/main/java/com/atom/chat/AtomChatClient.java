@@ -49,10 +49,14 @@ public class AtomChatClient implements ClientModInitializer {
         });
         AtomChat.LOGGER.info("AtomChat client initialized");
 
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            com.atom.chat.page.ProfilePage.noteJoin();
+        });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             PrivateChatStore.reset();
             PrivateEchoTracker.clear();
             ChatStore.reset();
+            com.atom.chat.chat.SeenPlayers.clear();
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_ATOMCHAT_KEY.wasPressed()) {

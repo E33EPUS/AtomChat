@@ -17,6 +17,12 @@ public final class PlayerAvatar {
     }
 
     public static Image face(UUID uuid, String name) {
+        // The local custom avatar takes precedence over the skin; every other
+        // player (and the no-avatar case) falls through to the skin source.
+        Image own = OwnPlayerAvatarSource.INSTANCE.face(uuid, name);
+        if (own != null) {
+            return own;
+        }
         PlayerAvatarSource current = source;
         return current != null ? current.face(uuid, name) : null;
     }

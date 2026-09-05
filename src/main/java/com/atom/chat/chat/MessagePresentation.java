@@ -143,7 +143,22 @@ public final class MessagePresentation {
 
         int labelEnd = labelTailEnd(text, after);
         int sep = skipSeparators(text, after);
-        if (sep <= after || sep >= text.length()) {
+        if (sep >= text.length()) {
+            // Kaomoji guard: a bracket-only message like "<Steve> (￣▽￣)" is
+            // shaped exactly like a name-suffix decoration, but a real label
+            // decoration is never the entire message. When bracket-skipping
+            // consumes every remaining character, the trailing bracket group
+            // is content, not decoration: re-skip without bracket pairs and
+            // clamp the display label back to the bare name. Without this the
+            // parse fails and NCR-converted echoes render as system bubbles.
+            int loose = skipSeparators(text, after, false);
+            if (loose <= after || loose >= text.length()) {
+                return Optional.empty();
+            }
+            sep = loose;
+            labelEnd = after;
+        }
+        if (sep <= after) {
             return Optional.empty();
         }
 
@@ -212,6 +227,10 @@ public final class MessagePresentation {
      * decorations parse the same way prefix decorations do.
      */
     public static int skipSeparators(String text, int from) {
+        return skipSeparators(text, from, true);
+    }
+
+    static int skipSeparators(String text, int from, boolean skipBrackets) {
         int sep = from;
         while (sep < text.length()) {
             char ch = text.charAt(sep);
@@ -219,7 +238,7 @@ public final class MessagePresentation {
                 sep += 2;
                 continue;
             }
-            if (ch == '[' || ch == '(' || ch == '<' || ch == '【') {
+            if (skipBrackets && (ch == '[' || ch == '(' || ch == '<' || ch == '【')) {
                 char close = ch == '[' ? ']' : ch == '(' ? ')' : ch == '<' ? '>' : '】';
                 int end = text.indexOf(close, sep + 1);
                 if (end > sep && end - sep <= 32) {

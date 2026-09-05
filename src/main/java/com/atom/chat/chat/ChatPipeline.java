@@ -23,7 +23,9 @@ public final class ChatPipeline {
     private ChatPipeline() {
     }
 
-    /** All online names (profile + tab display + §-stripped variants). */
+    /** All online names (profile + tab display + §-stripped variants), then
+     *  players once seen in chat — the offline-player tail that lets relayed
+     *  lines (bot bridges, delayed echoes) still parse as player chat. */
     public static List<String> onlineNameCandidates() {
         var player = MinecraftClient.getInstance().player;
         if (player == null || player.networkHandler == null) {
@@ -35,6 +37,7 @@ public final class ChatPipeline {
                 names.add(cand);
             }
         });
+        names.addAll(SeenPlayers.profileNames());
         return new ArrayList<>(names);
     }
 

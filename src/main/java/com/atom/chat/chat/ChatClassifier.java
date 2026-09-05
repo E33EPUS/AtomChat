@@ -158,6 +158,11 @@ public final class ChatClassifier {
 
     public static UUID resolveUuid(String displayName) {
         PlayerListEntry info = resolveOnlinePlayer(displayName);
-        return info != null ? info.getProfile().getId() : null;
+        if (info != null) {
+            return info.getProfile().getId();
+        }
+        // Offline player: recover the UUID from the once-seen memory so their
+        // bubbles keep the real identity (and skin via the name cache).
+        return SeenPlayers.findUuid(displayName);
     }
 }

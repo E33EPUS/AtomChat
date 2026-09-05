@@ -3,3 +3,4 @@ accessible field net/minecraft/client/gui/screen/ChatScreen chatField Lnet/minec
 accessible field net/minecraft/client/gui/screen/ChatScreen chatInputSuggestor Lnet/minecraft/client/gui/screen/ChatInputSuggestor;
 accessible field net/minecraft/client/gui/widget/TextFieldWidget selectionStart I
 accessible field net/minecraft/client/gui/widget/TextFieldWidget selectionEnd I
+accessible field net/minecraft/stat/StatHandler statMap Lit/unimi/dsi/fastutil/objects/Object2IntMap;

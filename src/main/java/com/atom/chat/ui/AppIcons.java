@@ -91,6 +91,26 @@ public final class AppIcons {
 
     public static final Path ICON_NO_PLAYERS_PATH = Path.makeFromSVGString(ICON_NO_PLAYERS_SVG);
 
+    // Edit affordance for the profile avatar: a classic pencil at 45° with a
+    // short base dash, same open line language as the rest of the shell.
+    private static final String ICON_EDIT_SVG =
+            "M13.2 4.1l2.7 2.7"
+            + " M6.8 16.4l-3 .8.8-3 9.3-9.3a1.9 1.9 0 0 1 2.7 0l.5.5a1.9 1.9 0 0 1 0 2.7z";
+
+    public static final Path ICON_EDIT_PATH = Path.makeFromSVGString(ICON_EDIT_SVG);
+
+    // Cropper confirm/cancel: a plain checkmark and a round-terminated cross,
+    // same open line language at 20x20.
+    private static final String ICON_CHECK_SVG = "M4.5 10.5 L8.5 14.5 L15.5 6.5";
+    private static final String ICON_CLOSE_SVG = "M6 6 L14 14 M14 6 L6 14";
+
+    public static final Path ICON_CHECK_PATH = Path.makeFromSVGString(ICON_CHECK_SVG);
+    public static final Path ICON_CLOSE_PATH = Path.makeFromSVGString(ICON_CLOSE_SVG);
+
+    /** Add affordance for the colour-palette "custom colour" cell. */
+    private static final String ICON_PLUS_SVG = "M10 4.5 L10 15.5 M4.5 10 L15.5 10";
+    public static final Path ICON_PLUS_PATH = Path.makeFromSVGString(ICON_PLUS_SVG);
+
     private AppIcons() {
     }
 }
