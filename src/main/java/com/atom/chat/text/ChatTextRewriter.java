@@ -3,6 +3,7 @@ package com.atom.chat.text;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.text.TranslatableTextContent;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -72,6 +73,44 @@ public final class ChatTextRewriter {
         return out;
     }
 
+    /**
+     * Rewrites vanilla private-message system lines to the e33chat-style
+     * {@code <sender>[私聊] body} format. Returns null when the message is not a
+     * vanilla /msg line.
+     *
+     * @param ownName real profile name used as the sender for outgoing echoes
+     */
+    public static Text rewritePrivate(Text message, String ownName) {
+        if (!(message.getContent() instanceof TranslatableTextContent tc)) {
+            return null;
+        }
+        String key = tc.getKey();
+        Object[] args = tc.getArgs();
+        Text name;
+        Text content;
+        if (key.equals("commands.message.display.incoming") && args.length >= 2) {
+            name = asText(args[0]);
+            content = asText(args[1]);
+        } else if (key.equals("commands.message.display.outgoing") && args.length >= 2) {
+            name = ownName == null || ownName.isBlank() ? Text.literal("") : Text.literal(ownName);
+            content = asText(args[1]);
+        } else {
+            return null;
+        }
+        MutableText out = Text.literal("<");
+        out.append(name);
+        out.append(">");
+        out.append(Text.translatable("atomchat.banner.whisper")
+                .setStyle(Style.EMPTY.withColor(0xFF55FF)));
+        out.append(" ");
+        out.append(content);
+        return out;
+    }
+
+    private static Text asText(Object arg) {
+        return arg instanceof Text text ? text : Text.literal(String.valueOf(arg));
+    }
+
     private static List<Replacement> findReplacements(String full) {
         List<Replacement> out = new ArrayList<>();
         Matcher matcher = CICODE.matcher(full);
@@ -110,6 +149,9 @@ public final class ChatTextRewriter {
             return true;
         }
         String before = full.substring(0, quote);
-        return before.endsWith("> ") || before.endsWith(">");
+        // Public vanilla lines start "<name> 「引用..."; private rewrites start
+        // "<name>[Whisper] 「引用..." — both should become [Quote]/[引用].
+        return before.endsWith("> ") || before.endsWith(">")
+                || before.endsWith("] ") || before.endsWith("]");
     }
 }

@@ -121,6 +121,31 @@ public final class RichText {
         return new RichText(out, rootStyle);
     }
 
+    /**
+     * Returns a copy with click/hover interactions and underlines removed, while
+     * keeping colours and other visible styling. Used for private-chat sender
+     * names, where vanilla /msg click actions would otherwise turn the name into
+     * a misleading link.
+     */
+    public RichText stripInteractions() {
+        List<RichRun> out = new ArrayList<>();
+        for (RichRun run : runs) {
+            Style style = run.style();
+            Style clean = style;
+            if (style.getClickEvent() != null) {
+                clean = clean.withClickEvent(null);
+            }
+            if (style.getHoverEvent() != null) {
+                clean = clean.withHoverEvent(null);
+            }
+            if (style.isUnderlined()) {
+                clean = clean.withUnderline(false);
+            }
+            out.add(new RichRun(run.text(), clean));
+        }
+        return new RichText(out, rootStyle);
+    }
+
     public RichText linkifyUrls() {
         List<RichRun> out = new ArrayList<>();
         for (RichRun run : runs) {

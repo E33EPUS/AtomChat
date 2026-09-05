@@ -8,6 +8,7 @@ import com.atom.chat.chat.ChatStore;
 import com.atom.chat.chat.MessageCapture;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatParser;
+import com.atom.chat.chat.QuoteParser;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.SenderMeta;
 import com.atom.chat.text.ChatTextRewriter;
@@ -50,7 +51,19 @@ public class ChatHudMixin {
         // below only after capture has already decided what belongs in ChatStore.
         atomchat$captureAndStore(message, signatureData, indicator);
 
-        Text rewritten = ChatTextRewriter.rewrite(message);
+        MinecraftClient client = MinecraftClient.getInstance();
+        String ownName = client.player != null ? client.player.getName().getString() : null;
+        Text rewritten = ChatTextRewriter.rewritePrivate(message, ownName);
+        if (rewritten != null) {
+            // Keep compacting image codes / quote prefixes inside the rewritten
+            // private line (e.g. "<name>[Whisper] [Quote] body").
+            Text compacted = ChatTextRewriter.rewrite(rewritten);
+            if (compacted != null) {
+                rewritten = compacted;
+            }
+        } else {
+            rewritten = ChatTextRewriter.rewrite(message);
+        }
         if (rewritten != null) {
             ci.cancel();
             atomchat$reposting = true;
@@ -113,16 +126,25 @@ public class ChatHudMixin {
             if (displayName != null && BlockList.isBlocked(displayName)) {
                 return;
             }
+            String parsedContent = parsed.contentText() != null ? parsed.contentText() : raw;
+            QuoteParser.Quote quote = atomchat$quoteOf(parsedContent);
+            String body = quote != null ? quote.body() : parsedContent;
             var sliced = ChatPipeline.sliceRichText(message, parsed);
             if (sliced.isPresent()) {
-                ChatStore.get().add(new ChatMessage(message, false, parsed.system(), null, null,
-                        parsed.senderUuid(), displayName, parsed.profileName(), parsed.contentText(),
-                        sliced.get().sender(), sliced.get().content().linkifyUrls()));
+                RichText richContent = quote != null
+                        ? RichText.literal(body).linkifyUrls()
+                        : sliced.get().content().linkifyUrls();
+                ChatStore.get().add(new ChatMessage(message, false, parsed.system(),
+                        quote != null ? quote.quoteName() : null,
+                        quote != null ? quote.quoteText() : null,
+                        parsed.senderUuid(), displayName, parsed.profileName(), body,
+                        sliced.get().sender(), richContent));
             } else {
-                String fallbackContent = parsed.contentText() != null ? parsed.contentText() : raw;
-                ChatStore.get().add(new ChatMessage(message, false, parsed.system(), null, null,
-                        parsed.senderUuid(), displayName, parsed.profileName(), parsed.contentText(),
-                        RichText.empty(), RichText.literal(fallbackContent).linkifyUrls()));
+                ChatStore.get().add(new ChatMessage(message, false, parsed.system(),
+                        quote != null ? quote.quoteName() : null,
+                        quote != null ? quote.quoteText() : null,
+                        parsed.senderUuid(), displayName, parsed.profileName(), body,
+                        RichText.empty(), RichText.literal(body).linkifyUrls()));
             }
             return;
         }
@@ -161,9 +183,21 @@ public class ChatHudMixin {
                     ? RichText.of(meta.contentComponent()).linkifyUrls()
                     : RichText.literal(content);
         }
-        ChatStore.get().add(new ChatMessage(message, false, meta.system(), null, null,
-                meta.senderUuid(), displayName, meta.profileName(), content,
+        QuoteParser.Quote quote = atomchat$quoteOf(content);
+        String body = quote != null ? quote.body() : content;
+        if (quote != null) {
+            contentRich = RichText.literal(body).linkifyUrls();
+        }
+        ChatStore.get().add(new ChatMessage(message, false, meta.system(),
+                quote != null ? quote.quoteName() : null,
+                quote != null ? quote.quoteText() : null,
+                meta.senderUuid(), displayName, meta.profileName(), body,
                 senderRich, contentRich));
+    }
+
+    @Unique
+    private static QuoteParser.Quote atomchat$quoteOf(String content) {
+        return content == null ? null : QuoteParser.parse(content);
     }
 
     @Unique
@@ -187,15 +221,21 @@ public class ChatHudMixin {
         if (displayName == null) {
             displayName = partnerName;
         }
+        QuoteParser.Quote quote = atomchat$quoteOf(content);
+        String body = quote != null ? quote.body() : content;
         RichText senderRich = meta.senderComponent() != null
-                ? RichText.of(meta.senderComponent())
+                ? RichText.of(meta.senderComponent()).stripInteractions()
                 : RichText.literal(displayName);
-        RichText contentRich = meta.contentComponent() != null
-                ? RichText.of(meta.contentComponent()).linkifyUrls()
-                : RichText.literal(content != null ? content : message.getString()).linkifyUrls();
-        ChatMessage privateMessage = new ChatMessage(message, own, false, null, null,
+        RichText contentRich = quote != null
+                ? RichText.literal(body).linkifyUrls()
+                : meta.contentComponent() != null
+                        ? RichText.of(meta.contentComponent()).linkifyUrls()
+                        : RichText.literal(body != null ? body : message.getString()).linkifyUrls();
+        ChatMessage privateMessage = new ChatMessage(message, own, false,
+                quote != null ? quote.quoteName() : null,
+                quote != null ? quote.quoteText() : null,
                 own ? meta.senderUuid() : meta.senderUuid(), displayName,
-                own ? meta.profileName() : meta.profileName(), content, senderRich, contentRich);
+                own ? meta.profileName() : meta.profileName(), body, senderRich, contentRich);
         if (own) {
             PrivateChatStore.addOutgoing(partner, privateMessage);
         } else if (!BlockList.isBlocked(partner)) {

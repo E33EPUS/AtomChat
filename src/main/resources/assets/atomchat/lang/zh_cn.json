@@ -43,5 +43,6 @@
   "atomchat.private.offline": "对方不在线，无法发送",
   "atomchat.private.blocked": "你已屏蔽对方，无法发送",
   "atomchat.context.unblock": "取消屏蔽",
-  "atomchat.channel.private": "私聊"
+  "atomchat.channel.private": "私聊",
+  "atomchat.banner.whisper": "[私聊]"
 }

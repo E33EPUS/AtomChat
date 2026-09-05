@@ -43,5 +43,6 @@
   "atomchat.private.offline": "Player is offline, cannot send",
   "atomchat.private.blocked": "You blocked this player, cannot send",
   "atomchat.context.unblock": "Unblock",
-  "atomchat.channel.private": "Private"
+  "atomchat.channel.private": "Private",
+  "atomchat.banner.whisper": "[Whisper]"
 }

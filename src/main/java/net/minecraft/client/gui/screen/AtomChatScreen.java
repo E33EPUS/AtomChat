@@ -194,9 +194,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private static final String ICON_SAVE_SVG = "M10 3 L10 11 M7 8 L10 11 L13 8"
             + " M4 15 L4 17 L16 17 L16 15";
     // Avatar context-menu icons, same 20x20 line-icon language.
-    private static final String ICON_MENTION_SVG = "M10 3 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14"
-            + " M10 8 v3"
-            + " M7.5 10.5 a2.5 2.5 0 1 0 5 0 v-.5";
+    // Lucide at-sign (ISC): a true "@" shape — inner circle plus the outer
+    // ring/tail stroke. Coordinates are in Lucide's 24x24 space and are fitted
+    // by drawIconCentered exactly like the other icon paths.
+    private static final String ICON_MENTION_SVG = "M12 8 a4 4 0 1 0 0 8 a4 4 0 1 0 0 -8"
+            + " M16 8 v5 a3 3 0 0 0 6 0 v-1 a10 10 0 1 0 -4 8";
     private static final String ICON_WHISPER_SVG = "M3 4 L17 4 L17 14 L10 14 L6 18 L7 14 L3 14 Z";
     private static final String ICON_TP_SVG = "M3 17 L17 3 M17 3 L10 3 M17 3 L17 10";
     private static final String ICON_BLOCK_SVG = "M10 3 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14"
@@ -421,6 +423,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (!page.isRoot() && fromPage.isRoot()) {
             rootTabAnim.setValue(rootIndex(fromPage));
             startPageNav(topNav(), page, false);
+        } else if (!page.isRoot() && !fromPage.isRoot()) {
+            // Public <-> private detail pages also use the full-width push/pop.
+            startPageNav(topNav(), page, false);
         } else {
             pageNavFrom = null;
             pageNavTo = null;
@@ -452,28 +457,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         NavPage from = topNav();
         NavPage previous = navigation.snapshot().get(navigation.size() - 2);
-        if (previous.isRoot()) {
-            // Keep the detail page on top while it slides out; the actual
-            // navigation pop happens in finishPageNav().
-            startPageNav(from, previous, true);
-            return;
-        }
-        // Detail-to-detail pop (private back into public) is immediate in this
-        // version; only root<->detail uses the full-width push/pop transition.
-        if (from.page() == AppPage.PRIVATE_CHAT) {
-            savePrivateDraft(from.target(), inputGetText());
-            PrivateChatStore.clearActive();
-        }
-        resetTransientWorldUi();
-        navigation.pop();
-        ChatStore.setPublicActive(topPage() == AppPage.WORLD_CHAT);
-        if (topPage() == AppPage.PRIVATE_CHAT) {
-            PrivateChatStore.setActive(activePrivateTarget());
-            loadDraft(activePrivateTarget());
-        } else if (topPage() == AppPage.WORLD_CHAT) {
-            worldScroll.reset();
-            loadWorldDraft();
-        }
+        // Keep the detail page on top while it slides out; the actual navigation
+        // pop happens in finishPageNav(). Both root and detail targets animate.
+        startPageNav(from, previous, true);
+        return;
     }
 
     private boolean pageNavActive() {
@@ -562,6 +549,42 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return PrivateChatStore.messages(activePrivateTarget());
         }
         return List.of();
+    }
+
+    private List<ChatMessage> messagesForNav(NavPage page) {
+        if (page == null) {
+            return List.of();
+        }
+        if (page.page() == AppPage.WORLD_CHAT) {
+            return ChatStore.get().snapshot();
+        }
+        if (page.page() == AppPage.PRIVATE_CHAT) {
+            return PrivateChatStore.messages(page.target());
+        }
+        return List.of();
+    }
+
+    private ScrollController scrollForNav(NavPage page) {
+        if (page != null && page.page() == AppPage.PRIVATE_CHAT && page.target() != null) {
+            return privateScrolls.computeIfAbsent(page.target().key(), k -> new ScrollController());
+        }
+        return worldScroll;
+    }
+
+    private void drawMessageLayerForNav(Canvas canvas, UiLayout layout, NavPage page, float dx) {
+        if (page == null) {
+            return;
+        }
+        UiLayout.Rect list = layout.list;
+        canvas.save();
+        try {
+            SkiaDraw.clip(canvas, list.x(), list.y(), list.w(), list.h(), 0.0F);
+            canvas.translate(dx, 0.0F);
+            drawMessages(canvas, list.x() - dx, list.y(), list.w(), list.h(),
+                    messagesForNav(page), scrollForNav(page));
+        } finally {
+            canvas.restore();
+        }
     }
 
     private String currentPrivateKey() {
@@ -965,10 +988,34 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 // Push finished (or a detail-to-detail settle): the current
                 // detail page is now the settled top page.
                 navRunning = false;
+            } else if (pageNavFrom != null && pageNavTo != null
+                    && !pageNavFrom.isRoot() && !pageNavTo.isRoot()) {
+                // Detail-to-detail (public <-> private) full-width push/pop.
+                // The message lists slide; the header/input chrome is drawn
+                // fixed once so the page change reads as a phone push.
+                boolean popping = pageNavPopPending;
+                NavPage fromPage = pageNavFrom;
+                NavPage toPage = pageNavTo;
+                float travel = layout.list.w();
+                float progress = pageNavAnim.getValue();
+                float fromDx = popping ? travel * progress : -travel * progress;
+                float toDx = popping ? -travel * (1.0F - progress) : travel * (1.0F - progress);
+                suppressHeader = true;
+                drawMessageLayerForNav(canvas, layout, fromPage, fromDx);
+                drawMessageLayerForNav(canvas, layout, toPage, toDx);
+                suppressHeader = false;
+                ShellHeader.render(canvas, layout.header, shellTitleFor(toPage), true,
+                        backButton(), backButtonHover, textPrimary(),
+                        toPage.page() == AppPage.PRIVATE_CHAT
+                                ? isOnlinePlayer(toPage.target()) : null);
+                UiLayout.Rect bar = layout.inputBar;
+                SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), s(18),
+                        Color.makeARGB(60, 255, 255, 255));
+                drawBezel(canvas, layout);
+                return;
             } else {
-                // Full-width push/pop: only root<->detail transitions run this
-                // path. The header is drawn separately as a fixed "status bar"
-                // after both layers.
+                // Full-width push/pop: root<->detail transitions. The header is
+                // drawn separately as a fixed "status bar" after both layers.
                 suppressHeader = true;
                 NavPage navRoot = pageNavTo.isRoot() ? pageNavTo : pageNavFrom;
                 float travel = layout.rect().w();
@@ -1488,8 +1535,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private void drawMessages(Canvas canvas, float x, float y, float width, float height) {
-        List<ChatMessage> messages = currentMessages();
-        ScrollController scroll = currentScroll();
+        drawMessages(canvas, x, y, width, height, currentMessages(), currentScroll());
+    }
+
+    private void drawMessages(Canvas canvas, float x, float y, float width, float height,
+                              List<ChatMessage> messages, ScrollController scroll) {
         hits.clear();
         clickableSpans.clear();
         // Snapshot "was at bottom" before maxScroll grows: after new messages
@@ -1761,8 +1811,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // cards (translucent white over the panel), so it reads as one family.
         SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), Color.makeARGB(60, 255, 255, 255));
         SkiaDraw.drawRoundedRect(canvas, pillX + UiTokens.QUOTE_PAD_X, pillY + s(3), barW, UiTokens.QUOTE_HEIGHT - s(6), barW / 2.0F, accent());
+        boolean imageQuote = msg.getQuoteText() != null
+                && isImagePlaceholder(msg.getQuoteText());
+        int quoteColor = imageQuote
+                ? Color.makeARGB(255, 85, 255, 85)
+                : textPrimary();
         SkiaFontRenderer.drawText(canvas, quoteFont, display, pillX + UiTokens.QUOTE_PAD_X + barW + s(4),
-                SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F), textPrimary());
+                SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F), quoteColor);
+    }
+
+    private static boolean isImagePlaceholder(String text) {
+        return text != null && (text.equals(tr("atomchat.hud.image"))
+                || text.equals("[图片]") || text.equalsIgnoreCase("[image]"));
     }
 
     private static String truncateToWidth(Font font, String text, float maxW) {
@@ -2574,10 +2634,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 int textColor = textPrimary();
                 if (playerMenu && row == 0 && !isOnlinePlayer(contextPlayer != null ? contextPlayer : lastContextPlayer)) {
                     textColor = Color.makeARGB(110, 255, 255, 255);
-                } else if (avatarMenu && row == 2 && contextMessage != null) {
-                    PlayerRef avatarPlayer = PlayerRef.of(contextMessage.getSenderUuid(), contextMessage.getProfileName());
-                    if (avatarPlayer != null && !isOnlinePlayer(avatarPlayer)) {
-                        textColor = Color.makeARGB(110, 255, 255, 255);
+                } else if (avatarMenu && row == 2) {
+                    ChatMessage avatarMsg = contextMessage != null ? contextMessage : lastContextMessage;
+                    if (avatarMsg != null) {
+                        PlayerRef avatarPlayer = PlayerRef.of(avatarMsg.getSenderUuid(), avatarMsg.getProfileName());
+                        if (avatarPlayer != null && !isOnlinePlayer(avatarPlayer)) {
+                            textColor = Color.makeARGB(110, 255, 255, 255);
+                        }
                     }
                 }
                 drawIconCentered(canvas, icon, menuX + s(18), rowY + rowH / 2.0F, UiTokens.CONTEXT_ICON_SIZE, textColor);
@@ -2622,8 +2685,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private String avatarContextLabel(int row) {
-        if (row == 3 && contextMessage != null) {
-            PlayerRef p = PlayerRef.of(contextMessage.getSenderUuid(), contextMessage.getProfileName());
+        ChatMessage target = contextMessage != null ? contextMessage : lastContextMessage;
+        if (row == 3 && target != null) {
+            PlayerRef p = PlayerRef.of(target.getSenderUuid(), target.getProfileName());
             return BlockList.isBlocked(p) ? tr("atomchat.context.unblock") : tr("atomchat.context.block");
         }
         return switch (row) {
@@ -3641,6 +3705,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         });
     }
 
+    private static String quoteTextFor(ChatMessage message) {
+        if (message == null) {
+            return null;
+        }
+        String contentText = message.getContentText();
+        if (extractImageUrl(message.getRawText()) != null
+                || (contentText != null && extractImageUrl(contentText) != null)) {
+            return tr("atomchat.hud.image");
+        }
+        return abbreviate(message.getContentText(), 30);
+    }
+
     private void sendMessage(String text) {
         String normalized = normalizeInput(text);
         if (normalized.isEmpty()) {
@@ -3653,7 +3729,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         String quoteText = null;
         if (replyTarget != null) {
             quoteName = messageSenderName(replyTarget);
-            quoteText = abbreviate(replyTarget.getContentText(), 30);
+            quoteText = quoteTextFor(replyTarget);
             // Quote travels with the message so other players can see it too.
             normalized = "「引用 @" + quoteName + ": " + quoteText + "」" + normalized;
         }
@@ -3712,7 +3788,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             PrivateChatStore.addOutgoing(target,
                     new ChatMessage(Text.literal(historyText), true, false,
                             replyTarget != null ? messageSenderName(replyTarget) : null,
-                            replyTarget != null ? abbreviate(replyTarget.getContentText(), 30) : null,
+                            replyTarget != null ? quoteTextFor(replyTarget) : null,
                             ownUuid, ownProfile, ownProfile, historyText));
             PrivateEchoTracker.markOutgoing(target);
         }

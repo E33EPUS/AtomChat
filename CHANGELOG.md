@@ -1,6 +1,33 @@
 # Changelog
 
+## v0.1.6
+
+### 中文
+
+- **私聊名字去交互**：私聊页里对方名字不再有下划线/可点击，保留颜色与装饰；公屏名字点击行为不变。
+- **远端引用解析**：收到带 `「引用 @名字: 内容」` 前缀的公屏/私聊消息时，接收端会解析成引用胶囊 + 正文，不再把整段前缀当正文显示。
+- **原版私聊行改写**：vanilla `/msg` 系统消息改为 e33chat 同款 `<名字>[私聊] 正文`（紫色标签），不再显示 “whispers to you” 系统句。
+- **卡片时间与状态点**：根列表卡片时间改为纯白；玩家卡名字右侧新增在线绿点 / 离线红点。
+- **@ 图标重绘**：头像右键菜单的 @ 图标改为 Lucide at-sign 风格的真 @ 线性图标。
+- **菜单淡出文案修复**：公屏头像右键菜单淡出时，“屏蔽/取消屏蔽”不再因目标被清空而显示异常。
+- **私聊引用预览补 [引用]**：私聊里引用消息时，原版聊天框预览会显示 `[引用]`/`[Quote]` 占位，不再露出整段 `「引用...」` 前缀。
+- **引用图片不刷 URL**：引用图片消息时，引用内容改为绿色 `[图片]`/`[Image]`，不会把图片 URL/CICode 放进引用胶囊。
+- **公屏↔私聊切屏动画**：从公屏头像右键“私聊”进入/返回私聊时，消息列表现在使用与根页一致的全宽 push/pop 动画。
+
+### English
+
+- **Private sender names are no longer interactive**: in private chats the other player's name no longer shows as an underlined clickable link; public chat names keep their click behaviour.
+- **Remote quote parsing**: incoming public/private messages with a `「引用 @name: text」` prefix now reconstruct the quote capsule and body instead of showing the raw prefix as bubble text.
+- **Vanilla private line rewrite**: vanilla /msg system lines become e33chat-style `<name>[Whisper] body` with a purple tag instead of “whispers to you”.
+- **Card time and status dot**: conversation-card time is now pure white; player cards show an online green / offline red dot right after the name.
+- **@ icon redraw**: the avatar context-menu mention icon is now a true linear @ in the Lucide at-sign style.
+- **Context-menu fade fix**: the Block/Unblock label no longer misbehaves while the public avatar menu is fading out.
+- **Private quote preview shows [Quote]**: quoting inside private chat now renders a `[Quote]`/`[引用]` placeholder in the vanilla chat line instead of the raw `「引用...」` prefix.
+- **Image quotes no longer leak URLs**: quoting an image message puts a green `[Image]`/`[图片]` placeholder in the quote capsule instead of the URL/CICode.
+- **Public ↔ private page animation**: entering/leaving a private conversation from the public avatar menu now uses the same full-width push/pop animation as the root pages.
+
 ## v0.1.5
+
 
 ### 中文
 

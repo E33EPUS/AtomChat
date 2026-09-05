@@ -299,15 +299,27 @@ public final class ConversationListPage {
             badgeText = row.unread() > 99 ? "99+" : String.valueOf(row.unread());
             badgeW = Math.max(s(18), SkiaFontRenderer.getStringWidth(timeFont, badgeText) + s(9));
         }
-        float nameMaxW = Math.max(0.0F, timeX - textX - s(8));
+        // Status dot sits immediately after the player's name. Public has none.
+        float dotSpace = row.kind == RowKind.PLAYER ? s(14) : 0.0F;
+        float nameMaxW = Math.max(0.0F, timeX - textX - s(8) - dotSpace);
         String name = truncateToWidth(nameFont, row.title(), nameMaxW);
         SkiaFontRenderer.drawText(canvas, nameFont, name, textX,
                 SkiaFontRenderer.centerBaselineY(nameFont, nameCenterY),
                 Color.makeARGB(255, 255, 255, 255));
+        if (row.kind == RowKind.PLAYER) {
+            float drawnNameW = SkiaFontRenderer.getStringWidth(nameFont, name);
+            float dotR = s(3);
+            float dotX = textX + drawnNameW + s(6);
+            float dotY = nameCenterY;
+            int dotColor = row.online()
+                    ? Color.makeARGB(255, 82, 196, 110)
+                    : Color.makeARGB(255, 224, 82, 82);
+            SkiaDraw.drawRoundedRect(canvas, dotX - dotR, dotY - dotR, dotR * 2, dotR * 2, dotR, dotColor);
+        }
         if (!time.isEmpty()) {
             SkiaFontRenderer.drawText(canvas, timeFont, time, timeX,
                     SkiaFontRenderer.centerBaselineY(timeFont, nameCenterY),
-                    Color.makeARGB(190, 170, 170, 186));
+                    Color.makeARGB(255, 255, 255, 255));
         }
 
         float maxPreviewW = Math.max(0.0F, x + w - textX - s(8) - (badgeW > 0 ? badgeW + s(8) : 0.0F));
