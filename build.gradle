@@ -68,6 +68,10 @@ loom {
 // curseforge_project_id); fill them in once, in the repo.
 // ---------------------------------------------------------------------------
 
+// Store-facing version label, following the jar naming habit:
+// Fabric-<mc_version>-<mod_version>, e.g. Fabric-1.21.1-0.2.1
+def storeVersion = "Fabric-${project.minecraft_version}-${project.mod_version}"
+
 def changelogFor(version) {
     def text = rootProject.file('CHANGELOG.md').getText('UTF-8')
     def start = text.indexOf("## v${version}")
@@ -82,7 +86,7 @@ def changelogFor(version) {
 modrinth {
     token = System.getenv("MODRINTH_TOKEN") ?: ""
     projectId = project.modrinth_project_id
-    versionNumber = project.version
+    versionNumber = storeVersion
     versionType = "release"
     uploadFile = remapJar
     gameVersions = [project.minecraft_version]
@@ -110,6 +114,7 @@ tasks.register('curseforge', net.darkhax.curseforgegradle.TaskPublishCurseForge)
         main.changelogType = 'markdown'
         main.changelog = changelogFor(project.version)
         main.releaseType = 'release'
+        main.displayName = storeVersion
         main.addGameVersion project.minecraft_version
         main.addModLoader 'Fabric'
         main.addRequirement 'fabric-api'

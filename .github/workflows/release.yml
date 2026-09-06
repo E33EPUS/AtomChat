@@ -66,3 +66,39 @@ jobs:
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+
+      # After the release ships, drop an empty "## vX.Y.Z" section into
+      # CHANGELOG.md as a commit so the section can be filled in with Chinese
+      # prose afterwards. Idempotent: skipped when the section already exists.
+      - name: Add changelog skeleton
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          export VERSION
+          python3 - <<'PY'
+          import os, sys
+          version = os.environ["VERSION"]
+          with open("CHANGELOG.md", encoding="utf-8", newline="") as f:
+              text = f.read()
+          if f"## v{version}" in text:
+              print("changelog section already exists, skipping")
+              sys.exit(0)
+          skeleton = (
+              f"## v{version}\r\n\r\n### 新增\r\n\r\n- 待回填：\r\n\r\n"
+              f"### 修复\r\n\r\n- 待回填：\r\n\r\n"
+              f"### 更改\r\n\r\n- 待回填：\r\n\r\n"
+          )
+          header = text.index("# Changelog")
+          insert_at = text.index("\n", header) + 1
+          with open("CHANGELOG.md", "w", encoding="utf-8", newline="") as f:
+              f.write(text[:insert_at] + "\r\n" + skeleton + text[insert_at:])
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit --no-verify -m "Add changelog skeleton for ${GITHUB_REF_NAME}"
+            git push
+          fi
