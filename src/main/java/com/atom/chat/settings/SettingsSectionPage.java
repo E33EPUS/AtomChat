@@ -731,7 +731,10 @@ public final class SettingsSectionPage {
         }
     }
 
-    /** Small fold indicator: right-pointing when collapsed, down when open. */
+    /** Small fold indicator: right-pointing when collapsed, down when open.
+     *  No explicit contour close: fill mode auto-closes, and Path.close() is
+     *  the resource-release method (contour close is closePath()) — calling it
+     *  inside the block frees the native path before drawPath runs (crashed). */
     private static void drawChevron(Canvas canvas, float cx, float cy, float size,
                                     boolean collapsed, int color) {
         try (io.github.humbleui.skija.Path path = new io.github.humbleui.skija.Path();
@@ -745,7 +748,6 @@ public final class SettingsSectionPage {
                 path.lineTo(cx + size, cy - size / 2.0F);
                 path.lineTo(cx, cy + size / 2.0F);
             }
-            path.close();
             paint.setColor(color);
             canvas.drawPath(path, paint);
         }
