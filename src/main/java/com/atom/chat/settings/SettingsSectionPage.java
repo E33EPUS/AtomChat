@@ -689,7 +689,8 @@ public final class SettingsSectionPage {
             SkiaFontRenderer.drawTextCentered(canvas, font, text, rect.x() + rect.w() / 2.0F, cy, lineColor);
             return;
         }
-        // Foldable colour group: chevron + centred caption.
+        // Foldable colour group: chevron + centred caption between the same
+        // divider rules as plain group headings.
         boolean collapsed = collapsedColorGroups.contains(group);
         String text = tr(row.labelKey());
         float textW = SkiaFontRenderer.getStringWidth(font, text);
@@ -697,7 +698,19 @@ public final class SettingsSectionPage {
         float gap = s(10);
         float cy = rect.y() + rect.h() / 2.0F;
         float contentW = chevron + gap + textW;
-        float startX = rect.x() + rect.w() / 2.0F - contentW / 2.0F;
+        float inset = s(4);
+        float leftEnd = rect.x() + inset + (rect.w() - inset * 2.0F - contentW - gap * 2.0F) / 2.0F;
+        float rightStart = leftEnd + contentW + gap * 2.0F;
+        float lineH = s(1.5F);
+        if (leftEnd > rect.x() + inset) {
+            SkiaDraw.drawRoundedRect(canvas, rect.x() + inset, cy - lineH / 2.0F,
+                    leftEnd - (rect.x() + inset), lineH, lineH / 2.0F, lineColor);
+        }
+        if (rightStart < rect.right() - inset) {
+            SkiaDraw.drawRoundedRect(canvas, rightStart, cy - lineH / 2.0F,
+                    rect.right() - inset - rightStart, lineH, lineH / 2.0F, lineColor);
+        }
+        float startX = leftEnd + gap;
         drawChevron(canvas, startX, cy, chevron, collapsed, lineColor);
         SkiaFontRenderer.drawTextCentered(canvas, font, text,
                 startX + chevron + gap + textW / 2.0F, cy, lineColor);
@@ -734,7 +747,9 @@ public final class SettingsSectionPage {
         float groupH = icon + gap + textH;
         float top = area.y() + Math.max(0.0F, (area.h() - groupH) / 2.0F);
         float cx = area.x() + area.w() / 2.0F;
-        int muted = Color.makeARGB(150, 170, 170, 186);
+        // Empty-state icon and caption read as secondary information: they
+        // follow the secondary text colour, dimmed to keep the muted look.
+        int muted = sec(150);
         drawIconCentered(canvas, AppIcons.ICON_NO_PLAYERS_PATH, cx, top + icon / 2.0F, icon, muted);
         SkiaFontRenderer.drawTextCentered(canvas, font, Text.translatable(textKey).getString(),
                 cx, top + icon + gap + textH / 2.0F, muted);
