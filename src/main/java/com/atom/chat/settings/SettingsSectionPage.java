@@ -120,6 +120,7 @@ public final class SettingsSectionPage {
     private static final String LABEL_COLORS = "atomchat.settings.group.colors";
     private static final String ACTION_WALLPAPER_PICK = "wallpaper_pick";
     private static final String ACTION_WALLPAPER_CLEAR = "wallpaper_clear";
+    private static final String ACTION_TELEPORT_MODE = "teleport_mode";
 
     /** Per-section heading for the leading switch/action group. */
     private static String groupKey(SettingsSection section) {
@@ -144,6 +145,15 @@ public final class SettingsSectionPage {
         return new SettingsItem("wallpaper_clear",
                 "atomchat.settings.appearance.wallpaper.clear",
                 "atomchat.settings.appearance.wallpaper.clear.desc",
+                () -> true, v -> {
+        });
+    }
+
+    /** Teleport command card: subtitle shows the current auto/tp/tpa mode. */
+    private SettingsItem teleportModeItem() {
+        return new SettingsItem("teleport_mode",
+                "atomchat.settings.chat.teleport",
+                "atomchat.settings.chat.teleport.desc",
                 () -> true, v -> {
         });
     }
@@ -194,6 +204,9 @@ public final class SettingsSectionPage {
             if (WallpaperStore.isSet()) {
                 rows.add(Row.ofAction(ACTION_WALLPAPER_CLEAR, wallpaperClearItem()));
             }
+        }
+        if (section == SettingsSection.CHAT) {
+            rows.add(Row.ofAction(ACTION_TELEPORT_MODE, teleportModeItem()));
         }
         if (section == SettingsSection.APPEARANCE) {
             rows.add(Row.ofLabel(LABEL_ADJUST));
@@ -504,6 +517,10 @@ public final class SettingsSectionPage {
                     ? wallpaper.getFileName().toString()
                     : tr(row.item().subtitleKey());
             verb = tr("atomchat.settings.action.choose");
+        } else if (ACTION_TELEPORT_MODE.equals(row.actionId())) {
+            String mode = AtomChatConfig.get().teleportCommandMode;
+            subtitle = tr("atomchat.settings.chat.teleport." + (mode == null ? "auto" : mode));
+            verb = tr("atomchat.settings.action.cycle");
         } else {
             subtitle = tr(row.item().subtitleKey());
             verb = tr("atomchat.settings.action.clear");

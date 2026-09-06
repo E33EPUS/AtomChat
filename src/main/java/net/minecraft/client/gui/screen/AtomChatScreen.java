@@ -3,6 +3,7 @@ import com.atom.chat.AtomChat;
 
 import com.atom.chat.chat.BlockList;
 import com.atom.chat.chat.ChatMessage;
+import com.atom.chat.chat.TeleportCommands;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.emote.EmoteImageCache;
@@ -176,13 +177,23 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         });
     }
 
-    /** Settings action cards: only the wallpaper pair exists today. */
+    /** Settings action cards: the wallpaper pair and the teleport mode cycle. */
     private void handleSettingsAction(String actionId) {
         if ("wallpaper_pick".equals(actionId)) {
             pickWallpaperFile();
         } else if ("wallpaper_clear".equals(actionId)) {
             WallpaperStore.clear();
             WallpaperImage.release();
+        } else if ("teleport_mode".equals(actionId)) {
+            AtomChatConfig cfg = AtomChatConfig.get();
+            String current = cfg.teleportCommandMode == null ? "auto" : cfg.teleportCommandMode;
+            cfg.teleportCommandMode = switch (current) {
+                case "tp" -> "tpa";
+                case "tpa" -> "tp";
+                default -> "tp";
+            };
+            TeleportCommands.reset();
+            AtomChatConfig.save(cfg);
         }
     }
 
@@ -416,6 +427,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private long pendingAvatarClickTime;
     private int pendingAvatarClickIndex = -1;
     private ChatMessage pendingAvatarClickMessage;
+    // Input mouse drag selection (0.1.11): the hidden EditBox is single-line
+    // and its X shifts per caret (IME anchor), so its own hit-testing cannot
+    // serve the multi-line Skia input — map virtual coords to an index.
+    private boolean inputDragging;
+    private int inputDragAnchor = -1;
 
     // Message text drag-selection state (Skia-drawn highlight; Ctrl+C copies).
     private ChatMessage selectionMessage;
@@ -999,6 +1015,41 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         chatField.setY((int) Math.round(caretLineTopY() * density / scaleFactor));
         chatField.setWidth((int) Math.max(10.0F, Math.round((layout.inputBar.w() - UiTokens.INPUT_TEXT_X * 2.0F) * density / scaleFactor)));
         chatField.setHeight((int) Math.round(inputLineHeight() * density / scaleFactor));
+    }
+
+    /**
+     * Maps a virtual point inside the input text area to a text index. Rows
+     * are the Skia-wrapped lines; a point left of a character's midpoint
+     * selects that character, past the end selects the line end.
+     */
+    private int inputCaretIndexAt(UiLayout layout, float vmx, float vmy) {
+        List<String> lines = wrappedInput(layout.inputTextMaxWidth());
+        if (lines.isEmpty()) {
+            return 0;
+        }
+        int total = lines.size();
+        int shown = Math.min(UiTokens.INPUT_MAX_LINES, total);
+        int from = Math.min(inputScrollLine, Math.max(0, total - shown));
+        float lineH = inputLineHeight();
+        float firstTop = layout.inputTextCenterY - lineH / 2.0F;
+        int row = MathHelper.clamp((int) Math.floor((vmy - firstTop) / lineH), 0, shown - 1);
+        int line = Math.min(from + row, total - 1);
+        int lineStart = 0;
+        for (int i = 0; i < line; i++) {
+            lineStart += lines.get(i).length();
+        }
+        String s = lines.get(line);
+        float dx = vmx - (layout.inputBar.x() + UiTokens.INPUT_TEXT_X);
+        Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
+        float acc = 0.0F;
+        for (int i = 0; i < s.length(); i++) {
+            float cw = SkiaFontRenderer.getStringWidth(inputFont, String.valueOf(s.charAt(i)));
+            if (dx < acc + cw / 2.0F) {
+                return lineStart + i;
+            }
+            acc += cw;
+        }
+        return lineStart + s.length();
     }
 
     /** Skia width of the committed text before the caret on the caret's wrapped line. */
@@ -3212,7 +3263,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (this.client.player == null || player == null || player.realName() == null) {
             return;
         }
-        this.client.player.networkHandler.sendChatCommand("tp " + player.realName());
+        // auto: probe the server command tree, fall back on failure replies.
+        String command = TeleportCommands.commandFor(client, AtomChatConfig.get().teleportCommandMode);
+        this.client.player.networkHandler.sendChatCommand(command.substring(1) + " " + player.realName());
+        TeleportCommands.noteTeleportSent();
     }
 
     private void toggleBlock(PlayerRef player) {
@@ -3699,6 +3753,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             inputFocused = true;
             setFocused(chatField);
             chatField.setFocused(true);
+            // Click-to-position / drag-select on the multi-line Skia input:
+            // map the virtual point to a text index ourselves (the hidden
+            // EditBox geometry is caret-shifted and single-line, useless here).
+            int idx = inputCaretIndexAt(layout, (float) mx, (float) my);
+            if (hasShiftDown() && inputDragAnchor >= 0) {
+                chatField.setSelectionEnd(idx);
+            } else {
+                inputDragAnchor = idx;
+                chatField.setCursor(idx, false);
+            }
+            inputDragging = true;
             return true;
         }
         setFocused(null);
@@ -3821,6 +3886,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             colorPicker.onDrag(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
             return true;
         }
+        // Input drag selection: extend from the press anchor to the pointer.
+        if (inputDragging && isWorldChatPage() && button == 0 && chatField != null) {
+            int idx = inputCaretIndexAt(layout(), toVirtualX(mouseX), toVirtualY(mouseY));
+            chatField.setSelectionEnd(idx);
+            return true;
+        }
         // Root pages have no world-chat selection state, but they do share the
         // scrollbar drag model; do not forward drags to the hidden composer.
         if (!isWorldChatPage()) {
@@ -3911,6 +3982,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 }
             }
             pendingClickMoved = false;
+            if (inputDragging) {
+                inputDragging = false;
+            }
             if (shouldClick) {
                 this.handleTextClick(pending.style());
                 return true;

@@ -57,6 +57,7 @@ public class AtomChatClient implements ClientModInitializer {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             com.atom.chat.page.ProfilePage.noteJoin();
             com.atom.chat.net.AvatarCompanionClient.onJoin();
+            com.atom.chat.chat.TeleportCommands.reset();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             PrivateChatStore.reset();

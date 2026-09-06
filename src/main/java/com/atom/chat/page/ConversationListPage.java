@@ -380,7 +380,14 @@ public final class ConversationListPage {
 
         float badgeW = 0.0F;
         String badgeText = "";
-        if (row.unread() > 0) {
+        boolean mentionBadge = false;
+        int mentions = row.kind == RowKind.PUBLIC ? ChatStore.mentionUnread() : 0;
+        if (mentions > 0) {
+            // Amber @-mention badge, distinct from the plain unread counter.
+            mentionBadge = true;
+            badgeText = "@" + (mentions > 99 ? "99+" : mentions);
+            badgeW = Math.max(s(18), SkiaFontRenderer.getStringWidth(timeFont, badgeText) + s(9));
+        } else if (row.unread() > 0) {
             badgeText = row.unread() > 99 ? "99+" : String.valueOf(row.unread());
             badgeW = Math.max(s(18), SkiaFontRenderer.getStringWidth(timeFont, badgeText) + s(9));
         }
@@ -422,7 +429,8 @@ public final class ConversationListPage {
             float bh = s(18);
             float bx = x + w - s(10) - badgeW;
             float by = y + ROW_H / 2.0F + s(12) - bh / 2.0F;
-            SkiaDraw.drawRoundedRect(canvas, bx, by, badgeW, bh, bh / 2.0F, Color.makeARGB(255, 244, 67, 54));
+            int badgeColor = mentionBadge ? Color.makeARGB(255, 245, 158, 11) : Color.makeARGB(255, 244, 67, 54);
+            SkiaDraw.drawRoundedRect(canvas, bx, by, badgeW, bh, bh / 2.0F, badgeColor);
             SkiaFontRenderer.drawTextCentered(canvas, badgeFont, badgeText,
                     bx + badgeW / 2.0F, by + bh / 2.0F, Color.makeARGB(255, 255, 255, 255));
         }

@@ -97,6 +97,12 @@
   "atomchat.settings.chat.entry.desc": "新消息左右滑入并淡入",
   "atomchat.settings.chat.poke": "双击头像戳一戳",
   "atomchat.settings.chat.poke.desc": "双击头像触发抖动互动",
+  "atomchat.settings.chat.teleport": "传送命令",
+  "atomchat.settings.chat.teleport.desc": "右键菜单传送使用的命令",
+  "atomchat.settings.chat.teleport.auto": "自动（探测 tp/tpa）",
+  "atomchat.settings.chat.teleport.tp": "固定 /tp（原版）",
+  "atomchat.settings.chat.teleport.tpa": "固定 /tpa（插件）",
+  "atomchat.settings.action.cycle": "切换",
 
   "atomchat.settings.privacy": "隐私与屏蔽",
   "atomchat.settings.privacy.sub": "屏蔽名单与消息过滤",

@@ -97,6 +97,12 @@
   "atomchat.settings.chat.entry.desc": "New messages slide in and fade",
   "atomchat.settings.chat.poke": "Double-tap avatar poke",
   "atomchat.settings.chat.poke.desc": "Double-click an avatar to shake it",
+  "atomchat.settings.chat.teleport": "Teleport command",
+  "atomchat.settings.chat.teleport.desc": "Command used by the menu teleport action",
+  "atomchat.settings.chat.teleport.auto": "Auto (probe tp/tpa)",
+  "atomchat.settings.chat.teleport.tp": "Fixed /tp (vanilla)",
+  "atomchat.settings.chat.teleport.tpa": "Fixed /tpa (plugin)",
+  "atomchat.settings.action.cycle": "Switch",
 
   "atomchat.settings.privacy": "Privacy & blocking",
   "atomchat.settings.privacy.sub": "Block list and message filtering",

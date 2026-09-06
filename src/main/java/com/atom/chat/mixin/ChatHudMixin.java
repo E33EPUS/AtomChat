@@ -7,6 +7,9 @@ import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.ChatPipeline;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.chat.ChatTemplates;
+import com.atom.chat.chat.EasyBotParser;
+import com.atom.chat.chat.MentionDetector;
+import com.atom.chat.chat.MentionObserver;
 import com.atom.chat.chat.MessageCapture;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatParser;
@@ -15,6 +18,8 @@ import com.atom.chat.chat.QuoteParser;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.SeenPlayers;
 import com.atom.chat.chat.SenderMeta;
+import com.atom.chat.chat.TeleportCommands;
+import com.atom.chat.chat.TellClickDetector;
 import com.atom.chat.chat.WhisperTextParser;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.text.ChatTextRewriter;
@@ -86,6 +91,9 @@ public class ChatHudMixin {
     private void atomchat$captureAndStore(Text message, MessageSignatureData signatureData, MessageIndicator indicator) {
         String raw = message.getString();
         MinecraftClient client = MinecraftClient.getInstance();
+        // Teleport failure watch: a "unknown command/no permission" reply right
+        // after a menu teleport flips the session command (0.1.11 auto mode).
+        TeleportCommands.checkFailure(raw);
 
         SenderMeta meta = MessageCapture.consume();
         // Machine-to-machine chat protocols must never be claimed as player chat
@@ -124,7 +132,18 @@ public class ChatHudMixin {
             if (atomchat$tryTextWhisper(raw, message, client)) {
                 return;
             }
-            SenderMeta parsed = ChatPipeline.tryParsePlayerLine(raw);
+            // Layer 2 (e33chat parity): tell-click attribution. A SUGGEST_COMMAND
+            // "/tell <name>" on the sender's display name carries the real
+            // profile name — deterministic on nickname servers.
+            SenderMeta parsed = TellClickDetector.detectByTellClick(message, raw);
+            if (parsed == null) {
+                parsed = ChatPipeline.tryParsePlayerLine(raw);
+            }
+            if (parsed == null) {
+                // EasyBot QQ-relay shapes ("<nick(123)> hi", "[群] <nick> hi")
+                // with no locally known player name behind them.
+                parsed = EasyBotParser.tryParse(raw);
+            }
             if (parsed == null) {
                 // Guard failed: user-configured templates get the last claim
                 // before the line degrades to a gray system bubble.
@@ -154,17 +173,17 @@ public class ChatHudMixin {
                 RichText richContent = quote != null
                         ? RichText.literal(body).linkifyUrls()
                         : sliced.get().content().linkifyUrls();
-                ChatStore.get().add(new ChatMessage(message, false, parsed.system(),
+                atomchat$addPublic(new ChatMessage(message, false, parsed.system(),
                         quote != null ? quote.quoteName() : null,
                         quote != null ? quote.quoteText() : null,
                         parsed.senderUuid(), displayName, parsed.profileName(), body,
-                        sliced.get().sender(), richContent));
+                        sliced.get().sender(), richContent), body, parsed.system());
             } else {
-                ChatStore.get().add(new ChatMessage(message, false, parsed.system(),
+                atomchat$addPublic(new ChatMessage(message, false, parsed.system(),
                         quote != null ? quote.quoteName() : null,
                         quote != null ? quote.quoteText() : null,
                         parsed.senderUuid(), displayName, parsed.profileName(), body,
-                        RichText.empty(), RichText.literal(body).linkifyUrls()));
+                        RichText.empty(), RichText.literal(body).linkifyUrls()), body, parsed.system());
             }
             SeenPlayers.remember(parsed.senderUuid(), parsed.profileName(), displayName);
             return;
@@ -212,11 +231,31 @@ public class ChatHudMixin {
         if (quote != null) {
             contentRich = RichText.literal(body).linkifyUrls();
         }
-        ChatStore.get().add(new ChatMessage(message, false, meta.system(),
+        atomchat$addPublic(new ChatMessage(message, false, meta.system(),
                 quote != null ? quote.quoteName() : null,
                 quote != null ? quote.quoteText() : null,
                 meta.senderUuid(), displayName, meta.profileName(), body,
-                senderRich, contentRich));
+                senderRich, contentRich), body, meta.system());
+    }
+
+    /**
+     * Public-channel entry + @-mention bookkeeping (0.1.11): the mention check
+     * uses the final body text and fires the observer seam; unread counters
+     * live in ChatStore. System capsules never count as mentions.
+     */
+    @Unique
+    private static void atomchat$addPublic(ChatMessage message, String body, boolean system) {
+        ChatStore.get().add(message);
+        if (system) {
+            return;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        String own = client.player != null ? client.player.getName().getString() : null;
+        if (own != null && MentionDetector.isMentioned(body, own,
+                AtomChatConfig.get().mentionRequireAt, null)) {
+            ChatStore.noteMention();
+            MentionObserver.fire(message);
+        }
     }
 
     /**
@@ -227,6 +266,11 @@ public class ChatHudMixin {
     private static boolean atomchat$tryTextWhisper(String raw, Text message, MinecraftClient client) {
         String ownName = client.player != null ? client.player.getName().getString() : null;
         WhisperTextParser.WhisperHit hit = WhisperTextParser.tryParse(raw, ownName);
+        if (hit == null) {
+            // Anchored family (e33chat WhisperDetector port): a known player
+            // name near the line start + whisper keyword before the colon.
+            hit = WhisperTextParser.tryParseAnchored(raw, ChatPipeline.onlineNameCandidates());
+        }
         if (hit == null) {
             var cfg = AtomChatConfig.get();
             if (cfg.whisperTemplates.isEmpty()) {

@@ -1,5 +1,8 @@
 package com.atom.chat.chat;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -155,6 +158,107 @@ public final class WhisperTextParser {
             return true;
         }
         return ownProfile != null && side.equalsIgnoreCase(ownProfile);
+    }
+
+    // ---- keyword-gated family (e33chat WhisperSignal port, 0.1.11 backfill) ----
+
+    /**
+     * The e33chat keyword data, battle-tested on real servers: Chinese tokens
+     * match by plain contains() ("whisper" also covers "whispers"); short
+     * English words need word boundaries ("Msg: hi" is a name, "PM to X: hi"
+     * is a whisper). A bare "to you" is deliberately absent — "wants to
+     * teleport to you" (tpa requests) false-positives.
+     */
+    private static final String[] ZH_KEYWORDS = {
+            "悄悄", "whisper", "对你说", "私聊", "密语", "密聊", "私信", "密谈"
+    };
+    private static final Pattern EN_KEYWORD = Pattern.compile("\\b(?:pm|message|msg|tell)\\b");
+
+    static boolean hasWhisperKeywordBeforeColon(String text) {
+        if (text == null) {
+            return false;
+        }
+        int colon = -1;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == ':' || ch == '：') {
+                colon = i;
+                break;
+            }
+        }
+        String zone = colon < 0 ? text : text.substring(0, colon);
+        String lower = zone.toLowerCase(Locale.ROOT);
+        for (String keyword : ZH_KEYWORDS) {
+            if (lower.contains(keyword)) {
+                return true;
+            }
+        }
+        // Short English words collide with player names and prefixes — strip
+        // bracket decorations, then require the word plus at least one other
+        // token in the zone ("[PM]Steve" is a prefix, "Steve PM you" is not).
+        String zoneNoBrackets = zone.replaceAll("\\[[^\\]]*\\]|\\([^\\)]*\\)", "");
+        if (!EN_KEYWORD.matcher(zoneNoBrackets.toLowerCase(Locale.ROOT)).find()) {
+            return false;
+        }
+        String rest = EN_KEYWORD.matcher(zoneNoBrackets.toLowerCase(Locale.ROOT)).replaceAll(" ").trim();
+        return !rest.isEmpty();
+    }
+
+    /**
+     * First separator after the sender name wins — lastIndexOf truncated
+     * content that itself contains ": "; colon-family first so
+     * "Steve -&gt; you: hi" still extracts at the colon.
+     */
+    static String extractWhisperContent(String fullText, String senderName) {
+        if (senderName == null || senderName.isEmpty()) {
+            return fullText;
+        }
+        int idx = fullText == null ? -1 : fullText.indexOf(senderName);
+        if (idx < 0) {
+            return fullText;
+        }
+        String after = fullText.substring(idx + senderName.length());
+        for (String sep : new String[]{": ", "：", " :", " ：", " -> ", " >> ", " » ", " | "}) {
+            int i = after.indexOf(sep);
+            if (i >= 0) {
+                return after.substring(i + sep.length());
+            }
+        }
+        return after.trim();
+    }
+
+    /**
+     * e33chat's anchored strategy (WhisperDetector port): a known player name
+     * (online or once-seen) near the line start plus a whisper keyword before
+     * the colon claims the line, whatever the surrounding decoration. This
+     * covers plugin shapes the structural families cannot express, e.g.
+     * "[VIP] Steve 私聊说: hi" or "Steve 悄悄地对你说: hi".
+     *
+     * @param knownNames online + once-seen name candidates (longest wins)
+     */
+    public static WhisperHit tryParseAnchored(String line, java.util.List<String> knownNames) {
+        if (line == null || line.length() > 256 || knownNames == null || knownNames.isEmpty()) {
+            return null;
+        }
+        String clean = line.replaceAll("§.", "").strip();
+        if (clean.isEmpty()) {
+            return null;
+        }
+        List<String> sorted = new ArrayList<>(knownNames);
+        sorted.sort((a, b) -> b.length() - a.length());
+        for (String name : sorted) {
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            int idx = clean.indexOf(name);
+            if (idx >= 0 && idx < 30 && hasWhisperKeywordBeforeColon(clean)) {
+                String content = extractWhisperContent(clean, name).strip();
+                if (!content.isEmpty()) {
+                    return new WhisperHit(true, name, content);
+                }
+            }
+        }
+        return null;
     }
 
     private static String cleanSide(String s) {

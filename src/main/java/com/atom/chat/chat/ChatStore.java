@@ -9,6 +9,7 @@ public final class ChatStore {
     private final List<ChatMessage> messages = new ArrayList<>();
     private static volatile boolean publicActive;
     private static volatile int publicUnread;
+    private static volatile int mentionUnread;
 
     public static ChatStore get() {
         return INSTANCE;
@@ -24,6 +25,15 @@ public final class ChatStore {
         }
     }
 
+    /** Counts an @-mention of the local player (badge on the Public card). */
+    public static synchronized void noteMention() {
+        mentionUnread++;
+    }
+
+    public static synchronized int mentionUnread() {
+        return mentionUnread;
+    }
+
     public synchronized List<ChatMessage> snapshot() {
         return Collections.unmodifiableList(new ArrayList<>(messages));
     }
@@ -33,6 +43,7 @@ public final class ChatStore {
         publicActive = active;
         if (active) {
             publicUnread = 0;
+            mentionUnread = 0;
         }
     }
 
@@ -42,10 +53,12 @@ public final class ChatStore {
 
     public static synchronized void markPublicRead() {
         publicUnread = 0;
+        mentionUnread = 0;
     }
 
     public static synchronized void resetUnread() {
         publicUnread = 0;
+        mentionUnread = 0;
     }
 
     /** Clears all public history and unread when leaving a server/world. */
@@ -53,5 +66,6 @@ public final class ChatStore {
         INSTANCE.messages.clear();
         publicActive = false;
         publicUnread = 0;
+        mentionUnread = 0;
     }
 }

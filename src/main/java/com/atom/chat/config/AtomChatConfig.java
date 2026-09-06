@@ -85,6 +85,17 @@ public class AtomChatConfig {
      * lines (plugin-reformatted {@code /msg}) into the private panel.
      */
     public java.util.List<String> whisperTemplates = new java.util.ArrayList<>();
+    /**
+     * Teleport command for the avatar/player menu: {@code auto} (probe the
+     * server command tree for a tpa-family command, fall back on failure),
+     * {@code tp} or {@code tpa}.
+     */
+    public String teleportCommandMode = "auto";
+    /**
+     * When true only an explicit {@code @Name} counts as a mention; when
+     * false the bare name as a standalone token counts too (e33chat default).
+     */
+    public boolean mentionRequireAt = false;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AtomChatConfig instance;

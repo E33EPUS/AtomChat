@@ -129,4 +129,44 @@ class WhisperTextParserTest {
         assertNull(WhisperTextParser.tryParse("x".repeat(300), OWN));
         assertFalse(WhisperTextParser.tryParse("[Steve -> me] hi", null) == null);
     }
+
+    // ---- anchored family (e33chat WhisperDetector port) ----
+
+    @Test
+    void anchoredKeywordFamilyClaimsIncoming() {
+        var hit = WhisperTextParser.tryParseAnchored("[VIP] Steve 私聊说: 你好",
+                java.util.List.of("Alice", "Steve"));
+        assertTrue(hit != null && hit.incoming());
+        assertEquals("Steve", hit.partnerDisplay());
+        assertEquals("你好", hit.content());
+    }
+
+    @Test
+    void anchoredEnglishKeywordWorks() {
+        var hit = WhisperTextParser.tryParseAnchored("Steve whispers: hi",
+                java.util.List.of("Steve"));
+        assertTrue(hit != null && hit.incoming());
+        assertEquals("hi", hit.content());
+    }
+
+    @Test
+    void anchoredRequiresKeyword() {
+        assertNull(WhisperTextParser.tryParseAnchored("Steve: hello world",
+                java.util.List.of("Steve")));
+    }
+
+    @Test
+    void anchoredRequiresNameNearStart() {
+        assertNull(WhisperTextParser.tryParseAnchored(
+                "x".repeat(30) + "Steve 悄悄地对你说: hi",
+                java.util.List.of("Steve")));
+    }
+
+    @Test
+    void anchoredPrefersLongestName() {
+        var hit = WhisperTextParser.tryParseAnchored("Steve2 悄悄地对你说: hi",
+                java.util.List.of("Steve", "Steve2"));
+        assertTrue(hit != null && hit.incoming());
+        assertEquals("Steve2", hit.partnerDisplay());
+    }
 }
