@@ -103,9 +103,13 @@ public final class ProfilePage {
     /** Copy buttons live only on the name / UUID rows, docked after the label. */
     private static final int COPY_ROWS = 2;
     private static final long COPIED_FEEDBACK_MS = 1_200L;
-    /** Two overlapping rects — the same copy glyph the context menu uses. */
+    /**
+     * Two overlapping rects, normalised to a 9x9 box so the drawn glyph size
+     * is exact: scale = targetPx / 9, no empty viewBox margins shrinking it.
+     */
     private static final io.github.humbleui.skija.Path ROW_COPY_ICON =
-            io.github.humbleui.skija.Path.makeFromSVGString("M5 3 L11 3 L11 9 L5 9 Z M8 7 L14 7 L14 13 L8 13 Z");
+            io.github.humbleui.skija.Path.makeFromSVGString("M0 0 L6 0 L6 6 L0 6 Z M3 3 L9 3 L9 9 L3 9 Z");
+    private static final float COPY_GLYPH_UNITS = 9.0F;
 
     /** Copy button docked right after the row label, back-button hover style. */
     private UiLayout.Rect copyButtonRect(UiLayout layout, int index, float scrollY) {
@@ -137,9 +141,34 @@ public final class ProfilePage {
                     button.w() - inset * 2.0F, button.h() - inset * 2.0F, s(8),
                     Color.makeARGB((int) (45.0F * alpha), 255, 255, 255));
         }
-        io.github.humbleui.skija.Path icon =
-                copied ? com.atom.chat.ui.AppIcons.ICON_CHECK_PATH : ROW_COPY_ICON;
-        int iconColor = copied ? accentColor() : Color.makeARGB(210, 255, 255, 255);
+        float cx = button.x() + button.w() / 2.0F;
+        float cy = button.y() + button.h() / 2.0F;
+        if (copied) {
+            // Check glyph centred, then the hint hugs it with a fixed 4px gap.
+            io.github.humbleui.skija.Path check = com.atom.chat.ui.AppIcons.ICON_CHECK_PATH;
+            Rect b = check.getBounds();
+            float sc = s(12) / Math.max(b.getWidth(), b.getHeight());
+            try (Paint paint = new Paint().setAntiAlias(true)
+                    .setColor(accentColor())
+                    .setMode(PaintMode.STROKE)
+                    .setStrokeWidth(s(1.8F))
+                    .setStrokeCap(PaintStrokeCap.ROUND)
+                    .setStrokeJoin(PaintStrokeJoin.ROUND)) {
+                canvas.save();
+                canvas.translate(cx - (b.getLeft() + b.getRight()) / 2.0F * sc,
+                        cy - (b.getTop() + b.getBottom()) / 2.0F * sc);
+                canvas.scale(sc, sc);
+                canvas.drawPath(check, paint);
+                canvas.restore();
+            }
+            Font hintFont = FontManager.font(UiTokens.PROFILE_TILE_LABEL_FONT);
+            SkiaFontRenderer.drawText(canvas, hintFont, tr("atomchat.settings.color.copied"),
+                    cx + s(12) / 2.0F + s(4),
+                    SkiaFontRenderer.centerBaselineY(hintFont, cy),
+                    accentColor());
+            return;
+        }
+        int iconColor = Color.makeARGB(210, 255, 255, 255);
         try (Paint paint = new Paint().setAntiAlias(true)
                 .setColor(iconColor)
                 .setMode(PaintMode.STROKE)
@@ -147,19 +176,12 @@ public final class ProfilePage {
                 .setStrokeCap(PaintStrokeCap.ROUND)
                 .setStrokeJoin(PaintStrokeJoin.ROUND)) {
             canvas.save();
-            float sc = button.w() * 0.6F / 20.0F;
-            canvas.translate(button.x() + button.w() / 2.0F - 10.0F * sc,
-                    button.y() + button.h() / 2.0F - 10.0F * sc);
+            float sc = s(13) / COPY_GLYPH_UNITS;
+            canvas.translate(cx - COPY_GLYPH_UNITS / 2.0F * sc,
+                    cy - COPY_GLYPH_UNITS / 2.0F * sc);
             canvas.scale(sc, sc);
-            canvas.drawPath(icon, paint);
+            canvas.drawPath(ROW_COPY_ICON, paint);
             canvas.restore();
-        }
-        if (copied) {
-            Font hintFont = FontManager.font(UiTokens.PROFILE_TILE_LABEL_FONT);
-            SkiaFontRenderer.drawText(canvas, hintFont, tr("atomchat.settings.color.copied"),
-                    button.right() + s(6),
-                    SkiaFontRenderer.centerBaselineY(hintFont, button.y() + button.h() / 2.0F),
-                    accentColor());
         }
     }
 
