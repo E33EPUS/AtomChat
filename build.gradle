@@ -1,6 +1,8 @@
 plugins {
     id 'fabric-loom' version "${loom_version}"
     id 'maven-publish'
+    id 'com.modrinth.minotaur' version '2.8.7'
+    id 'net.darkhax.curseforgegradle' version '1.1.25'
 }
 
 version = project.mod_version
@@ -54,4 +56,69 @@ tasks.withType(Test).configureEach {
 
 loom {
     accessWidenerPath = file("src/main/resources/atomchat.accesswidener")
+}
+
+// ---------------------------------------------------------------------------
+// Release publishing (Modrinth + CurseForge)
+//
+// Tokens come from the environment only — never commit them. Publishing tasks
+// are skipped when the matching token is absent, so everyday builds and tests
+// run without any store credentials.
+// Project IDs live in gradle.properties (modrinth_project_id /
+// curseforge_project_id); fill them in once, in the repo.
+// ---------------------------------------------------------------------------
+
+def changelogFor(version) {
+    def text = rootProject.file('CHANGELOG.md').getText('UTF-8')
+    def start = text.indexOf("## v${version}")
+    if (start < 0) {
+        return "AtomChat ${version}"
+    }
+    def end = text.indexOf('\n## ', start + 1)
+    def section = end > start ? text.substring(start, end) : text.substring(start)
+    return section.trim()
+}
+
+modrinth {
+    token = System.getenv("MODRINTH_TOKEN") ?: ""
+    projectId = project.modrinth_project_id
+    versionNumber = project.version
+    versionType = "release"
+    uploadFile = remapJar
+    gameVersions = [project.minecraft_version]
+    loaders = ["fabric"]
+    changelog = changelogFor(project.version)
+
+    dependencies {
+        required.project "fabric-api"
+    }
+}
+
+tasks.named('modrinth') {
+    onlyIf { System.getenv("MODRINTH_TOKEN") }
+}
+
+def cfProjectId = (project.findProperty('curseforge_project_id') ?: '').toString()
+def cfConfigured = cfProjectId ==~ /\d+/
+
+tasks.register('curseforge', net.darkhax.curseforgegradle.TaskPublishCurseForge) {
+    apiToken = System.getenv("CURSEFORGE_TOKEN") ?: ""
+    onlyIf { cfConfigured && System.getenv("CURSEFORGE_TOKEN") }
+
+    if (cfConfigured) {
+        def main = upload(cfProjectId as int, remapJar)
+        main.changelogType = 'markdown'
+        main.changelog = changelogFor(project.version)
+        main.releaseType = 'release'
+        main.addGameVersion project.minecraft_version
+        main.addModLoader 'Fabric'
+        main.addRequirement 'fabric-api'
+        main.addJavaVersion 'Java 21'
+    }
+}
+
+tasks.register('publishMods') {
+    group = 'publishing'
+    description = 'Publish the mod to Modrinth and CurseForge.'
+    dependsOn 'modrinth', 'curseforge'
 }
