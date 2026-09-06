@@ -18,6 +18,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Skija's Linux native links against EGL/GL system libraries.
+      - name: Install Skija system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
+
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
