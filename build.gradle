@@ -33,6 +33,9 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    // CI test hosts run on Linux; the bundled jar targets Windows only, so the
+    // Linux Skija native is test-scoped and never packaged.
+    testImplementation "io.github.humbleui:skija-linux-x64:${project.skija_version}"
 }
 
 processResources {
