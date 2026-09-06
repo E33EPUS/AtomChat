@@ -324,9 +324,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     // Landscape photo glyph: a wide rounded rect (14x9 on the 20 grid), sun
     // top-left, mountains inside — the old one was portrait and read as a
     // phone photo instead of an image.
-    private static final String ICON_IMAGE_SVG = "M5 5.5 L15 5.5 A1.5 1.5 0 0 1 16.5 7 L16.5 13 A1.5 1.5 0 0 1 15 14.5 L5 14.5 A1.5 1.5 0 0 1 3.5 13 L3.5 7 A1.5 1.5 0 0 1 5 5.5 Z"
-            + " M7 8.2 m-1.2 0 a1.2 1.2 0 1 0 2.4 0 a1.2 1.2 0 1 0 -2.4 0"
-            + " M4.5 13.6 L8.2 10.2 L10.6 12.3 L13 9.9 L15.5 12.1";
+    // Image glyph fills a ~14x12 box: fit-by-longest-edge scaling leaves the
+    // old 13x9 glyph visibly shorter than the emoji/send neighbours.
+    private static final String ICON_IMAGE_SVG = "M4.5 4 L15.5 4 A1.5 1.5 0 0 1 17 5.5 L17 14.5 A1.5 1.5 0 0 1 15.5 16 L4.5 16 A1.5 1.5 0 0 1 3 14.5 L3 5.5 A1.5 1.5 0 0 1 4.5 4 Z"
+            + " M7 7.2 m-1.3 0 a1.3 1.3 0 1 0 2.6 0 a1.3 1.3 0 1 0 -2.6 0"
+            + " M4 15 L8.6 10.9 L11.2 13.2 L13.6 10.6 L16 13.2";
     private static final String ICON_EMOJI_SVG = "M10 3 a7 7 0 1 0 0 14 a7 7 0 1 0 0 -14"
             + " M7 8.6 v1.3 M13 8.6 v1.3"
             + " M6.8 12.2 C8.5 14.3 11.5 14.3 13.2 12.2";
@@ -1062,6 +1064,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return lineStart + s.length();
     }
 
+    /** True when the private-chat partner is composing a message (WATUT). */
+    private boolean partnerTyping() {
+        if (topPage() != AppPage.PRIVATE_CHAT || isPrivateReadOnly()) {
+            return false;
+        }
+        PlayerRef partner = activePrivateTarget();
+        return partner != null
+                && com.atom.chat.watut.WatutBridge.isTyping(partner.uuid());
+    }
+
     /** Skia width of the committed text before the caret on the caret's wrapped line. */
     private String inputLinePrefix(UiLayout layout, int caret) {
         List<String> lines = wrappedInput(layout.inputTextMaxWidth());
@@ -1453,6 +1465,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 String hintText;
                 if (imageUploading) {
                     hintText = tr("atomchat.input.uploading");
+                } else if (partnerTyping()) {
+                    // QQ-style: WATUT reports the partner composing a message
+                    // (only the private page asks; silent no-op without WATUT).
+                    hintText = tr("atomchat.private.typing");
                 } else if (transientHint != null && System.currentTimeMillis() - transientHintSetAt < 4000L) {
                     hintText = transientHint;
                 } else {

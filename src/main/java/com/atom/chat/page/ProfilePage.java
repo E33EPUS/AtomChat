@@ -70,9 +70,9 @@ public final class ProfilePage {
     private final AvatarStore avatarStore;
     /** Session start (client JOIN); 0 = unknown. */
     private static volatile long sessionStartMs;
-    /** Cached "stats" row value; the statMap sum runs at most once a second. */
+    /** Cached stat totals; the statMap sum runs at most once a second. */
     private long statsCacheMs;
-    private String statsCacheValue;
+    private StatTotals statsCache;
     /**
      * Whose profile is shown; {@code null} means the local player. Reserved
      * for the planned "tap a player avatar to open their profile" navigation —
@@ -88,6 +88,7 @@ public final class ProfilePage {
     /** Row the current {@link #rowHover} alpha belongs to; fades out on exit. */
     private int hoverRowIndex = -1;
     private final float[] menuItemHover = new float[2];
+    private final float[] tileHover = new float[3];
     private boolean avatarMenuOpen;
     /** Fade/scale progress of the avatar menu; keeps drawing while fading out. */
     private float menuAnim;
@@ -166,13 +167,21 @@ public final class ProfilePage {
      * custom-stat lookup anyway. Null until the player exists.
      */
     private String statsValue() {
+        StatTotals t = statTotals();
+        return t == null ? null : tr("atomchat.profile.stats.value", t.mined(), t.killed(), distance(t.walkCm()));
+    }
+
+    private record StatTotals(long mined, long killed, long walkCm) {
+    }
+
+    private StatTotals statTotals() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) {
             return null;
         }
         long now = System.currentTimeMillis();
-        if (statsCacheValue != null && now - statsCacheMs < 1000L) {
-            return statsCacheValue;
+        if (statsCache != null && now - statsCacheMs < 1000L) {
+            return statsCache;
         }
         StatHandler stats = client.player.getStatHandler();
         long mined = 0L;
@@ -186,9 +195,9 @@ public final class ProfilePage {
             }
         }
         long walkCm = stats.getStat(Stats.CUSTOM.getOrCreateStat(Stats.WALK_ONE_CM));
-        statsCacheValue = tr("atomchat.profile.stats.value", mined, killed, distance(walkCm));
+        statsCache = new StatTotals(mined, killed, walkCm);
         statsCacheMs = now;
-        return statsCacheValue;
+        return statsCache;
     }
 
     private static String distance(long cm) {
@@ -214,9 +223,15 @@ public final class ProfilePage {
     public record InfoRow(String label, String value) {
     }
 
+    /** One dashboard tile under the hero card: big value + small label. */
+    public record StatTile(String label, String value, String copy) {
+    }
+
     public float measureContent(UiLayout layout) {
         return UiTokens.ROOT_CONTENT_GAP
                 + UiTokens.PROFILE_AVATAR_HERO_H
+                + UiTokens.SETTINGS_ROW_GAP
+                + UiTokens.PROFILE_TILE_H
                 + UiTokens.SETTINGS_ROW_GAP
                 + infoRows().size() * UiTokens.PROFILE_ROW_H
                 + (infoRows().size() - 1) * UiTokens.SETTINGS_ROW_GAP;
@@ -226,6 +241,32 @@ public final class ProfilePage {
     // Data
     // ------------------------------------------------------------------
 
+    /**
+     * Dashboard tiles (0.1.11 redesign): ping / session / stats as one row of
+     * three under the hero card, identity rows stay as grouped rows below.
+     */
+    private List<StatTile> statTiles() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        List<StatTile> tiles = new ArrayList<>();
+        UUID uuid = subjectUuid();
+        PlayerListEntry entry = uuid != null && client.player != null && client.player.networkHandler != null
+                ? client.player.networkHandler.getPlayerListEntry(uuid)
+                : null;
+        String ping = tr("atomchat.profile.ping.value", entry != null ? entry.getLatency() : -1);
+        tiles.add(new StatTile(tr("atomchat.profile.ping"), ping, ping));
+        String session = sessionValue();
+        tiles.add(new StatTile(tr("atomchat.profile.session"),
+                session != null ? session : "-", session != null ? session : "-"));
+        StatTotals totals = statTotals();
+        if (totals != null) {
+            tiles.add(new StatTile(tr("atomchat.profile.stats"),
+                    tr("atomchat.profile.stats.mined", totals.mined()), statsValue()));
+        } else {
+            tiles.add(new StatTile(tr("atomchat.profile.stats"), "-", "-"));
+        }
+        return tiles;
+    }
+
     private List<InfoRow> infoRows() {
         MinecraftClient client = MinecraftClient.getInstance();
         List<InfoRow> rows = new ArrayList<>();
@@ -233,24 +274,11 @@ public final class ProfilePage {
         String name = subjectName();
         rows.add(new InfoRow(tr("atomchat.profile.name"), name));
         rows.add(new InfoRow(tr("atomchat.profile.uuid"), uuid != null ? uuid.toString() : "-"));
-        PlayerListEntry entry = uuid != null && client.player != null && client.player.networkHandler != null
-                ? client.player.networkHandler.getPlayerListEntry(uuid)
-                : null;
-        rows.add(new InfoRow(tr("atomchat.profile.ping"),
-                tr("atomchat.profile.ping.value", entry != null ? entry.getLatency() : -1)));
         Boolean operator = roleResolver != null ? roleResolver.isOperator(uuid, name) : null;
         if (operator != null) {
             // Unknown (null) hides the row instead of guessing a role.
             rows.add(new InfoRow(tr("atomchat.profile.role"),
                     tr(operator ? "atomchat.profile.role.op" : "atomchat.profile.role.member")));
-        }
-        String session = sessionValue();
-        if (session != null) {
-            rows.add(new InfoRow(tr("atomchat.profile.session"), session));
-        }
-        String stats = statsValue();
-        if (stats != null) {
-            rows.add(new InfoRow(tr("atomchat.profile.stats"), stats));
         }
         String server;
         if (client.getCurrentServerEntry() != null && client.getCurrentServerEntry().address != null
@@ -295,9 +323,19 @@ public final class ProfilePage {
                 badge, badge);
     }
 
-    private UiLayout.Rect rowRect(UiLayout layout, int index, float scrollY) {
+    private UiLayout.Rect tileRect(UiLayout layout, int index, float scrollY) {
         float top = layout.list.y() + UiTokens.ROOT_CONTENT_GAP
                 + UiTokens.PROFILE_AVATAR_HERO_H + UiTokens.SETTINGS_ROW_GAP - scrollY;
+        float w = (layout.list.w() - UiTokens.PROFILE_TILE_GAP * 2.0F) / 3.0F;
+        return new UiLayout.Rect(
+                layout.list.x() + index * (w + UiTokens.PROFILE_TILE_GAP),
+                top, w, UiTokens.PROFILE_TILE_H);
+    }
+
+    private UiLayout.Rect rowRect(UiLayout layout, int index, float scrollY) {
+        float top = layout.list.y() + UiTokens.ROOT_CONTENT_GAP
+                + UiTokens.PROFILE_AVATAR_HERO_H + UiTokens.SETTINGS_ROW_GAP
+                + UiTokens.PROFILE_TILE_H + UiTokens.SETTINGS_ROW_GAP - scrollY;
         return new UiLayout.Rect(
                 layout.list.x(),
                 top + index * (UiTokens.PROFILE_ROW_H + UiTokens.SETTINGS_ROW_GAP),
@@ -375,6 +413,13 @@ public final class ProfilePage {
             }
             return true;
         }
+        List<StatTile> tiles = statTiles();
+        for (int i = 0; i < tiles.size(); i++) {
+            if (tileRect(layout, i, scrollY).contains(vmx, vmy)) {
+                handler.copyText(tiles.get(i).copy());
+                return true;
+            }
+        }
         List<InfoRow> rows = infoRows();
         for (int i = 0; i < rows.size(); i++) {
             if (rowRect(layout, i, scrollY).contains(vmx, vmy)) {
@@ -398,6 +443,7 @@ public final class ProfilePage {
         try {
             SkiaDraw.clip(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h(), 0.0F);
             drawHeroCard(canvas, layout, vmx, vmy, scrollY);
+            drawStatTiles(canvas, layout, vmx, vmy, scrollY);
             drawInfoRows(canvas, layout, vmx, vmy, scrollY);
             drawAvatarMenu(canvas, layout, vmx, vmy, scrollY);
         } finally {
@@ -422,6 +468,10 @@ public final class ProfilePage {
             hoverRowIndex = hovered;
         }
         rowHover = UiMotion.approach(rowHover, hovered >= 0 ? 1.0F : 0.0F, dt, UiMotion.HOVER_MS);
+        for (int i = 0; i < tileHover.length; i++) {
+            boolean over = tileRect(layout, i, scrollY).contains(vmx, vmy);
+            tileHover[i] = UiMotion.approach(tileHover[i], over ? 1.0F : 0.0F, dt, UiMotion.HOVER_MS);
+        }
         for (int i = 0; i < menuItemHover.length; i++) {
             boolean over = avatarMenuOpen
                     && menuItemRect(layout, scrollY, i).contains(vmx, vmy);
@@ -480,6 +530,32 @@ public final class ProfilePage {
                 hero.x() + hero.w() / 2.0F,
                 avatar.bottom() + s(26),
                 Color.makeARGB(255, 255, 255, 255));
+    }
+
+    /** Dashboard tiles: big value centred, small label under it. */
+    private void drawStatTiles(Canvas canvas, UiLayout layout, float vmx, float vmy, float scrollY) {
+        List<StatTile> tiles = statTiles();
+        Font valueFont = FontManager.font(UiTokens.PROFILE_TILE_VALUE_FONT);
+        Font labelFont = FontManager.font(UiTokens.PROFILE_TILE_LABEL_FONT);
+        for (int i = 0; i < tiles.size(); i++) {
+            UiLayout.Rect tile = tileRect(layout, i, scrollY);
+            if (tile.bottom() < layout.list.y() || tile.y() > layout.list.bottom()) {
+                continue;
+            }
+            SkiaDraw.drawRoundedRect(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
+                    UiTokens.PROFILE_ROW_RADIUS, Color.makeARGB(60, 255, 255, 255));
+            if (tileHover[i] > 0.01F) {
+                SkiaDraw.drawRoundedRect(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
+                        UiTokens.PROFILE_ROW_RADIUS, Color.makeARGB((int) (45.0F * tileHover[i]), 255, 255, 255));
+            }
+            float cx = tile.x() + tile.w() / 2.0F;
+            String value = SkiaFontRenderer.truncate(valueFont, tiles.get(i).value(),
+                    tile.w() - UiTokens.PROFILE_ROW_PAD);
+            SkiaFontRenderer.drawTextCentered(canvas, valueFont, value,
+                    cx, tile.y() + tile.h() / 2.0F - s(4), Color.makeARGB(255, 255, 255, 255));
+            SkiaFontRenderer.drawTextCentered(canvas, labelFont, tiles.get(i).label(),
+                    cx, tile.y() + tile.h() / 2.0F + s(15), Color.makeARGB(200, 170, 170, 186));
+        }
     }
 
     private void drawInfoRows(Canvas canvas, UiLayout layout, float vmx, float vmy, float scrollY) {

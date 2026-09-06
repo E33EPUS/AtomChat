@@ -184,6 +184,10 @@ public final class UiTokens {
     public static final float PROFILE_ROW_RADIUS = s(12);
     public static final float PROFILE_ROW_FONT = s(15);
     public static final float PROFILE_ROW_VALUE_FONT = s(13);
+    public static final float PROFILE_TILE_H = s(62);
+    public static final float PROFILE_TILE_GAP = s(10);
+    public static final float PROFILE_TILE_VALUE_FONT = s(17);
+    public static final float PROFILE_TILE_LABEL_FONT = s(11);
 
     // Slider row: title line on top, track below. The knob is deliberately a
     // touch larger than the track so it reads as a handle, not a filled bar.
