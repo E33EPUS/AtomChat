@@ -432,6 +432,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     // serve the multi-line Skia input — map virtual coords to an index.
     private boolean inputDragging;
     private int inputDragAnchor = -1;
+    /** Last IME conversion state pushed to IMBlocker (English = typing a command). */
+    private boolean imeEnglishState;
 
     // Message text drag-selection state (Skia-drawn highlight; Ctrl+C copies).
     private ChatMessage selectionMessage;
@@ -1012,6 +1014,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 * density / scaleFactor);
         int vanillaWholePrefixGuiWidth = this.client.textRenderer.getWidth(wholePrefix);
         chatField.setX(desiredGuiX - vanillaWholePrefixGuiWidth);
+        // IMBlocker bridge: English IME while a command is being typed
+        // (e33chat parity). Change-guarded — the reflection call only fires
+        // when the command/native state actually flips.
+        boolean commandMode = current.startsWith("/");
+        if (commandMode != imeEnglishState) {
+            imeEnglishState = commandMode;
+            com.atom.chat.compat.IMBlockerCompat.setCommandMode(chatField, commandMode);
+        }
         chatField.setY((int) Math.round(caretLineTopY() * density / scaleFactor));
         chatField.setWidth((int) Math.max(10.0F, Math.round((layout.inputBar.w() - UiTokens.INPUT_TEXT_X * 2.0F) * density / scaleFactor)));
         chatField.setHeight((int) Math.round(inputLineHeight() * density / scaleFactor));
