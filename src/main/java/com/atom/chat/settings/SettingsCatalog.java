@@ -143,6 +143,33 @@ public final class SettingsCatalog {
         return COLOR_CACHE.computeIfAbsent(section, SettingsCatalog::buildColors);
     }
 
+    /** Restores every colour in a group to its shipped default and persists. */
+    public static void resetColorGroup(String group) {
+        AtomChatConfig defaults = new AtomChatConfig();
+        for (SettingsColor color : colors(SettingsSection.APPEARANCE)) {
+            if (group.equals(color.group())) {
+                color.apply(defaultValueOf(color.id(), defaults));
+            }
+        }
+    }
+
+    private static int defaultValueOf(String id, AtomChatConfig defaults) {
+        return switch (id) {
+            case "bubble_text" -> defaults.bubbleTextColor;
+            case "own_bubble" -> defaults.ownBubbleColor;
+            case "other_bubble_text" -> defaults.otherBubbleTextColor;
+            case "other_bubble" -> defaults.otherBubbleColor;
+            case "secondary_capsule_bg" -> defaults.secondaryCapsuleBg;
+            case "secondary_capsule_text" -> defaults.secondaryCapsuleText;
+            case "text_primary" -> defaults.textPrimaryColor;
+            case "text_secondary" -> defaults.textSecondaryColor;
+            case "card" -> defaults.cardColor;
+            case "outline" -> defaults.panelOutlineColor;
+            case "accent" -> defaults.accentColor;
+            default -> defaults.accentColor;
+        };
+    }
+
     private static List<SettingsColor> buildColors(SettingsSection section) {
         return switch (section) {
             case APPEARANCE -> List.of(
@@ -186,6 +213,26 @@ public final class SettingsCatalog {
                                     Color.makeARGB(255, 75, 85, 99)},    // light grey
                             () -> AtomChatConfig.get().otherBubbleColor,
                             v -> AtomChatConfig.get().otherBubbleColor = v),
+                    new SettingsColor("secondary_capsule_bg",
+                            "atomchat.settings.appearance.secondarycapsulebg",
+                            "bubble",
+                            new int[]{
+                                    Color.makeARGB(150, 44, 62, 80),     // shipped default (translucent dark)
+                                    Color.makeARGB(150, 255, 255, 255),  // translucent white
+                                    Color.makeARGB(150, 20, 22, 27),     // translucent near-black
+                                    Color.makeARGB(255, 52, 58, 68)},    // opaque classic dark
+                            () -> AtomChatConfig.get().secondaryCapsuleBg,
+                            v -> AtomChatConfig.get().secondaryCapsuleBg = v),
+                    new SettingsColor("secondary_capsule_text",
+                            "atomchat.settings.appearance.secondarycapsuletext",
+                            "bubble",
+                            new int[]{
+                                    Color.makeARGB(255, 220, 170, 186),  // shipped default
+                                    Color.makeARGB(255, 255, 255, 255),  // white
+                                    Color.makeARGB(255, 232, 234, 240),  // pale grey
+                                    Color.makeARGB(255, 20, 22, 27)},    // near-black
+                            () -> AtomChatConfig.get().secondaryCapsuleText,
+                            v -> AtomChatConfig.get().secondaryCapsuleText = v),
                     new SettingsColor("text_primary",
                             "atomchat.settings.appearance.textprimary",
                             "ui",

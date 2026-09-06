@@ -407,16 +407,17 @@ public final class MessageListView {
 
     /**
      * A time divider is drawn above a message when {@code
-     * timestampIntervalMinutes} have passed since the previous one. 0 (or a
-     * single-message list head) draws nothing.
+     * timestampIntervalMinutes} have passed since the previous one. The first
+     * message of the list always carries one (e33chat behaviour); 0 disables
+     * timestamps entirely.
      */
     private static boolean dividerBefore(List<ChatMessage> messages, int index) {
-        if (index <= 0) {
-            return false;
-        }
         int minutes = AtomChatConfig.get().timestampIntervalMinutes;
         if (minutes <= 0) {
             return false;
+        }
+        if (index <= 0) {
+            return true;
         }
         return messages.get(index).getTimestamp() - messages.get(index - 1).getTimestamp()
                 >= minutes * 60_000L;
@@ -433,14 +434,10 @@ public final class MessageListView {
         float pillH = TIME_DIVIDER_H - s(6);
         float pillX = x + (width - pillW) / 2.0F;
         float pillY = y + s(3);
-        int rgb = otherBubble();
         SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, pillH, UiTokens.radius(10),
-                Color.makeARGB(110,
-                        (rgb >> 16) & 0xFF,
-                        (rgb >> 8) & 0xFF,
-                        rgb & 0xFF));
+                secondaryCapsuleBg());
         SkiaFontRenderer.drawTextCentered(canvas, font, time, x + width / 2.0F, pillY + pillH / 2.0F,
-                textSecondary());
+                secondaryCapsuleText());
     }
 
     /**
@@ -577,18 +574,12 @@ public final class MessageListView {
         float bubbleWidth = Math.min(maxWidth, Math.max(s(40), lineMax + UiTokens.BUBBLE_PAD * 2.0F));
         float bubbleX = x + (maxWidth - bubbleWidth) / 2.0F;
         float bubbleTop = y + s(2);
-        // System capsules keep the translucent alpha but borrow the placeholder
-        // bubble's RGB (otherBubbleColor), so they are not darker than the
-        // "image loading" capsule users already see as the chat's grey tone.
-        int placeholderRgb = otherBubble();
+        // System capsules share the secondary capsule family (configurable).
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.radius(10),
-                Color.makeARGB(150,
-                        (placeholderRgb >> 16) & 0xFF,
-                        (placeholderRgb >> 8) & 0xFF,
-                        placeholderRgb & 0xFF));
+                secondaryCapsuleBg());
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
         RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
-                lineHeight, textSecondary(), clickableSpans, true);
+                lineHeight, secondaryCapsuleText(), clickableSpans, true);
         float bottom = bubbleTop + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, 0.0F, 0.0F, 0.0F, bubbleTop, bubbleX, bubbleWidth, bottom);
     }
@@ -612,9 +603,9 @@ public final class MessageListView {
         // avatar, so the quote must use the same token.
         float pillX = own ? x + maxWidth - UiTokens.AVATAR_SIZE - UiTokens.AVATAR_GAP - pillW
                 : x + UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
-        // Quote pill shares the same light gray-white fill as the header/input
-        // cards (translucent white over the panel), so it reads as one family.
-        SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), Color.makeARGB(60, 255, 255, 255));
+        // Quote pill shares the secondary capsule family (configurable), so it
+        // reads as the same family as system messages and time dividers.
+        SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), secondaryCapsuleBg());
         SkiaDraw.drawRoundedRect(canvas, pillX + UiTokens.QUOTE_PAD_X, pillY + s(3), barW, UiTokens.QUOTE_HEIGHT - s(6), barW / 2.0F, accent());
         float textStartX = pillX + UiTokens.QUOTE_PAD_X + barW + s(4);
         float centerBaselineY = SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F);
@@ -730,12 +721,8 @@ public final class MessageListView {
         if (hasQuote) {
             drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
         }
-        int placeholderRgb = otherBubble();
         SkiaDraw.drawRoundedRect(canvas, pillX, pillTop, pillW, pillH, UiTokens.radius(10),
-                Color.makeARGB(150,
-                        (placeholderRgb >> 16) & 0xFF,
-                        (placeholderRgb >> 8) & 0xFF,
-                        placeholderRgb & 0xFF));
+                secondaryCapsuleBg());
         SkiaFontRenderer.drawTextCentered(canvas, font, placeholder,
                 pillX + pillW / 2.0F, pillTop + pillH / 2.0F, Color.makeARGB(255, 85, 255, 85));
         float bottom = pillTop + pillH;
@@ -921,6 +908,15 @@ public final class MessageListView {
 
     private int textSecondary() {
         return AtomChatConfig.get().textSecondaryColor;
+    }
+
+    /** Shared capsule background for system messages, time dividers, quote pills. */
+    private int secondaryCapsuleBg() {
+        return AtomChatConfig.get().secondaryCapsuleBg;
+    }
+
+    private int secondaryCapsuleText() {
+        return AtomChatConfig.get().secondaryCapsuleText;
     }
 
     /** Text inside a chat bubble (body rich text and quoted text). */

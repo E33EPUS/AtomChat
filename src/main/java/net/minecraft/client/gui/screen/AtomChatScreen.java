@@ -633,11 +633,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (navigation.size() <= 1) {
             return;
         }
-        // Leaving a pushed profile detail falls back to the local player, so
-        // the Profile root tab never shows a stale injected subject.
-        if (topPage() == AppPage.PROFILE_DETAIL) {
-            profilePage.resetSubject();
-        }
         if (topPage().isRoot()) {
             navigation.pop();
             return;
@@ -652,11 +647,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         NavPage previous = navigation.snapshot().get(navigation.size() - 2);
         // Keep the detail page on top while it slides out; the actual navigation
         // pop happens in finishPageNav(). Both root and detail targets animate.
+        // The subject reset lives in popNow(): clearing it here would redraw the
+        // sliding-out page as the local player's profile mid-animation.
         startPageNav(from, previous, true);
     }
 
     /** Applies a pending pop and restores the page underneath it. */
     private void popNow() {
+        boolean leavingProfile = topPage() == AppPage.PROFILE_DETAIL;
         if (topPage() == AppPage.PRIVATE_CHAT) {
             savePrivateDraft(activePrivateTarget(), inputGetText());
             PrivateChatStore.clearActive();
@@ -664,6 +662,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         resetTransientWorldUi();
         resetSettingsUi();
         navigation.pop();
+        // Falling back to the local player only once the page is off the stack,
+        // so the Profile root tab never shows a stale injected subject.
+        if (leavingProfile) {
+            profilePage.resetSubject();
+        }
         ChatStore.setPublicActive(topPage() == AppPage.WORLD_CHAT);
         if (topPage() == AppPage.PRIVATE_CHAT) {
             PrivateChatStore.setActive(activePrivateTarget());
@@ -3144,6 +3147,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     SettingsSectionPage.SliderHit slider = settingsSectionPage.sliderHit(
                             mx, my, pageLayout, section, pageScroll.getScrollY());
                     if (slider != null) {
+                        // Any click that is not the armed button disarms it.
+                        settingsSectionPage.disarmAction();
                         float normalized = slider.row().slider()
                                 .normalize(slider.row().slider().value());
                         if (slider.onKnob(mx, my, normalized)) {
@@ -3158,6 +3163,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     SettingsSectionPage.ColorHit colorHit = settingsSectionPage.colorHit(
                             mx, my, pageLayout, section, pageScroll.getScrollY());
                     if (colorHit != null) {
+                        settingsSectionPage.disarmAction();
                         if (colorHit.plus()) {
                             colorPicker.open(colorHit.color());
                         } else {
@@ -3168,9 +3174,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     SettingsSectionPage.RowHit hit = settingsSectionPage.hit(mx, my, pageLayout,
                             section, pageScroll.getScrollY());
                     if (hit != null && hit.onAction(mx, my)) {
-                        settingsSectionPage.perform(hit);
+                        settingsSectionPage.perform(hit, mx, section);
                         return true;
                     }
+                    settingsSectionPage.disarmAction();
                 }
                 return true;
             }

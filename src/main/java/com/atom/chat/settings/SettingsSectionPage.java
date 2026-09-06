@@ -160,15 +160,49 @@ public final class SettingsSectionPage {
         });
     }
 
-    /** Two-step clear: first tap arms a red "确定清除？", second tap within
-     *  the window really clears. Guards against accidental wipes. */
-    private static final long CLEAR_ARM_MS = 3000L;
-    private boolean wallpaperClearArmed;
-    private long wallpaperClearArmAt;
+    /** Two-step confirm for destructive actions: first tap arms a red
+     *  "确定清除？", second tap within the window really fires. Guards against
+     *  accidental wipes; any click that is not the armed button disarms. */
+    private static final long CONFIRM_ARM_MS = 3000L;
+    private String armedActionId;
+    private long armedActionAt;
+    /** Collapsed colour groups; session-only, every session starts expanded. */
+    private final java.util.Set<String> collapsedColorGroups = new java.util.HashSet<>();
 
-    /** Whether the clear-wallpaper card is currently showing its confirm state. */
-    public boolean wallpaperClearArmed() {
-        return wallpaperClearArmed && System.currentTimeMillis() - wallpaperClearArmAt <= CLEAR_ARM_MS;
+    /** Whether the given destructive action is showing its red confirm state. */
+    public boolean actionArmed(String actionId) {
+        return actionId != null && actionId.equals(armedActionId)
+                && System.currentTimeMillis() - armedActionAt <= CONFIRM_ARM_MS;
+    }
+
+    /** Cancels any armed confirmation (click-outside rule). */
+    public void disarmAction() {
+        armedActionId = null;
+    }
+
+    /** Destructive actions that must pass through the two-step confirm. */
+    private static boolean needsConfirm(String actionId) {
+        return ACTION_WALLPAPER_CLEAR.equals(actionId) || actionId.startsWith("reset_colors_");
+    }
+
+    /** The colour group folded/unfolded by a label row, or null for plain labels. */
+    private static String foldableColorGroup(String labelKey) {
+        if (LABEL_BUBBLE_COLORS.equals(labelKey)) {
+            return "bubble";
+        }
+        if (LABEL_UI_COLORS.equals(labelKey)) {
+            return "ui";
+        }
+        return null;
+    }
+
+    private static String resetActionId(String group) {
+        return "reset_colors_" + group;
+    }
+
+    private static String resetVerb(boolean armed) {
+        return tr(armed ? "atomchat.settings.appearance.wallpaper.clear.confirm"
+                : "atomchat.settings.appearance.group.reset");
     }
 
     /**
@@ -260,15 +294,19 @@ public final class SettingsSectionPage {
             // Colours split into two labelled groups: message bubbles vs the
             // surrounding interface. Same rows, easier to scan.
             rows.add(Row.ofLabel(LABEL_BUBBLE_COLORS));
-            for (SettingsColor color : SettingsCatalog.colors(section)) {
-                if ("bubble".equals(color.group())) {
-                    rows.add(Row.ofColor(color));
+            if (!collapsedColorGroups.contains("bubble")) {
+                for (SettingsColor color : SettingsCatalog.colors(section)) {
+                    if ("bubble".equals(color.group())) {
+                        rows.add(Row.ofColor(color));
+                    }
                 }
             }
             rows.add(Row.ofLabel(LABEL_UI_COLORS));
-            for (SettingsColor color : SettingsCatalog.colors(section)) {
-                if ("ui".equals(color.group())) {
-                    rows.add(Row.ofColor(color));
+            if (!collapsedColorGroups.contains("ui")) {
+                for (SettingsColor color : SettingsCatalog.colors(section)) {
+                    if ("ui".equals(color.group())) {
+                        rows.add(Row.ofColor(color));
+                    }
                 }
             }
         }
@@ -343,10 +381,19 @@ public final class SettingsSectionPage {
     }
 
     /** Left edge of the clickable action for a row rect. */
-    private static float actionX(Row row, UiLayout.Rect rect, Font buttonFont) {
+    private float actionX(Row row, UiLayout.Rect rect, Font buttonFont) {
         if (row.kind() == RowKind.BLOCKED) {
             float textW = SkiaFontRenderer.getStringWidth(buttonFont, tr("atomchat.settings.privacy.unblock"));
             return rect.right() - UiTokens.SETTINGS_ROW_PAD - (textW + s(18));
+        }
+        if (row.kind() == RowKind.LABEL) {
+            String group = foldableColorGroup(row.labelKey());
+            if (group != null && !collapsedColorGroups.contains(group)) {
+                // Expanded colour groups carry a reset button on the right.
+                float textW = SkiaFontRenderer.getStringWidth(buttonFont,
+                        resetVerb(actionArmed(resetActionId(group))));
+                return rect.right() - UiTokens.SETTINGS_ROW_PAD - (textW + s(18));
+            }
         }
         return rect.x();
     }
@@ -461,10 +508,22 @@ public final class SettingsSectionPage {
                 rect.x() + UiTokens.SETTINGS_ROW_PAD,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(18)),
                 textPrimary());
-        SkiaFontRenderer.drawTextRight(canvas, valueFont,
-                String.format("#%06X", color.value() & 0xFFFFFF),
+        String hex = String.format("#%06X", color.value() & 0xFFFFFF);
+        float hexW = SkiaFontRenderer.getStringWidth(valueFont, hex);
+        SkiaFontRenderer.drawTextRight(canvas, valueFont, hex,
                 rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
                 textPrimary());
+        // Live element preview: the current value rendered in its target
+        // shape — a bubble pill for the message group, a capsule for the
+        // shared secondary-capsule family, a square for plain interface
+        // colours. Answers "what does this setting colour?" at a glance.
+        boolean messageGroup = "bubble".equals(color.group());
+        float prevH = s(11);
+        float prevW = messageGroup ? s(18) : prevH;
+        float prevR = messageGroup ? s(3) : prevH / 2.0F;
+        float prevRight = rect.right() - UiTokens.SETTINGS_ROW_PAD - hexW - s(8);
+        SkiaDraw.drawRoundedRect(canvas, prevRight - prevW, rect.y() + s(18) - prevH / 2.0F,
+                prevW, prevH, prevR, color.value());
 
         float r = UiTokens.s(9);
         float cy = swatchCy(rect);
@@ -566,16 +625,17 @@ public final class SettingsSectionPage {
         float maxW = rect.w() - UiTokens.SETTINGS_ROW_PAD * 2.0F;
 
         boolean available = row.item().available();
-        boolean redConfirm = ACTION_WALLPAPER_CLEAR.equals(row.actionId()) && wallpaperClearArmed();
+        boolean redConfirm = needsConfirm(row.actionId()) && actionArmed(row.actionId());
         String subtitle;
         String verb;
         if (!available) {
             subtitle = tr(row.item().subtitleKey() + ".unavailable");
             verb = "";
         } else if (redConfirm) {
-            // Armed state: red confirm text instead of the file name.
-            subtitle = tr("atomchat.settings.appearance.wallpaper.clear.confirm");
-            verb = tr("atomchat.settings.action.clear");
+            // Armed state: the right-hand verb itself becomes the red confirm
+            // question; the subtitle keeps its normal content.
+            subtitle = tr(row.item().subtitleKey());
+            verb = tr("atomchat.settings.appearance.wallpaper.clear.confirm");
         } else if (ACTION_WALLPAPER_PICK.equals(row.actionId())) {
             Path wallpaper = WallpaperStore.current();
             subtitle = wallpaper != null && wallpaper.getFileName() != null
@@ -611,7 +671,8 @@ public final class SettingsSectionPage {
         if (available) {
             SkiaFontRenderer.drawTextRight(canvas, verbFont, verb,
                     rect.right() - UiTokens.SETTINGS_ROW_PAD,
-                    rect.y() + rect.h() / 2.0F, textPrimary());
+                    rect.y() + rect.h() / 2.0F,
+                    redConfirm ? Color.makeARGB(255, 235, 64, 52) : textPrimary());
         }
         // Unavailable veil, same language as the wallpaper-gated blur switch.
         if (!available) {
@@ -627,23 +688,67 @@ public final class SettingsSectionPage {
     private void drawLabel(Canvas canvas, Row row, UiLayout.Rect rect) {
         Font font = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
         int lineColor = sec(190);
+        String group = foldableColorGroup(row.labelKey());
+        if (group == null) {
+            String text = tr(row.labelKey());
+            float textW = SkiaFontRenderer.getStringWidth(font, text);
+            float cy = rect.y() + rect.h() / 2.0F;
+            float gap = s(12);
+            float inset = s(4);
+            float leftEnd = rect.x() + inset + (rect.w() - inset * 2.0F - textW - gap * 2.0F) / 2.0F;
+            float rightStart = leftEnd + textW + gap * 2.0F;
+            float lineH = s(1.5F);
+            if (leftEnd > rect.x() + inset) {
+                SkiaDraw.drawRoundedRect(canvas, rect.x() + inset, cy - lineH / 2.0F,
+                        leftEnd - (rect.x() + inset), lineH, lineH / 2.0F, lineColor);
+            }
+            if (rightStart < rect.right() - inset) {
+                SkiaDraw.drawRoundedRect(canvas, rightStart, cy - lineH / 2.0F,
+                        rect.right() - inset - rightStart, lineH, lineH / 2.0F, lineColor);
+            }
+            SkiaFontRenderer.drawTextCentered(canvas, font, text, rect.x() + rect.w() / 2.0F, cy, lineColor);
+            return;
+        }
+        // Foldable colour group: chevron + centred caption, and while expanded
+        // a right-aligned group reset that goes through the two-step confirm.
+        boolean collapsed = collapsedColorGroups.contains(group);
+        boolean armed = actionArmed(resetActionId(group));
         String text = tr(row.labelKey());
         float textW = SkiaFontRenderer.getStringWidth(font, text);
+        float chevron = s(7);
+        float gap = s(10);
         float cy = rect.y() + rect.h() / 2.0F;
-        float gap = s(12);
-        float inset = s(4);
-        float leftEnd = rect.x() + inset + (rect.w() - inset * 2.0F - textW - gap * 2.0F) / 2.0F;
-        float rightStart = leftEnd + textW + gap * 2.0F;
-        float lineH = s(1.5F);
-        if (leftEnd > rect.x() + inset) {
-            SkiaDraw.drawRoundedRect(canvas, rect.x() + inset, cy - lineH / 2.0F,
-                    leftEnd - (rect.x() + inset), lineH, lineH / 2.0F, lineColor);
+        float contentW = chevron + gap + textW;
+        float startX = rect.x() + rect.w() / 2.0F - contentW / 2.0F;
+        drawChevron(canvas, startX, cy, chevron, collapsed, lineColor);
+        SkiaFontRenderer.drawTextCentered(canvas, font, text,
+                startX + chevron + gap + textW / 2.0F, cy, lineColor);
+        if (!collapsed) {
+            Font buttonFont = FontManager.font(UiTokens.FONT_QUOTE);
+            SkiaFontRenderer.drawTextRight(canvas, buttonFont, resetVerb(armed),
+                    rect.right() - UiTokens.SETTINGS_ROW_PAD, cy,
+                    armed ? Color.makeARGB(255, 235, 64, 52) : sec(200));
         }
-        if (rightStart < rect.right() - inset) {
-            SkiaDraw.drawRoundedRect(canvas, rightStart, cy - lineH / 2.0F,
-                    rect.right() - inset - rightStart, lineH, lineH / 2.0F, lineColor);
+    }
+
+    /** Small fold indicator: right-pointing when collapsed, down when open. */
+    private static void drawChevron(Canvas canvas, float cx, float cy, float size,
+                                    boolean collapsed, int color) {
+        try (io.github.humbleui.skija.Path path = new io.github.humbleui.skija.Path();
+             Paint paint = new Paint()) {
+            if (collapsed) {
+                path.moveTo(cx - size / 2.0F, cy - size);
+                path.lineTo(cx - size / 2.0F, cy + size);
+                path.lineTo(cx + size / 2.0F, cy);
+            } else {
+                path.moveTo(cx - size, cy - size / 2.0F);
+                path.lineTo(cx + size, cy - size / 2.0F);
+                path.lineTo(cx, cy + size / 2.0F);
+            }
+            path.close();
+            paint.setColor(color);
+            canvas.drawPath(path, paint);
         }
-        SkiaFontRenderer.drawTextCentered(canvas, font, text, rect.x() + rect.w() / 2.0F, cy, lineColor);
     }
 
     /** Centred "nothing here" glyph + caption, shared by every empty list. */
@@ -964,8 +1069,10 @@ public final class SettingsSectionPage {
         hit.color().apply(hit.swatch());
     }
 
-    /** Applies a hit: flips a switch, opens a link, fires an action, or unblocks. */
-    public void perform(RowHit hit) {
+    /** Applies a hit: flips a switch, opens a link, fires an action, folds a
+     *  colour group, or unblocks. Destructive actions go through the two-step
+     *  confirm; {@code px} is the click X, used by the reset-zone check. */
+    public void perform(RowHit hit, float px, SettingsSection section) {
         if (hit == null) {
             return;
         }
@@ -982,22 +1089,44 @@ public final class SettingsSectionPage {
                     openUri(hit.row().info().uri());
                 }
             }
+            case LABEL -> {
+                String group = foldableColorGroup(hit.row().labelKey());
+                if (group == null) {
+                    return;
+                }
+                if (collapsedColorGroups.contains(group) || px < hit.actionX()) {
+                    // Fold toggle; the reset zone only exists while expanded.
+                    if (!collapsedColorGroups.remove(group)) {
+                        collapsedColorGroups.add(group);
+                    }
+                    return;
+                }
+                String actionId = resetActionId(group);
+                long now = System.currentTimeMillis();
+                if (!actionArmed(actionId) || now - armedActionAt > CONFIRM_ARM_MS) {
+                    armedActionId = actionId;
+                    armedActionAt = now;
+                    return;
+                }
+                armedActionId = null;
+                SettingsCatalog.resetColorGroup(group);
+            }
             case ACTION -> {
                 if (!hit.row().item().available() || actionHandler == null) {
                     return;
                 }
-                if ("wallpaper_clear".equals(hit.row().actionId())) {
+                String actionId = hit.row().actionId();
+                if (needsConfirm(actionId)) {
                     // Two-step confirm: first tap arms, second tap fires.
                     long now = System.currentTimeMillis();
-                    if (!wallpaperClearArmed()
-                            || now - wallpaperClearArmAt > CLEAR_ARM_MS) {
-                        wallpaperClearArmed = true;
-                        wallpaperClearArmAt = now;
+                    if (!actionArmed(actionId) || now - armedActionAt > CONFIRM_ARM_MS) {
+                        armedActionId = actionId;
+                        armedActionAt = now;
                         return;
                     }
-                    wallpaperClearArmed = false;
+                    armedActionId = null;
                 }
-                actionHandler.onAction(hit.row().actionId());
+                actionHandler.onAction(actionId);
             }
             case BLOCKED -> {
                 if (hit.row().player() != null) {

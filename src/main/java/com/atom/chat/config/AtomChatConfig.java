@@ -111,6 +111,13 @@ public class AtomChatConfig {
      */
     public int otherBubbleTextColor = 0xFFFFFFFF;
     /**
+     * Shared capsule family for system messages, time dividers and the quote
+     * pill. Defaults to the shipped translucent dark capsule look; the alpha
+     * lives in the value itself so each consumer needs no hidden multiplier.
+     */
+    public int secondaryCapsuleBg = 0x962C3E50;
+    public int secondaryCapsuleText = 0xDCAAAABA;
+    /**
      * Last applied built-in theme ({@code frosted} / {@code modern}); empty
      * until the user picks one. Display only — the single knobs stay editable
      * after a preset lands, so this never gates any behaviour.
