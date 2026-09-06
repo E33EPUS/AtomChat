@@ -3,17 +3,16 @@ import com.atom.chat.AtomChat;
 
 import com.atom.chat.chat.BlockList;
 import com.atom.chat.chat.ChatMessage;
+import com.atom.chat.chat.Cicodes;
 import com.atom.chat.chat.TeleportCommands;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.emote.EmoteStore;
-import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.PrivateEchoTracker;
-import com.atom.chat.image.PlayerAvatar;
 import com.atom.chat.nav.AppPage;
 import com.atom.chat.nav.AtomChatState;
 import com.atom.chat.nav.NavPage;
@@ -24,6 +23,7 @@ import com.atom.chat.avatar.ColorPickerOverlay;
 import com.atom.chat.avatar.ImageCropper;
 import com.atom.chat.image.OwnPlayerAvatarSource;
 import com.atom.chat.page.ConversationListPage;
+import com.atom.chat.page.MessageListView;
 import com.atom.chat.page.PageHost;
 import com.atom.chat.page.ProfilePage;
 import com.atom.chat.font.FontManager;
@@ -39,8 +39,6 @@ import com.atom.chat.render.SkiaGraphics;
 import com.atom.chat.settings.SettingsHomePage;
 import com.atom.chat.settings.SettingsSection;
 import com.atom.chat.settings.SettingsSectionPage;
-import com.atom.chat.text.RichText;
-import com.atom.chat.text.RichTextLayout.RichLine;
 import com.atom.chat.theme.ThemeService;
 import com.atom.chat.ui.Animations;
 import com.atom.chat.ui.BottomTabBar;
@@ -90,16 +88,12 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** Which context menu is open: normal message bubble actions or player-avatar actions. */
@@ -271,7 +265,33 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             .add(new ScreenEscInput())
             .add(new RootPageInput())
             .add(new WorldChatInput());
-    private final List<MessageHit> hits = new ArrayList<>();
+    /**
+     * Message list presentation: rendering, entrance animation, text selection
+     * and hit geometry. The screen keeps the navigation-level scroll
+     * controllers and all input-side interaction state; every value the view
+     * needs from the screen is wired through the Host below.
+     */
+    private final MessageListView messageListView = new MessageListView(new MessageListView.Host() {
+        @Override
+        public UUID ownUuid() {
+            return client.player != null ? client.player.getUuid() : null;
+        }
+
+        @Override
+        public String ownName() {
+            return AtomChatScreen.this.ownName();
+        }
+
+        @Override
+        public String senderName(ChatMessage message) {
+            return AtomChatScreen.this.messageSenderName(message);
+        }
+
+        @Override
+        public long openStart() {
+            return AtomChatScreen.this.openStart;
+        }
+    });
     /**
      * Emoji / kaomoji / emote panel: state, geometry and rendering live in the
      * panel class; the screen only supplies composer side effects (insert
@@ -340,13 +360,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     // Animation state — durations live in UiMotion so every transition is tuned
     // in one place and none of them can drift back to a sluggish value.
     private static final long OPEN_ANIM_MS = UiMotion.PANEL_MS;
-    private static final long MESSAGE_ANIM_MS = UiMotion.MESSAGE_MS;
-    /**
-     * Once a message has been visible this long it is considered settled by
-     * time alone, so the settled set never needs to hold it — that keeps the
-     * "never replay an entrance" guarantee bounded to recent messages.
-     */
-    private static final long ENTRANCE_SETTLE_GUARD_MS = 5000L;
     // Toolbar icons are kept as inline SVG path data (not assets): three tiny
     // paths are cheaper than a resource pipeline, stay crisp at every scale,
     // and are trivial to recolour for hover/pressed/theme states. The paths use
@@ -405,8 +418,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private static final io.github.humbleui.skija.Path ICON_JUMP_DOWN_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_JUMP_DOWN_SVG);
 
-    private static final Pattern CICODE = Pattern.compile(
-            "\\[\\[CICode,url=([^,\\]]+),name=([^,\\]]*)(?:,w=(\\d+),h=(\\d+))?\\]\\]");
     private static final int GLFW_KEY_V = 86;
     private final long openStart = System.currentTimeMillis();
     private boolean closing;
@@ -451,8 +462,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private long lastAvatarClickTime;
     private int lastAvatarClickIndex = -1;
-    private int pokeIndex = -1;
-    private long pokeStartTime;
     /** Single-click→profile competition window (QQ standard), in ms. */
     private static final long AVATAR_CLICK_WINDOW_MS = 300;
     private long pendingAvatarClickTime;
@@ -466,42 +475,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** Last IME conversion state pushed to IMBlocker (English = typing a command). */
     private boolean imeEnglishState;
 
-    // Message text drag-selection state (Skia-drawn highlight; Ctrl+C copies).
-    private ChatMessage selectionMessage;
-    private int selectionAnchorLine = -1;
-    private int selectionAnchorChar = -1;
-    private int selectionFocusLine = -1;
-    private int selectionFocusChar = -1;
-    private boolean selecting;
-    private boolean selectionMoved;
-    private List<String> selectionMessageLines = List.of();
-
-    /** Clickable/hoverable spans collected while drawing the latest frame. */
-    private final List<ClickableSpan> clickableSpans = new ArrayList<>();
+    // Message text drag-selection state lives in MessageListView; the screen
+    // keeps only the click/drag coexistence flow (Task 8).
     /** Pending click candidate used by the click/drag coexistence flow (Task 8). */
     private ClickableSpan pendingClickSpan;
     private boolean pendingClickMoved;
-
-    /**
-     * New-message entrance animation starts when the message first becomes
-     * visible, not when it was added. Bursts arriving while auto-scroll is
-     * still moving used to spend most of their 140ms off-screen and looked
-     * like a rushed flash; this map records the first visible frame instead.
-     */
-    private final Map<ChatMessage, Long> messageEnterStart = new HashMap<>();
-    /**
-     * Messages whose entrance animation has already played out. The start entry
-     * must NOT be deleted when the animation finishes: entranceEase() treats a
-     * missing entry as "first visible frame" and would re-stamp the timestamp,
-     * so the 140ms animation restarted on the very next frame — an endless loop
-     * that only stopped when the screen was reopened and openStart moved past
-     * the message. Once a message settles it must NEVER replay while this screen
-     * is open, even after it scrolls out of view and back — scrolling through
-     * history should be silent. The set is pruned by
-     * {@link #ENTRANCE_SETTLE_GUARD_MS} so it stays bounded to recent arrivals.
-     */
-    private final Set<ChatMessage> messageEnterSettled = new HashSet<>();
-    private long lastEntrancePrune;
 
     public AtomChatScreen(String originalChatText) {
         this(originalChatText, AtomChatOpenMode.DIRECT_WORLD);
@@ -841,7 +819,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         try {
             SkiaDraw.clip(canvas, list.x(), list.y(), list.w(), list.h(), 0.0F);
             canvas.translate(dx, 0.0F);
-            drawMessages(canvas, list.x() - dx, list.y(), list.w(), list.h(),
+            messageListView.draw(canvas, list.x() - dx, list.y(), list.w(), list.h(),
                     messagesForNav(page), scrollForNav(page));
         } finally {
             canvas.restore();
@@ -910,7 +888,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         emojiPanel.resetTransient();
         replyTarget = null;
-        clearTextSelection();
+        messageListView.clearSelection();
         pendingClickSpan = null;
         pendingClickMoved = false;
         dismissSuggestor();
@@ -986,7 +964,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // Hover tooltips are drawn through the vanilla pipeline after the Skia
         // panel and the suggestion popup so they stay readable on top of both.
         // Root pages keep their own hover model; stale world spans must not show.
-        Style hovered = isWorldChatPage() ? findHoveredStyle(toVirtualX(mouseX), toVirtualY(mouseY)) : null;
+        ClickableSpan hoveredSpan = isWorldChatPage()
+                ? messageListView.clickableSpanAt(toVirtualX(mouseX), toVirtualY(mouseY)).orElse(null)
+                : null;
+        Style hovered = hoveredSpan != null ? hoveredSpan.style() : null;
         if (hovered != null && hovered.getHoverEvent() != null) {
             context.drawHoverEvent(this.textRenderer, hovered, mouseX, mouseY);
         }
@@ -1264,8 +1245,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         uninstallDropCallback();
         // Give back the GPU texture the panel blur was sampling.
         graphics.releaseWorldSnapshot();
-        messageEnterStart.clear();
-        messageEnterSettled.clear();
+        messageListView.dispose();
         super.removed();
     }
 
@@ -1528,7 +1508,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      * the overlays belong to the screen, not the sliding page.
      */
     private void drawChatPageBody(Canvas canvas, UiLayout layout, int mouseX, int mouseY, NavPage page) {
-        drawMessages(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h(),
+        messageListView.draw(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h(),
                 messagesForNav(page), scrollForNav(page));
 
         // Reply bar floats above the input bar. It is drawn after the message
@@ -1599,7 +1579,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 } else {
                     hintText = tr("atomchat.input.placeholder");
                 }
-                String hint = truncateToWidth(inputFont, hintText, layout.inputTextMaxWidth());
+                String hint = Cicodes.truncateToWidth(inputFont, hintText, layout.inputTextMaxWidth());
                 SkiaFontRenderer.drawText(canvas, inputFont, hint, textX,
                         SkiaFontRenderer.centerBaselineY(inputFont, layout.inputTextCenterY), textSecondary());
             } else {
@@ -2011,59 +1991,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
     }
 
-    /**
-     * Circular avatar from the player's real skin face (face + hat layer sampled
-     * from the 64x64 skin). The face image is an opaque square; the circle is
-     * produced by drawRoundedImage's clip only, so there is exactly one rounded
-     * edge (no CPU mask + clip double edge, and no placeholder bleeding through
-     * the avatar). Falls back to a flat gray circle while the skin is missing.
-     */
-    /**
-     * Draws the message avatar with the poke wobble armed when this message was
-     * just double-clicked: QQ-style rocking around the avatar centre (damped
-     * ±14° over two and a half oscillations in ~600ms) rather than a side-to-side
-     * slide. Decorative, so with motion off the poke never arms and this reduces
-     * to a plain draw.
-     */
-    private void drawAvatarWithPoke(Canvas canvas, ChatMessage msg, int index, float avatarX, float avatarY) {
-        if (pokeIndex == index && pokeStartTime > 0 && Animations.enabled()) {
-            long elapsed = System.currentTimeMillis() - pokeStartTime;
-            if (elapsed < 600) {
-                float t = elapsed / 600.0F;
-                float angle = (float) Math.sin(t * Math.PI * 5.0) * 14.0F * (1.0F - t);
-                float cx = avatarX + UiTokens.AVATAR_SIZE / 2.0F;
-                float cy = avatarY + UiTokens.AVATAR_SIZE / 2.0F;
-                canvas.save();
-                canvas.translate(cx, cy);
-                canvas.rotate(angle);
-                canvas.translate(-cx, -cy);
-                try {
-                    drawAvatar(canvas, msg, avatarX, avatarY);
-                } finally {
-                    canvas.restore();
-                }
-                return;
-            }
-            pokeIndex = -1;
-        }
-        drawAvatar(canvas, msg, avatarX, avatarY);
-    }
-
-    private void drawAvatar(Canvas canvas, ChatMessage msg, float avatarX, float avatarY) {
-        UUID uuid = msg.isOwn() ? (this.client.player != null ? this.client.player.getUuid() : null) : msg.getSenderUuid();
-        String name = msg.isOwn() ? ownName() : msg.getProfileName();
-        if (name == null || name.isBlank()) {
-            name = messageSenderName(msg);
-        }
-        Image face = PlayerAvatar.face(uuid, name);
-        if (face != null) {
-            SkiaDraw.drawRoundedImage(canvas, face, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE,
-                    UiTokens.AVATAR_SIZE / 2.0F, SamplingMode.LINEAR);
-        } else {
-            SkiaDraw.drawRoundedRect(canvas, avatarX, avatarY, UiTokens.AVATAR_SIZE, UiTokens.AVATAR_SIZE,
-                    UiTokens.AVATAR_SIZE / 2.0F, Color.makeARGB(255, 120, 130, 145));
-        }
-    }
 
     private boolean buttonPressed(int id) {
         return pressedButton == id && System.currentTimeMillis() - pressTime < 150L;
@@ -2123,516 +2050,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 && vmy >= layout.list.y() && vmy <= layout.list.bottom();
     }
 
-    private void drawMessages(Canvas canvas, float x, float y, float width, float height) {
-        drawMessages(canvas, x, y, width, height, currentMessages(), currentScroll());
-    }
-
-    private void drawMessages(Canvas canvas, float x, float y, float width, float height,
-                              List<ChatMessage> messages, ScrollController scroll) {
-        hits.clear();
-        clickableSpans.clear();
-        // Snapshot "was at bottom" before maxScroll grows: after new messages
-        // arrive the old target is no longer near the new max, so comparing after
-        // recompute would make us miss the follow and leave a growing gap.
-        boolean wasAtBottom = scroll.isAtBottom();
-        boolean viewportChanged = scroll.viewportChanged(height);
-        scroll.setContent(measureContentHeight(messages, width), height);
-        if (wasAtBottom) {
-            if (viewportChanged) {
-                // The list is shrinking/growing in lockstep with the animated
-                // input bar. Keep the bottom pinned directly: chasing the moving
-                // maxScroll with an eased scroll restarts every frame and visibly
-                // lags behind the bar, which is why growing felt desynced while
-                // shrinking (a plain clamp) felt fine.
-                scroll.scrollToBottom(false);
-            } else {
-                scroll.stickToBottom();
-            }
-        }
-        scroll.updateAnimation(System.currentTimeMillis());
-        canvas.save();
-        try {
-            SkiaDraw.clip(canvas, x, y, width, height, 0.0F);
-            canvas.translate(0.0F, -scroll.getScrollY());
-            long now = System.currentTimeMillis();
-            pruneEntranceSettled(now);
-            float cursorY = y;
-            for (int mi = 0; mi < messages.size(); mi++) {
-                ChatMessage msg = messages.get(mi);
-                if (dividerBefore(messages, mi)) {
-                    // Clock pill between messages. Drawn only when its own
-                    // message is in the extended viewport, so occluded
-                    // dividers cost nothing.
-                    float divOffset = cursorY - y;
-                    if (divOffset <= scroll.getScrollY() + height + 80.0F
-                            && divOffset + TIME_DIVIDER_H >= scroll.getScrollY() - 80.0F) {
-                        drawTimeDivider(canvas, msg.getTimestamp(), x, width, cursorY);
-                    }
-                    cursorY += TIME_DIVIDER_H + UiTokens.LIST_GAP;
-                }
-                float h = messageHeight(msg, width);
-                float offset = cursorY - y;
-                if (offset > scroll.getScrollY() + height + 80.0F) {
-                    break;
-                }
-                if (offset + h >= scroll.getScrollY() - 80.0F) {
-                    float t = entranceProgress(msg, now);
-                    boolean layered = t < 1.0F;
-                    if (!layered) {
-                        messageEnterSettled.add(msg);
-                    }
-                    canvas.save();
-                    if (layered) {
-                        // QQ-style entrance: own bubbles come in from the right
-                        // (toward the left), other bubbles from the left. The
-                        // layer rectangle must cover the full travel so a sliding
-                        // bubble is never clipped by its own offscreen layer.
-                        float travel = UiTokens.MESSAGE_SLIDE;
-                        // Two curves, one timeline: the slide decelerates hard
-                        // (cubic) while the fade ramps gently across the whole
-                        // entrance (quad), so the opacity change is still
-                        // happening while the bubble is still moving.
-                        float fade = Easing.easeOutQuad(t);
-                        float move = Easing.easeOutCubic(t);
-                        // System capsules are centered and have no sender side;
-                        // they fade in place rather than pretending to be someone's
-                        // bubble.
-                        float dx = msg.isSystem() ? 0.0F
-                                : msg.isOwn() ? (1.0F - move) * travel
-                                : -(1.0F - move) * travel;
-                        try (Paint layer = new Paint()) {
-                            layer.setColor(Color.makeARGB((int) (255.0F * fade), 0, 0, 0));
-                            canvas.saveLayer(Rect.makeXYWH(x - travel - 4.0F, cursorY - 4.0F,
-                                    width + travel * 2.0F + 8.0F, h + 28.0F), layer);
-                            canvas.translate(dx, 0.0F);
-                        }
-                    }
-                    int spanStart = clickableSpans.size();
-                    MessageHit hit = drawMessage(canvas, msg, x, cursorY, width, hits.size());
-                    // Clickable spans are recorded in content space (like hits
-                    // before conversion); convert them to screen space so later
-                    // hit-testing can compare them directly against the mouse.
-                    for (int i = spanStart; i < clickableSpans.size(); i++) {
-                        ClickableSpan s = clickableSpans.get(i);
-                        clickableSpans.set(i, new ClickableSpan(s.x(), s.y() - scroll.getScrollY(), s.w(), s.h(), s.style()));
-                    }
-                    if (layered) {
-                        canvas.restore();
-                    }
-                    canvas.restore();
-                    // Hits are hit-tested in screen space; drawing happens in content space.
-                    hits.add(new MessageHit(hit.message(), hit.index(), hit.x(), hit.y() - scroll.getScrollY(), hit.maxWidth(),
-                            hit.bottom() - scroll.getScrollY(), hit.avatarX(), hit.avatarY() - scroll.getScrollY(), hit.avatarSize(),
-                            hit.bubbleY() - scroll.getScrollY(), hit.bubbleX(), hit.bubbleWidth(), hit.bubbleBottom() - scroll.getScrollY()));
-                } else {
-                    // Left the viewport: drop the start timestamp only. The
-                    // settled marker is deliberately kept so scrolling back up
-                    // through history never replays an entrance; the set is
-                    // bounded by pruneEntranceSettled's time guard.
-                    messageEnterStart.remove(msg);
-                }
-                cursorY += h + UiTokens.LIST_GAP;
-            }
-        } finally {
-            canvas.restore();
-        }
-    }
-
-    /** Clock pill height between messages (see {@link #dividerBefore}). */
-    private static final float TIME_DIVIDER_H = UiTokens.s(24);
-
-    /**
-     * A time divider is drawn above a message when {@code
-     * timestampIntervalMinutes} have passed since the previous one. 0 (or a
-     * single-message list head) draws nothing.
-     */
-    private static boolean dividerBefore(List<ChatMessage> messages, int index) {
-        if (index <= 0) {
-            return false;
-        }
-        int minutes = AtomChatConfig.get().timestampIntervalMinutes;
-        if (minutes <= 0) {
-            return false;
-        }
-        return messages.get(index).getTimestamp() - messages.get(index - 1).getTimestamp()
-                >= minutes * 60_000L;
-    }
-
-    /** The clock pill itself: same capsule family as system messages. */
-    private void drawTimeDivider(Canvas canvas, long timestamp, float x, float width, float y) {
-        Font font = FontManager.font(UiTokens.FONT_QUOTE);
-        String time = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
-                .withZone(java.time.ZoneId.systemDefault())
-                .format(java.time.Instant.ofEpochMilli(timestamp));
-        float textW = SkiaFontRenderer.getStringWidth(font, time);
-        float pillW = textW + s(20);
-        float pillH = TIME_DIVIDER_H - s(6);
-        float pillX = x + (width - pillW) / 2.0F;
-        float pillY = y + s(3);
-        int rgb = otherBubble();
-        SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, pillH, UiTokens.radius(10),
-                Color.makeARGB(110,
-                        (rgb >> 16) & 0xFF,
-                        (rgb >> 8) & 0xFF,
-                        rgb & 0xFF));
-        SkiaFontRenderer.drawTextCentered(canvas, font, time, x + width / 2.0F, pillY + pillH / 2.0F,
-                textSecondary());
-    }
-
-    /**
-     * Raw 0..1 progress of a message's entrance. Messages that existed before
-     * this screen was opened are already settled; messages arriving while the
-     * screen is open start their animation on the first frame they are actually
-     * drawn inside the viewport.
-     *
-     * <p>Linear on purpose: the caller picks the curve. The fade and the slide
-     * must not share one — easeOutCubic covers ~88% of its distance in the
-     * first half of the duration, which feels right for a slide but spends the
-     * opacity ramp in ~70ms, far too fast to read as a fade.
-     */
-    private float entranceProgress(ChatMessage msg, long now) {
-        if (!Animations.messageEntry()
-                || msg.getTimestamp() < openStart
-                || messageEnterSettled.contains(msg)
-                || now - msg.getTimestamp() > ENTRANCE_SETTLE_GUARD_MS) {
-            return 1.0F;
-        }
-        Long start = messageEnterStart.get(msg);
-        if (start == null) {
-            start = now;
-            messageEnterStart.put(msg, start);
-        }
-        return Math.min(1.0F, (now - start) / (float) MESSAGE_ANIM_MS);
-    }
-
-    /**
-     * Bounded housekeeping for the never-replay guarantee: once a message is
-     * older than the guard window it is settled by time alone, so its entry can
-     * leave the set. Runs at most once a second.
-     */
-    private void pruneEntranceSettled(long now) {
-        if (messageEnterSettled.isEmpty() || now - lastEntrancePrune < 1000L) {
-            return;
-        }
-        lastEntrancePrune = now;
-        long cutoff = now - ENTRANCE_SETTLE_GUARD_MS;
-        messageEnterSettled.removeIf(m -> m.getTimestamp() < cutoff);
-    }
-
-    private MessageHit drawMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
-        if (msg.isSystem()) {
-            return drawSystemMessage(canvas, msg, x, y, maxWidth, index);
-        }
-        Font font = FontManager.font(UiTokens.FONT_BODY);
-        float bubbleMaxWidth = maxWidth - UiTokens.BUBBLE_RETRACT;
-        String raw = msg.getRawText();
-        String imageUrl = extractImageUrl(raw);
-        if (imageUrl != null) {
-            if (!AtomChatConfig.get().imageMessagesEnabled) {
-                return drawImagePlaceholderMessage(canvas, msg, x, y, maxWidth, index);
-            }
-            return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index);
-        }
-        RichText content = msg.getContentRich();
-        float textMaxWidth = bubbleMaxWidth - UiTokens.BUBBLE_PAD * 2.0F;
-        List<RichLine> richLines = RichTextRenderer.wrapFor(content, font, textMaxWidth);
-        List<String> lines = new ArrayList<>();
-        for (RichLine line : richLines) {
-            lines.add(line.getPlainText());
-        }
-        // The bubble must hug the longest visible line. Using the single-line
-        // width of the whole message collapsed multi-line messages (e.g. a hard
-        // newline between two short lines) to a pill only as wide as the bubble
-        // padding, because the old expression forced a 0 width whenever there
-        // was more than one line.
-        float maxLineWidth = 0.0F;
-        for (RichLine line : richLines) {
-            maxLineWidth = Math.max(maxLineWidth, RichTextRenderer.width(font, line));
-        }
-        float bubbleWidth;
-        if (maxLineWidth + UiTokens.BUBBLE_PAD * 2.0F <= bubbleMaxWidth) {
-            bubbleWidth = Math.max(UiTokens.BUBBLE_MIN_W, maxLineWidth + UiTokens.BUBBLE_PAD * 2.0F);
-        } else {
-            bubbleWidth = bubbleMaxWidth;
-        }
-        float lineHeight = SkiaFontRenderer.getHeight(font);
-        float textHeight = Math.max(lineHeight, lines.size() * lineHeight);
-
-        // Layout formula: name band -> quote pill -> bubble; bubble hugs the avatar side.
-        boolean hasQuote = msg.getQuoteName() != null;
-        float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
-        float bubbleHeight = textHeight + UiTokens.BUBBLE_PAD_Y;
-        float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
-        float bubbleX = msg.isOwn() ? x + maxWidth - bubbleWidth - nameOffset : x + nameOffset;
-
-        // Name hugs the bubble's outer edge: right-aligned for own, left for others.
-        drawMessageName(canvas, msg, y, bubbleX, bubbleX + bubbleWidth);
-
-        float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
-        float avatarY = y + s(4);
-
-        // Poke animation: QQ-style wobble — the avatar rocks around its centre
-        // (damped ±14° over two and a half oscillations in ~600ms) instead of
-        // sliding side to side. The wobble itself is decorative, so with motion
-        // off the poke is already suppressed at the click site and this block
-        // never arms.
-        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
-
-        if (hasQuote) {
-            drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
-        }
-        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.BUBBLE_RADIUS, msg.isOwn() ? ownBubble() : otherBubble());
-        drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
-        RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
-                lineHeight, bubbleText(msg), clickableSpans, true);
-
-        float bottom = bubbleTop + bubbleHeight;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, bubbleWidth, bottom);
-    }
-
-    /**
-     * System lines (death, command feedback, join...) render as a compact
-     * centered gray capsule: no avatar, no name, smaller text.
-     */
-    private MessageHit drawSystemMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
-        Font font = FontManager.font(UiTokens.FONT_QUOTE);
-        List<RichLine> richLines = RichTextRenderer.wrapFor(msg.getContentRich(), font,
-                maxWidth - UiTokens.BUBBLE_PAD * 2.0F);
-        List<String> lines = new ArrayList<>();
-        for (RichLine line : richLines) {
-            lines.add(line.getPlainText());
-        }
-        float lineHeight = SkiaFontRenderer.getHeight(font);
-        float textHeight = Math.max(lineHeight, lines.size() * lineHeight);
-        float bubbleHeight = textHeight + UiTokens.SYSTEM_BUBBLE_PAD_Y;
-        float lineMax = 0.0F;
-        for (RichLine line : richLines) {
-            lineMax = Math.max(lineMax, RichTextRenderer.width(font, line));
-        }
-        float bubbleWidth = Math.min(maxWidth, Math.max(s(40), lineMax + UiTokens.BUBBLE_PAD * 2.0F));
-        float bubbleX = x + (maxWidth - bubbleWidth) / 2.0F;
-        float bubbleTop = y + s(2);
-        // System capsules keep the translucent alpha but borrow the placeholder
-        // bubble's RGB (otherBubbleColor), so they are not darker than the
-        // "image loading" capsule users already see as the chat's grey tone.
-        int placeholderRgb = otherBubble();
-        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.radius(10),
-                Color.makeARGB(150,
-                        (placeholderRgb >> 16) & 0xFF,
-                        (placeholderRgb >> 8) & 0xFF,
-                        placeholderRgb & 0xFF));
-        drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
-        RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
-                lineHeight, textSecondary(), clickableSpans, true);
-        float bottom = bubbleTop + bubbleHeight;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, 0.0F, 0.0F, 0.0F, bubbleTop, bubbleX, bubbleWidth, bottom);
-    }
-
-    /**
-     * e33chat-style quote capsule: anchored to the avatar edge (right side for
-     * own messages, left for others) with a full-row width budget, truncated
-     * with an ellipsis only when exceeding that budget.
-     */
-    private void drawQuotePill(Canvas canvas, ChatMessage msg, float x, float maxWidth, float pillY, boolean own) {
-        Font quoteFont = FontManager.font(UiTokens.FONT_QUOTE);
-        float capW = maxWidth - UiTokens.AVATAR_SIZE - s(18);
-        float barW = s(3);
-        float textMaxW = capW - UiTokens.QUOTE_PAD_X * 2.0F - barW - s(4);
-        String name = msg.getQuoteName().startsWith("@") ? msg.getQuoteName() : "@" + msg.getQuoteName();
-        String quote = name + ": " + msg.getQuoteText();
-        String display = truncateToWidth(quoteFont, quote, textMaxW);
-        float pillW = Math.min(capW, SkiaFontRenderer.getStringWidth(quoteFont, display) + UiTokens.QUOTE_PAD_X * 2.0F + barW + s(4));
-        // Align the quote's outer edge with the bubble's outer edge, not with
-        // the avatar. The bubble uses AVATAR_GAP as the horizontal gap to the
-        // avatar, so the quote must use the same token.
-        float pillX = own ? x + maxWidth - UiTokens.AVATAR_SIZE - UiTokens.AVATAR_GAP - pillW
-                : x + UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
-        // Quote pill shares the same light gray-white fill as the header/input
-        // cards (translucent white over the panel), so it reads as one family.
-        SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, UiTokens.QUOTE_HEIGHT, s(6), Color.makeARGB(60, 255, 255, 255));
-        SkiaDraw.drawRoundedRect(canvas, pillX + UiTokens.QUOTE_PAD_X, pillY + s(3), barW, UiTokens.QUOTE_HEIGHT - s(6), barW / 2.0F, accent());
-        float textStartX = pillX + UiTokens.QUOTE_PAD_X + barW + s(4);
-        float centerBaselineY = SkiaFontRenderer.centerBaselineY(quoteFont, pillY + UiTokens.QUOTE_HEIGHT / 2.0F);
-        boolean imageQuote = msg.getQuoteText() != null
-                && isImagePlaceholder(msg.getQuoteText());
-        if (imageQuote) {
-            // Only the [图片]/[Image] placeholder is green; the quoted player's
-            // name and the colon stay in the normal primary colour.
-            String fullNamePart = name + ": ";
-            float placeholderW = SkiaFontRenderer.getStringWidth(quoteFont, msg.getQuoteText());
-            String namePart = truncateToWidth(quoteFont, fullNamePart, Math.max(0.0F, textMaxW - placeholderW));
-            SkiaFontRenderer.drawText(canvas, quoteFont, namePart, textStartX, centerBaselineY, bubbleText(msg));
-            float namePartW = SkiaFontRenderer.getStringWidth(quoteFont, namePart);
-            SkiaFontRenderer.drawText(canvas, quoteFont, msg.getQuoteText(), textStartX + namePartW,
-                    centerBaselineY, Color.makeARGB(255, 85, 255, 85));
-        } else {
-            SkiaFontRenderer.drawText(canvas, quoteFont, display, textStartX, centerBaselineY, bubbleText(msg));
-        }
-    }
-
-    private static boolean isImagePlaceholder(String text) {
-        return text != null && (text.equals(tr("atomchat.hud.image"))
-                || text.equals("[图片]") || text.equalsIgnoreCase("[image]"));
-    }
-
-    private static String truncateToWidth(Font font, String text, float maxW) {
-        if (SkiaFontRenderer.getStringWidth(font, text) <= maxW) {
-            return text;
-        }
-        String t = text;
-        while (t.length() > 1 && SkiaFontRenderer.getStringWidth(font, t + "…") > maxW) {
-            t = t.substring(0, t.length() - 1);
-        }
-        return t + "…";
-    }
-
-    /**
-     * Draws a message's name hugging its bubble's outer edge. One helper for
-     * text and image bubbles so their spacing can never drift apart: the image
-     * path centred the name in the band while the text path drew it from the raw
-     * baseline, which put the two a cap-height apart.
-     */
-    private void drawMessageName(Canvas canvas, ChatMessage msg, float rowY, float leftX, float rightX) {
-        Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        RichText sender = msg.getSenderRich();
-        if (sender.isEmpty()) {
-            sender = RichText.literal(messageSenderName(msg));
-        }
-        List<RichLine> lines = RichTextRenderer.wrapFor(sender, nameFont, Float.MAX_VALUE);
-        if (lines.isEmpty()) {
-            return;
-        }
-        float lineHeight = SkiaFontRenderer.getHeight(nameFont);
-        float nameWidth = 0.0F;
-        for (RichLine line : lines) {
-            nameWidth = Math.max(nameWidth, RichTextRenderer.width(nameFont, line));
-        }
-        float x = msg.isOwn() ? rightX - nameWidth : leftX;
-        // RichTextRenderer.drawLines takes a centerY and internally converts
-        // it to the cap-height baseline, matching the old drawText helper.
-        float centerY = rowY + UiTokens.NAME_BAND / 2.0F;
-        RichTextRenderer.drawLines(canvas, nameFont, lines, x, centerY, lineHeight, textPrimary(),
-                clickableSpans, true);
-    }
-
-    private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
-        float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
-        boolean hasQuote = msg.getQuoteName() != null;
-        float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
-        float[] size = imageBubbleSize(parseImageMeta(raw), maxWidth);
-        float imageW = size[0];
-        float imageH = size[1];
-        float bubbleX = msg.isOwn() ? x + maxWidth - imageW - nameOffset : x + nameOffset;
-
-        // Name hugs the bubble's outer edge, exactly like a text bubble.
-        // Anchoring it to the row instead (the old behaviour) left the name
-        // drifting away from the bubble as soon as the bubble width changed —
-        // image bubbles are always wider than a short text bubble.
-        drawMessageName(canvas, msg, y, bubbleX, bubbleX + imageW);
-
-        float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
-        float avatarY = y + s(4);
-        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
-        if (hasQuote) {
-            drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
-        }
-        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS, otherBubble());
-
-        Image image = ImageLoader.get().get(imageUrl, true);
-        if (image != null) {
-            // No aspect fix-up here: the CICode carries the intrinsic size, so
-            // the bubble already has the image's proportions and the bitmap is
-            // simply fitted to it. Stretching only happened because the box used
-            // to be a fixed 275x175 with the height clamped rather than scaled.
-            SkiaDraw.drawRoundedImage(canvas, image, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS);
-        } else {
-            Font loadingFont = FontManager.font(UiTokens.FONT_QUOTE);
-            SkiaFontRenderer.drawTextCentered(canvas, loadingFont, tr("atomchat.image.loading"),
-                    bubbleX + imageW / 2.0F, bubbleTop + imageH / 2.0F, textSecondary());
-        }
-
-        float bottom = bubbleTop + imageH;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, imageW, bottom);
-    }
-
-    /**
-     * Image messages with the receiving toggle off: a compact capsule with the
-     * green [图片] placeholder — the same mark as the vanilla HUD, and nothing
-     * is fetched or decoded. Identity (name + avatar) stays so the sender is
-     * still readable.
-     */
-    private MessageHit drawImagePlaceholderMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
-        boolean hasQuote = msg.getQuoteName() != null;
-        float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        Font font = FontManager.font(UiTokens.FONT_QUOTE);
-        String placeholder = tr("atomchat.hud.image");
-        float textW = SkiaFontRenderer.getStringWidth(font, placeholder);
-        float pillW = Math.min(maxWidth - UiTokens.BUBBLE_RETRACT, textW + UiTokens.BUBBLE_PAD * 2.0F);
-        float lineHeight = SkiaFontRenderer.getHeight(font);
-        float pillH = lineHeight + UiTokens.SYSTEM_BUBBLE_PAD_Y;
-        float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
-        float pillX = msg.isOwn() ? x + maxWidth - pillW - nameOffset : x + nameOffset;
-        float pillTop = y + UiTokens.NAME_BAND + quoteH;
-        drawMessageName(canvas, msg, y, pillX, pillX + pillW);
-        float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
-        float avatarY = y + s(4);
-        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
-        if (hasQuote) {
-            drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
-        }
-        int placeholderRgb = otherBubble();
-        SkiaDraw.drawRoundedRect(canvas, pillX, pillTop, pillW, pillH, UiTokens.radius(10),
-                Color.makeARGB(150,
-                        (placeholderRgb >> 16) & 0xFF,
-                        (placeholderRgb >> 8) & 0xFF,
-                        placeholderRgb & 0xFF));
-        SkiaFontRenderer.drawTextCentered(canvas, font, placeholder,
-                pillX + pillW / 2.0F, pillTop + pillH / 2.0F, Color.makeARGB(255, 85, 255, 85));
-        float bottom = pillTop + pillH;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, pillTop, pillX, pillW, bottom);
-    }
-
-    private float measureContentHeight(List<ChatMessage> messages, float width) {
-        float contentHeight = 0;
-        for (int i = 0; i < messages.size(); i++) {
-            if (dividerBefore(messages, i)) {
-                contentHeight += TIME_DIVIDER_H + UiTokens.LIST_GAP;
-            }
-            contentHeight += messageHeight(messages.get(i), width) + UiTokens.LIST_GAP;
-        }
-        return contentHeight;
-    }
-
-    /**
-     * Must match what drawMessage/drawImageMessage actually lay out:
-     * name band + (quote pill + gap) + bubble; image bubbles are s(140) tall.
-     */
-    private float messageHeight(ChatMessage msg, float maxWidth) {
-        if (msg.isSystem()) {
-            Font font = FontManager.font(UiTokens.FONT_QUOTE);
-            float lineHeight = SkiaFontRenderer.getHeight(font);
-            int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font,
-                    maxWidth - UiTokens.BUBBLE_PAD * 2.0F).size();
-            return s(2) + Math.max(lineHeight, lines * lineHeight) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
-        }
-        float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        ImageMeta imageMeta = parseImageMeta(msg.getRawText());
-        if (imageMeta != null) {
-            if (!AtomChatConfig.get().imageMessagesEnabled) {
-                Font font = FontManager.font(UiTokens.FONT_QUOTE);
-                return UiTokens.NAME_BAND + quoteH
-                        + SkiaFontRenderer.getHeight(font) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
-            }
-            return UiTokens.NAME_BAND + quoteH + imageBubbleSize(imageMeta, maxWidth)[1];
-        }
-        Font font = FontManager.font(UiTokens.FONT_BODY);
-        float lineHeight = SkiaFontRenderer.getHeight(font);
-        float wrapW = Math.max(s(20), maxWidth - UiTokens.BUBBLE_RETRACT - UiTokens.BUBBLE_PAD * 2.0F);
-        int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font, wrapW).size();
-        return UiTokens.NAME_BAND + quoteH + UiTokens.BUBBLE_PAD_Y + Math.max(lineHeight, lines * lineHeight);
-    }
 
     private void drawJumpLatest(Canvas canvas, UiLayout layout, float vmx, float vmy) {
         ScrollController scroll = currentScroll();
@@ -2715,7 +2132,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         boolean playerMenu = mode == ContextMenuMode.PLAYER_CARD;
         boolean bubbleMenu = !avatarMenu && !playerMenu;
         ChatMessage shown = contextMessage != null ? contextMessage : lastContextMessage;
-        boolean imageMessage = bubbleMenu && shown != null && extractImageUrl(shown.getRawText()) != null;
+        boolean imageMessage = bubbleMenu && shown != null && Cicodes.extractImageUrl(shown.getRawText()) != null;
         int rows = avatarMenu ? 4 : playerMenu ? 3 : (imageMessage ? 3 : 2);
         float rowH = UiTokens.MENU_H / 2.0F;
         float menuH = rowH * rows;
@@ -2984,176 +2401,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
-    // ---------------------------------------------------------------- message text selection
-
-    private void clearTextSelection() {
-        selectionMessage = null;
-        selectionAnchorLine = -1;
-        selectionAnchorChar = -1;
-        selectionFocusLine = -1;
-        selectionFocusChar = -1;
-        selecting = false;
-        selectionMoved = false;
-        selectionMessageLines = List.of();
-    }
-
-    private boolean hasTextSelection() {
-        if (selectionMessage == null || selectionAnchorLine < 0 || selectionFocusLine < 0) {
-            return false;
-        }
-        return selectionAnchorLine != selectionFocusLine || selectionAnchorChar != selectionFocusChar;
-    }
-
-    private List<MessageTextLine> textLinesForHit(MessageHit hit) {
-        List<MessageTextLine> out = new ArrayList<>();
-        ChatMessage msg = hit.message();
-        if (extractImageUrl(msg.getRawText()) != null) {
-            return out;
-        }
-        Font font = FontManager.font(msg.isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);
-        float textMax = Math.max(s(20), hit.bubbleWidth() - UiTokens.BUBBLE_PAD * 2.0F);
-        List<RichLine> richLines = RichTextRenderer.wrapFor(msg.getContentRich(), font, textMax);
-        List<String> lines = new ArrayList<>();
-        for (RichLine line : richLines) {
-            lines.add(line.getPlainText());
-        }
-        if (lines.isEmpty()) {
-            return out;
-        }
-        float lineH = SkiaFontRenderer.getHeight(font);
-        float bubbleH = hit.bubbleBottom() - hit.bubbleY();
-        float centerY = hit.bubbleY() + bubbleH / 2.0F;
-        float blockTop = centerY - lines.size() * lineH / 2.0F;
-        float textX = hit.bubbleX() + UiTokens.BUBBLE_PAD;
-        for (int i = 0; i < lines.size(); i++) {
-            out.add(new MessageTextLine(msg, i, lines.get(i), textX, blockTop + i * lineH, lineH));
-        }
-        return out;
-    }
-
-    private int charAtLine(MessageTextLine line, float mx) {
-        String text = line.text();
-        if (text.isEmpty()) {
-            return 0;
-        }
-        Font font = FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);
-        float x = line.x();
-        for (int i = 0; i < text.length(); i++) {
-            float w = SkiaFontRenderer.getStringWidth(font, text.substring(i, i + 1));
-            if (mx < x + w / 2.0F) {
-                return i;
-            }
-            x += w;
-        }
-        return text.length();
-    }
-
-    /**
-     * Draws the active selection highlight for one message before its text is
-     * drawn, so the glyphs stay readable above the blue block.
-     */
-    private void drawMessageSelection(Canvas canvas, ChatMessage msg, List<String> lines, float textX,
-                                      float centerY, float lineHeight, Font font) {
-        if (selectionMessage != msg || !hasTextSelection()) {
-            return;
-        }
-        int aLine = selectionAnchorLine;
-        int aChar = selectionAnchorChar;
-        int fLine = selectionFocusLine;
-        int fChar = selectionFocusChar;
-        if (aLine > fLine || (aLine == fLine && aChar > fChar)) {
-            int tmpLine = aLine;
-            aLine = fLine;
-            fLine = tmpLine;
-            int tmpChar = aChar;
-            aChar = fChar;
-            fChar = tmpChar;
-        }
-        float totalH = lines.size() * lineHeight;
-        float blockTop = centerY - totalH / 2.0F;
-        for (int i = 0; i < lines.size(); i++) {
-            if (i < aLine || i > fLine) {
-                continue;
-            }
-            int start;
-            int end;
-            if (aLine == fLine) {
-                start = aChar;
-                end = fChar;
-            } else if (i == aLine) {
-                start = aChar;
-                end = lines.get(i).length();
-            } else if (i == fLine) {
-                start = 0;
-                end = fChar;
-            } else {
-                start = 0;
-                end = lines.get(i).length();
-            }
-            start = Math.max(0, Math.min(start, lines.get(i).length()));
-            end = Math.max(0, Math.min(end, lines.get(i).length()));
-            if (start >= end) {
-                continue;
-            }
-            String line = lines.get(i);
-            float x0 = textX + SkiaFontRenderer.getStringWidth(font, line.substring(0, start));
-            float x1 = textX + SkiaFontRenderer.getStringWidth(font, line.substring(0, end));
-            float y = blockTop + i * lineHeight;
-            SkiaDraw.drawRoundedRect(canvas, x0, y, Math.max(1.0F, x1 - x0), lineHeight, s(1), 0xE02D6FD6);
-        }
-    }
-
-    private String copySelectedText() {
-        if (!hasTextSelection()) {
-            return "";
-        }
-        List<String> lines = selectionMessageLines;
-        if (lines.isEmpty()) {
-            return "";
-        }
-        int aLine = Math.max(0, Math.min(selectionAnchorLine, lines.size() - 1));
-        int aChar = selectionAnchorChar;
-        int fLine = Math.max(0, Math.min(selectionFocusLine, lines.size() - 1));
-        int fChar = selectionFocusChar;
-        if (aLine > fLine || (aLine == fLine && aChar > fChar)) {
-            int tmpLine = aLine;
-            aLine = fLine;
-            fLine = tmpLine;
-            int tmpChar = aChar;
-            aChar = fChar;
-            fChar = tmpChar;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = aLine; i <= fLine; i++) {
-            String line = lines.get(i);
-            int start = i == aLine ? aChar : 0;
-            int end = i == fLine ? fChar : line.length();
-            start = Math.max(0, Math.min(start, line.length()));
-            end = Math.max(0, Math.min(end, line.length()));
-            if (start < end) {
-                if (sb.length() > 0) {
-                    sb.append('\n');
-                }
-                sb.append(line, start, end);
-            }
-        }
-        return sb.toString();
-    }
-
-    private ClickableSpan findClickableSpan(float mx, float my) {
-        for (ClickableSpan s : clickableSpans) {
-            if (mx >= s.x() && mx <= s.x() + s.w() && my >= s.y() && my <= s.y() + s.h()) {
-                return s;
-            }
-        }
-        return null;
-    }
-
-    private Style findHoveredStyle(float mx, float my) {
-        ClickableSpan span = findClickableSpan(mx, my);
-        return span != null ? span.style() : null;
-    }
-
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (inputRouter.click(mouseX, mouseY, button)) {
@@ -3221,7 +2468,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      * happens off-thread via {@link ImageSaver} so the raw bytes stay identical.
      */
     private void saveImage(ChatMessage message) {
-        String url = extractImageUrl(message.getRawText());
+        String url = Cicodes.extractImageUrl(message.getRawText());
         if (url == null) {
             return;
         }
@@ -3386,8 +2633,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return null;
         }
         String contentText = message.getContentText();
-        if (extractImageUrl(message.getRawText()) != null
-                || (contentText != null && extractImageUrl(contentText) != null)) {
+        if (Cicodes.extractImageUrl(message.getRawText()) != null
+                || (contentText != null && Cicodes.extractImageUrl(contentText) != null)) {
             return tr("atomchat.hud.image");
         }
         return abbreviate(message.getContentText(), 30);
@@ -3478,66 +2725,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return StringHelper.truncateChat(StringUtils.normalizeSpace(text.trim()));
     }
 
-    /** url / name / intrinsic size carried by a CICode. width and height are 0 in codes written before they existed. */
-    private record ImageMeta(String url, String name, int width, int height) {
-    }
-
-    private static ImageMeta parseImageMeta(String text) {
-        if (text == null) {
-            return null;
-        }
-        Matcher m = CICODE.matcher(text);
-        if (!m.find()) {
-            return null;
-        }
-        int w = 0;
-        int h = 0;
-        if (m.group(3) != null) {
-            try {
-                w = Integer.parseInt(m.group(3));
-                h = Integer.parseInt(m.group(4));
-            } catch (NumberFormatException ignored) {
-                // Malformed size: fall back to the placeholder box.
-            }
-        }
-        return new ImageMeta(m.group(1), m.group(2), w, h);
-    }
-
-    /**
-     * On-screen size of an image bubble: the intrinsic size scaled down to fit
-     * IMAGE_MAX_W x IMAGE_MAX_H, never upscaled, so a small picture is never
-     * blown up into a blur. Messages with no usable size — codes written before
-     * w/h existed, or images whose header ImageIO cannot read — fall back to the
-     * placeholder box, which is also what is drawn until the image downloads.
-     */
-    private static float[] imageBubbleSize(ImageMeta meta, float maxWidth) {
-        float maxW = Math.min(UiTokens.IMAGE_MAX_W, maxWidth - UiTokens.BUBBLE_RETRACT - s(30));
-        float maxH = UiTokens.IMAGE_MAX_H;
-        if (meta == null || meta.width() <= 0 || meta.height() <= 0) {
-            return new float[]{maxW, maxH};
-        }
-        float scale = Math.min(1.0F, Math.min(maxW / meta.width(), maxH / meta.height()));
-        return new float[]{Math.max(1.0F, meta.width() * scale), Math.max(1.0F, meta.height() * scale)};
-    }
-
-    private static String extractImageUrl(String text) {
-        int start = text.indexOf("[[CICode,url=");
-        if (start < 0) {
-            start = text.indexOf("[CICode,url=");
-        }
-        if (start < 0) {
-            return null;
-        }
-        int urlStart = text.indexOf("url=", start) + 4;
-        int end = text.indexOf(',', urlStart);
-        if (end < 0) {
-            end = text.indexOf(']', urlStart);
-        }
-        if (end < 0 || end <= urlStart) {
-            return null;
-        }
-        return text.substring(urlStart, end);
-    }
 
     private String ownName() {
         return this.client.player != null ? this.client.player.getName().getString() : tr("atomchat.sender.me");
@@ -3758,13 +2945,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return false;
     }
 
-    private record MessageTextLine(ChatMessage message, int line, String text, float x, float y, float height) {
-    }
-
-    private record MessageHit(ChatMessage message, int index, float x, float y, float maxWidth, float bottom,
-                              float avatarX, float avatarY, float avatarSize, float bubbleY, float bubbleX,
-                              float bubbleWidth, float bubbleBottom) {
-    }
 
     // ------------------------------------------------------------------ input handlers
     //
@@ -3782,8 +2962,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // Any non-modal click clears message text selection. This used to
             // run after the modal checks; a modal can never be open together
             // with a message selection, so checking it first is equivalent.
-            if (hasTextSelection() || selecting) {
-                clearTextSelection();
+            if (messageListView.hasSelection() || messageListView.isSelecting()) {
+                messageListView.clearSelection();
             }
             return false;
         }
@@ -4189,7 +3369,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (contextMessage != null) {
                 float menuW = UiTokens.MENU_W;
                 boolean avatarMenu = contextMenuMode == ContextMenuMode.AVATAR;
-                boolean imageMessage = !avatarMenu && extractImageUrl(contextMessage.getRawText()) != null;
+                boolean imageMessage = !avatarMenu && Cicodes.extractImageUrl(contextMessage.getRawText()) != null;
                 int rows = avatarMenu ? 4 : (imageMessage ? 3 : 2);
                 float rowH = UiTokens.MENU_H / 2.0F;
                 float menuH = rowH * rows;
@@ -4275,7 +3455,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // This covers clickable sender names and any clickable span outside bubble
             // text; the text-line branch below may overwrite it with the same result.
             if (button == 0) {
-                pendingClickSpan = findClickableSpan(mx, my);
+                pendingClickSpan = messageListView.clickableSpanAt(mx, my).orElse(null);
                 pendingClickMoved = false;
             }
 
@@ -4283,7 +3463,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // poke; single-click @ is deliberately gone (use the right-click menu).
             // Right-click opens the bubble menu only when the pointer is actually on
             // the bubble; right-click on a real player's avatar opens the avatar menu.
-            for (MessageHit hit : hits) {
+            for (MessageListView.MessageHit hit : messageListView.hits()) {
                 if (my < hit.y() || my > hit.bottom()) {
                     continue;
                 }
@@ -4315,8 +3495,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     return true;
                 }
                 if (button == 0) {
-                    List<MessageTextLine> textLines = textLinesForHit(hit);
-                    for (MessageTextLine line : textLines) {
+                    List<MessageListView.MessageTextLine> textLines = messageListView.textLinesForHit(hit);
+                    for (MessageListView.MessageTextLine line : textLines) {
                         float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
                                 FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
                                 line.text());
@@ -4325,14 +3505,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                             // selection anchor is armed. Dragging from this point will
                             // select text instead of firing the click; a clean click
                             // (no drag) will fire it on mouse release.
-                            pendingClickSpan = findClickableSpan(mx, my);
+                            pendingClickSpan = messageListView.clickableSpanAt(mx, my).orElse(null);
                             pendingClickMoved = false;
-                            selectionMessage = hit.message();
-                            selectionMessageLines = textLines.stream().map(MessageTextLine::text).toList();
-                            selectionAnchorLine = selectionFocusLine = line.line();
-                            selectionAnchorChar = selectionFocusChar = charAtLine(line, mx);
-                            selecting = true;
-                            selectionMoved = false;
+                            messageListView.beginSelection(hit, line, mx);
                             return true;
                         }
                     }
@@ -4349,8 +3524,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                         // Double click → poke; cancels the pending single click.
                         lastAvatarClickTime = 0;
                         pendingAvatarClickMessage = null;
-                        pokeIndex = hit.index();
-                        pokeStartTime = now;
+                        messageListView.poke(hit.index(), now);
                     } else if (pokeEnabled) {
                         // QQ-style competition window: the single click waits for
                         // the double-click threshold before opening the profile.
@@ -4387,33 +3561,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (button == 0 && pendingClickSpan != null) {
                 pendingClickMoved = true;
             }
-            if (selecting && button == 0 && selectionMessage != null) {
+            if (button == 0 && messageListView.isSelecting()) {
                 float mx = toVirtualX(mouseX);
                 float my = toVirtualY(mouseY);
-                for (MessageHit hit : hits) {
-                    if (my < hit.y() || my > hit.bottom() || hit.message() != selectionMessage) {
-                        continue;
-                    }
-                    for (MessageTextLine line : textLinesForHit(hit)) {
-                        float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
-                                FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
-                                line.text());
-                        if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
-                            int ch = charAtLine(line, mx);
-                            if (ch != selectionFocusChar || line.line() != selectionFocusLine) {
-                                selectionFocusLine = line.line();
-                                selectionFocusChar = ch;
-                                selectionMoved = true;
-                                pendingClickMoved = true;
-                            }
-                            return true;
-                        }
-                    }
+                // Consumed on every drag while selecting (matching the original
+                // block, which always returned true); the view keeps the focus
+                // update and selectionMoved bookkeeping internally.
+                if (messageListView.dragSelection(mx, my)) {
+                    return true;
                 }
-                // A drag that leaves the text is still a drag, so it must suppress
-                // any click captured on mouse press even when no selection changed.
-                pendingClickMoved = true;
-                return true; // drag outside text keeps current selection active
             }
             return false;
         }
@@ -4426,18 +3582,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (button == 0) {
                 float mx = toVirtualX(mouseX);
                 float my = toVirtualY(mouseY);
-                boolean wasSelecting = selecting;
+                boolean wasSelecting = messageListView.isSelecting();
                 ClickableSpan pending = pendingClickSpan;
                 pendingClickSpan = null;
-                ClickableSpan released = findClickableSpan(mx, my);
+                ClickableSpan released = messageListView.clickableSpanAt(mx, my).orElse(null);
                 boolean shouldClick = pending != null && !pendingClickMoved
                         && pending.style().getClickEvent() != null
                         && pending.equals(released);
                 if (wasSelecting) {
-                    selecting = false;
-                    if (!selectionMoved) {
-                        clearTextSelection();
-                    }
+                    messageListView.endSelection();
                 }
                 pendingClickMoved = false;
                 if (inputDragging) {
@@ -4491,8 +3644,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             }
             // Copy selected message text before the vanilla field/suggestion layer
             // consumes Ctrl+C.
-            if (keyCode == 67 && (modifiers & 2) != 0 && hasTextSelection()) {
-                String copied = copySelectedText();
+            if (keyCode == 67 && (modifiers & 2) != 0 && messageListView.hasSelection()) {
+                String copied = messageListView.copySelection();
                 if (!copied.isEmpty()) {
                     client.keyboard.setClipboard(copied);
                 }
