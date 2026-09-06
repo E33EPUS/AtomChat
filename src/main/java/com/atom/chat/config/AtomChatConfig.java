@@ -57,18 +57,11 @@ public class AtomChatConfig {
     public int panelBgColor = 0xEE16191F;
     public int textPrimaryColor = 0xFFFFFFFF;
     public int textSecondaryColor = 0xDCAAAABA;
-
     /**
-     * 次要文字色 is no longer configurable: it derives from the primary text
-     * colour (same hue, desaturated and darkened) so the two can never drift
-     * into a broken pairing. A hand-edited textSecondaryColor in the file is
-     * simply ignored.
+     * Card/chrome surface colour. The card-tint slider sets this colour's
+     * alpha (60 at 0% → 255 at 100%); white keeps the shipped frosted look.
      */
-    public int derivedTextSecondary() {
-        float[] hsv = com.atom.chat.avatar.ColorUtil.rgbToHsv(textPrimaryColor);
-        int rgb = com.atom.chat.avatar.ColorUtil.hsvToRgb(hsv[0], hsv[1] * 0.15F, hsv[2] * 0.72F);
-        return (rgb & 0x00FFFFFF) | 0xD8000000;
-    }
+    public int cardColor = 0xFFFFFFFF;
     /** Global blocked-player real names, persisted locally. */
     public java.util.List<String> blockedPlayers = new java.util.ArrayList<>();
 
@@ -92,10 +85,54 @@ public class AtomChatConfig {
      */
     public String teleportCommandMode = "auto";
     /**
+     * Corner style for the surrounding chrome (panel, cards, pills, popups —
+     * chat bubbles excluded on purpose): {@code large} (shipped default),
+     * {@code medium} or {@code small} (modern flat). No settings UI yet —
+     * presets write it and the file can be hand-edited.
+     */
+    public String cornerStyle = "large";
+    /**
+     * Card/chrome surface tint, 0..1. At 0 the surfaces are the frosted
+     * translucent white washes; at 1 they are opaque tints lifted from the
+     * panel colour. In between they slide through a semi-transparent grey —
+     * one axis, three visual stops.
+     */
+    public float cardTint = 0.235F;
+    /** Panel outline (bezel ring) colour. */
+    public int panelOutlineColor = 0xFFFFFFFF;
+    /**
+     * White phone-style bezel ring around the panel. Part of the frosted look;
+     * the opaque modern preset turns it off.
+     */
+    public boolean panelOutline = true;
+    /**
+     * Body/quote text colour inside <em>other</em> players' bubbles. Own
+     * bubbles keep {@link #bubbleTextColor}.
+     */
+    public int otherBubbleTextColor = 0xFFFFFFFF;
+    /**
+     * Last applied built-in theme ({@code frosted} / {@code modern}); empty
+     * until the user picks one. Display only — the single knobs stay editable
+     * after a preset lands, so this never gates any behaviour.
+     */
+    public String themeName = "";
+    /**
      * When true only an explicit {@code @Name} counts as a mention; when
      * false the bare name as a standalone token counts too (e33chat default).
      */
     public boolean mentionRequireAt = false;
+    /**
+     * Whether incoming image messages are fetched and rendered. Off: every
+     * image message shows the green [图片] placeholder instead — nothing is
+     * downloaded or cached (saving one by hand still fetches on demand).
+     */
+    public boolean imageMessagesEnabled = true;
+    /**
+     * Time divider between messages, in minutes; 0 disables the divider. A
+     * pill with the clock time is drawn above a message when this many minutes
+     * have passed since the previous one.
+     */
+    public int timestampIntervalMinutes = 5;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AtomChatConfig instance;

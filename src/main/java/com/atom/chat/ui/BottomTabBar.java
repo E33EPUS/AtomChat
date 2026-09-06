@@ -73,15 +73,17 @@ public final class BottomTabBar {
         if (bar == null || bar.w() <= 0.0F || bar.h() <= 0.0F) {
             return;
         }
+        SkiaDraw.drawRoundedShadow(canvas, bar.x(), bar.y(), bar.w(), bar.h(),
+                UiTokens.radius(18), UiTokens.s(8), UiTokens.CHROME_SHADOW);
         SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(),
-                UiTokens.s(18), Color.makeARGB(60, 255, 255, 255));
+                UiTokens.radius(18), UiTokens.cardFill());
 
         float cellWidth = bar.w() / 3.0F;
         // The selected/hover capsule is inset from the bar by TAB_EDGE_PAD on
         // all four sides; its height is bar height minus the two vertical edge
         // pads. With no label, the icon sits on the pill's vertical centre.
         float inset = UiTokens.TAB_EDGE_PAD;
-        float radius = UiTokens.s(8);
+        float radius = UiTokens.radius(8);
         float capsuleY = bar.y() + inset;
         float capsuleH = bar.h() - inset * 2.0F;
         float capsuleW = cellWidth - inset * 2.0F;
@@ -102,7 +104,7 @@ public final class BottomTabBar {
             }
             float x = bar.x() + cellWidth * i + inset;
             SkiaDraw.drawRoundedRect(canvas, x, capsuleY, capsuleW, capsuleH, radius,
-                    Color.makeARGB((int) (45.0F * hov), 255, 255, 255));
+                    UiTokens.cardHover(hov));
         }
 
         for (int i = 0; i < 3; i++) {

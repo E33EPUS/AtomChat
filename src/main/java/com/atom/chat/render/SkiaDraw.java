@@ -9,6 +9,7 @@ import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ImageFilter;
 import io.github.humbleui.skija.MaskFilter;
 import io.github.humbleui.skija.Paint;
+import io.github.humbleui.skija.PaintMode;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Shader;
 import io.github.humbleui.types.RRect;
@@ -28,6 +29,23 @@ public final class SkiaDraw {
         try (Paint shadow = new Paint().setColor(color).setAntiAlias(true)
                 .setMaskFilter(MaskFilter.makeBlur(FilterBlurMode.NORMAL, blur))) {
             canvas.drawRRect(RRect.makeXYWH(x + blur * 0.5F, y + blur * 0.5F, width, height, radius), shadow);
+        }
+    }
+
+    /**
+     * 1px-class inner edge highlight: a low-alpha stroke hugging the card
+     * border, read as the lit edge an elevated surface catches. Draw right
+     * after the card fill; the intensity contrast against the fill does the
+     * work, so a fixed subtle white works on both frosted and opaque cards.
+     */
+    public static void drawEdgeHighlight(Canvas canvas, float x, float y, float width, float height,
+                                         float radius, float strokeWidth, int color) {
+        try (Paint paint = new Paint().setColor(color).setAntiAlias(true)
+                .setMode(PaintMode.STROKE).setStrokeWidth(strokeWidth)) {
+            float inset = strokeWidth * 0.5F;
+            canvas.drawRRect(RRect.makeXYWH(x + inset, y + inset,
+                    Math.max(0.0F, width - strokeWidth), Math.max(0.0F, height - strokeWidth),
+                    Math.max(0.0F, radius - inset)), paint);
         }
     }
 

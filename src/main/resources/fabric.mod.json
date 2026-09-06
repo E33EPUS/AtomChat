@@ -3,9 +3,9 @@
   "id": "atomchat",
   "version": "${version}",
   "name": "AtomChat",
-  "description": "A phone-app style chat UI for Minecraft, powered by Skija.",
+  "description": "A phone-app style chat experience for Minecraft, powered by Skia.",
   "authors": [
-    "AtomChat"
+    "E33EPUS"
   ],
   "license": "MIT",
   "environment": "*",

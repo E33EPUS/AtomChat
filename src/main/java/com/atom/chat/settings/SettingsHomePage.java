@@ -103,10 +103,12 @@ public final class SettingsHomePage {
 
     private void drawTile(Canvas canvas, UiLayout.Rect tile, SettingsSection section, float hover) {
         SkiaDraw.drawRoundedRect(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
-                UiTokens.SETTINGS_TILE_RADIUS, Color.makeARGB(60, 255, 255, 255));
+                UiTokens.settingsTileRadius(), UiTokens.cardFill());
+        SkiaDraw.drawEdgeHighlight(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
+                UiTokens.settingsTileRadius(), UiTokens.s(1.2F), UiTokens.CARD_EDGE);
         if (hover > 0.01F) {
             SkiaDraw.drawRoundedRect(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
-                    UiTokens.SETTINGS_TILE_RADIUS, Color.makeARGB((int) (45.0F * hover), 255, 255, 255));
+                    UiTokens.settingsTileRadius(), UiTokens.cardHover(hover));
         }
 
         // One vertically centred group: glyph above, single label below. Both
@@ -119,14 +121,14 @@ public final class SettingsHomePage {
         float cx = tile.x() + tile.w() / 2.0F;
 
         drawIconCentered(canvas, iconFor(section), cx, groupTop + UiTokens.SETTINGS_TILE_ICON / 2.0F,
-                UiTokens.SETTINGS_TILE_ICON, Color.makeARGB(255, 255, 255, 255));
+                UiTokens.SETTINGS_TILE_ICON, com.atom.chat.config.AtomChatConfig.get().textPrimaryColor);
 
         float labelCenterY = groupTop + UiTokens.SETTINGS_TILE_ICON
                 + UiTokens.SETTINGS_TILE_TEXT_GAP + textH / 2.0F;
         float maxW = tile.w() - UiTokens.s(16);
         SkiaFontRenderer.drawTextCentered(canvas, titleFont,
                 SkiaFontRenderer.truncate(titleFont, title(section), maxW), cx, labelCenterY,
-                Color.makeARGB(255, 255, 255, 255));
+                com.atom.chat.config.AtomChatConfig.get().textPrimaryColor);
     }
 
     public static Path iconFor(SettingsSection section) {

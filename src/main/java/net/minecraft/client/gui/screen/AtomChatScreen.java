@@ -6,7 +6,6 @@ import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.TeleportCommands;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
-import com.atom.chat.emote.EmoteImageCache;
 import com.atom.chat.emote.EmoteStore;
 import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
@@ -42,13 +41,17 @@ import com.atom.chat.settings.SettingsSection;
 import com.atom.chat.settings.SettingsSectionPage;
 import com.atom.chat.text.RichText;
 import com.atom.chat.text.RichTextLayout.RichLine;
+import com.atom.chat.theme.ThemeService;
 import com.atom.chat.ui.Animations;
 import com.atom.chat.ui.BottomTabBar;
 import com.atom.chat.ui.ScrollController;
 import com.atom.chat.ui.ShellHeader;
 import com.atom.chat.ui.UiLayout;
+import com.atom.chat.ui.EmojiPanel;
 import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
+import com.atom.chat.ui.input.InputHandler;
+import com.atom.chat.ui.input.InputRouter;
 import com.atom.chat.wallpaper.WallpaperImage;
 import com.atom.chat.wallpaper.WallpaperStore;
 import com.atom.chat.util.ClipboardImages;
@@ -187,12 +190,20 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         } else if ("teleport_mode".equals(actionId)) {
             AtomChatConfig cfg = AtomChatConfig.get();
             String current = cfg.teleportCommandMode == null ? "auto" : cfg.teleportCommandMode;
+            // auto -> tp -> tpa -> auto. The old cycle was tp -> tpa -> tp:
+            // once you left auto there was no way back — reported and fixed.
             cfg.teleportCommandMode = switch (current) {
                 case "tp" -> "tpa";
-                case "tpa" -> "tp";
+                case "tpa" -> "auto";
                 default -> "tp";
             };
             TeleportCommands.reset();
+            AtomChatConfig.save(cfg);
+        } else if ("theme_cycle".equals(actionId)) {
+            // Snapshot application: clicking applies the other preset in place.
+            AtomChatConfig cfg = AtomChatConfig.get();
+            boolean onModern = ThemeService.MODERN.equals(cfg.themeName);
+            ThemeService.apply(cfg, onModern ? ThemeService.FROSTED : ThemeService.MODERN);
             AtomChatConfig.save(cfg);
         }
     }
@@ -248,11 +259,40 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final String originalChatText;
     private final SkiaGraphics graphics = new SkiaGraphics();
     private final ImageUploader imageUploader = new ImageUploader();
+    /**
+     * Ordered input routing. Priority (first registered wins): closing guard,
+     * modals (cropper/colour picker), pushed-subpage Esc, screen Esc, root
+     * pages, world chat. New interactive features register a handler instead
+     * of inserting branches into the former if-else chains.
+     */
+    private final InputRouter inputRouter = new InputRouter()
+            .add(new ClosingStateInput())
+            .add(new ModalInput())
+            .add(new ScreenEscInput())
+            .add(new RootPageInput())
+            .add(new WorldChatInput());
     private final List<MessageHit> hits = new ArrayList<>();
-    /** Local emote pack; see {@link EmoteStore} for the persistence rules. */
-    private final EmoteStore emoteStore = new EmoteStore(
-            FabricLoader.getInstance().getConfigDir().resolve("atomchat/emotes"));
-    private final EmoteImageCache emoteImageCache = new EmoteImageCache();
+    /**
+     * Emoji / kaomoji / emote panel: state, geometry and rendering live in the
+     * panel class; the screen only supplies composer side effects (insert
+     * text, send sticker, open the picker).
+     */
+    private final EmojiPanel emojiPanel = new EmojiPanel(new EmojiPanel.Host() {
+        @Override
+        public void insert(String text) {
+            inputAppend(text);
+        }
+
+        @Override
+        public void sendSticker(Path file) {
+            uploadAndAppend(file);
+        }
+
+        @Override
+        public void pickEmoteFile() {
+            AtomChatScreen.this.pickEmoteFile();
+        }
+    });
 
     private boolean inputFocused = true;
     /** Scroll state for the world-chat message list. */
@@ -268,23 +308,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** Scroll state for a pushed settings sub-page; reset on every push/pop. */
     private final ScrollController detailScroll = new ScrollController();
     private ChatMessage replyTarget;
-    private boolean emojiOpen;
-    private int emojiTab;
-    private int emojiScroll;
     private ChatMessage contextMessage;
     private PlayerRef contextPlayer;
     private float contextX;
     private float contextY;
     private ContextMenuMode contextMenuMode = ContextMenuMode.BUBBLE;
 
-    // Per-cell hover fade shared by the emoji / kaomoji / emote grids.
-    private final Map<Integer, Float> cellHover = new HashMap<>();
+    // Per-cell hover fade for the bubble context menu rows.
     private final float[] contextMenuHover = new float[4];
-    // Emoji tab transition: double-layer content slide + sliding indicator.
-    private final Animator tabContentAnim = new Animator(Easing::easeInOutCubic);
-    private final Animator tabIndicatorAnim = new Animator(Easing::easeInOutCubic);
-    private int tabAnimFrom = -1;
-    private int tabAnimTo = -1;
 
     // Root tab transition. The bottom bar owns the shared Animator; the screen
     // keeps the from/to slot indexes and reuses the same Animator for the root
@@ -304,8 +335,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** Hover wash behind the unified header back arrow. */
     private float backButtonHover;
-    /** Hover washes for the emoji panel tab strip. */
-    private final float[] emojiTabHover = new float[3];
+    /** Hover washes for the emoji panel tab strip (owned by {@link EmojiPanel}). */
 
     // Animation state — durations live in UiMotion so every transition is tuned
     // in one place and none of them can drift back to a sluggish value.
@@ -388,7 +418,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     // Per-frame animation state (smooth hover/popup transitions)
     private final float[] buttonHover = new float[3];
-    private float emojiAnim;
     private float contextAnim;
     private float jumpLatestAnim;
     private ChatMessage lastContextMessage;
@@ -879,8 +908,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         for (int i = 0; i < contextMenuHover.length; i++) {
             contextMenuHover[i] = 0.0F;
         }
-        emojiOpen = false;
-        emojiScroll = 0;
+        emojiPanel.resetTransient();
         replyTarget = null;
         clearTextSelection();
         pendingClickSpan = null;
@@ -922,7 +950,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     float vy = panelY() + strokeWidth;
                     float vw = panelWidth() - strokeWidth * 2.0F;
                     float vh = panelHeight() - strokeWidth * 2.0F;
-                    float vRadius = UiTokens.PANEL_RADIUS - strokeWidth;
+                    float vRadius = UiTokens.panelRadius() - strokeWidth;
                     double density = uiDensity();
                     double scaleFactor = this.client.getWindow().getScaleFactor();
                     float gx = (float) (vx * density / scaleFactor);
@@ -1263,8 +1291,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             }
         }
         syncScrollMotion();
-        float emojiTarget = emojiOpen ? 1.0F : 0.0F;
-        emojiAnim = UiMotion.approach(emojiAnim, emojiTarget, frameDt, Animations.ms(UiMotion.POPUP_MS));
+        emojiPanel.update(frameDt);
         UiLayout layout = layout();
         UiLayout.Rect panel = layout.rect();
         // Phone bezel: background is inset by the full stroke width so nothing can
@@ -1278,7 +1305,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         float innerY = panel.y() + strokeWidth;
         float innerW = panel.w() - strokeWidth * 2.0F;
         float innerH = panel.h() - strokeWidth * 2.0F;
-        float innerRadius = UiTokens.PANEL_RADIUS - strokeWidth;
+        float innerRadius = UiTokens.panelRadius() - strokeWidth;
 
         if (wallpaper != null) {
             // Solid base first, then the image on top at the configured
@@ -1354,16 +1381,47 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 float fromDx = popping ? travel * progress : -travel * progress;
                 float toDx = popping ? -travel * (1.0F - progress) : travel * (1.0F - progress);
                 suppressHeader = true;
-                drawMessageLayerForNav(canvas, layout, fromPage, fromDx);
-                drawMessageLayerForNav(canvas, layout, toPage, toDx);
+                if (fromPage.page() == AppPage.PROFILE_DETAIL
+                        || toPage.page() == AppPage.PROFILE_DETAIL) {
+                    // Chat <-> profile detail: full-width page push. The whole
+                    // chat body (messages, reply bar, composer) slides as one
+                    // piece under the incoming profile page — the lists-only
+                    // slide below reads wrong when the two sides have different
+                    // chrome (the detail page has no composer at all). The base
+                    // page is whichever side is the chat: topPage() is already
+                    // the destination on a push and still the detail on a pop,
+                    // so messages must be resolved per page, not off the stack.
+                    NavPage chatPage = fromPage.page() == AppPage.PROFILE_DETAIL ? toPage : fromPage;
+                    float baseDx = popping ? -travel * (1.0F - progress) : -travel * progress;
+                    UiLayout.Rect panelRect = layout.rect();
+                    canvas.save();
+                    SkiaDraw.clip(canvas, panelRect.x(), panelRect.y(), panelRect.w(), panelRect.h(), 0.0F);
+                    canvas.translate(baseDx, 0.0F);
+                    layout = updateInputLayout(layout);
+                    drawChatPageBody(canvas, layout, mouseX, mouseY, chatPage);
+                    canvas.restore();
+
+                    canvas.save();
+                    SkiaDraw.clip(canvas, panelRect.x(), panelRect.y(), panelRect.w(), panelRect.h(), 0.0F);
+                    canvas.translate(pageNavDx(travel), 0.0F);
+                    drawProfileDetail(canvas, mouseX, mouseY);
+                    canvas.restore();
+                } else {
+                    // World <-> private: identical chrome on both sides, so the
+                    // lists slide under a fixed header and composer.
+                    drawMessageLayerForNav(canvas, layout, fromPage, fromDx);
+                    drawMessageLayerForNav(canvas, layout, toPage, toDx);
+                    UiLayout.Rect bar = layout.inputBar;
+                    SkiaDraw.drawRoundedShadow(canvas, bar.x(), bar.y(), bar.w(), bar.h(),
+                            UiTokens.radius(18), s(8), UiTokens.CHROME_SHADOW);
+                    SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), UiTokens.radius(18),
+                            UiTokens.cardFill());
+                }
                 suppressHeader = false;
                 ShellHeader.render(canvas, layout.header, shellTitleFor(toPage), true,
                         backButton(), backButtonHover, textPrimary(),
                         toPage.page() == AppPage.PRIVATE_CHAT
                                 ? isOnlinePlayer(toPage.target()) : null);
-                UiLayout.Rect bar = layout.inputBar;
-                SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), s(18),
-                        Color.makeARGB(60, 255, 255, 255));
                 drawBezel(canvas, layout);
                 return;
             } else {
@@ -1436,14 +1494,49 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // exactly the height the bar gains.
         layout = updateInputLayout(layout);
 
-        drawMessages(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h());
+        drawChatPageBody(canvas, layout, mouseX, mouseY, topNav());
+
+        emojiPanel.render(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY), frameDt);
+        drawContextMenu(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
+
+        if (navRunning) {
+            canvas.restore();
+            suppressHeader = false;
+            // Fixed status-bar header: it never slides with the page bodies.
+            if (!pageNavTo.isRoot()) {
+                ShellHeader.render(canvas, layout.header, shellTitleFor(pageNavTo), true,
+                        backButton(), backButtonHover, textPrimary(),
+                        pageNavTo.page() == AppPage.PRIVATE_CHAT
+                                ? isOnlinePlayer(pageNavTo.target()) : null);
+            } else {
+                UiLayout root = rootLayout();
+                ShellHeader.render(canvas, root.header, shellTitleFor(pageNavTo), false, null, 0.0F,
+                        textPrimary());
+            }
+        }
+
+        // Bezel ring last: nothing at the panel edge can sit on top of it.
+        drawBezel(canvas, layout);
+    }
+
+    /**
+     * The whole chat page body — messages, reply bar, composer, scrollbar,
+     * jump-to-latest — drawn for a specific nav page. Self-contained so the
+     * full-width page push can slide it as one piece; the settled path calls
+     * it with the top page. The header and the emoji/context overlays stay
+     * with the caller: the header is a fixed status bar during pushes, and
+     * the overlays belong to the screen, not the sliding page.
+     */
+    private void drawChatPageBody(Canvas canvas, UiLayout layout, int mouseX, int mouseY, NavPage page) {
+        drawMessages(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h(),
+                messagesForNav(page), scrollForNav(page));
 
         // Reply bar floats above the input bar. It is drawn after the message
         // list so it always sits on top; the layout keeps an 8px gap below it.
         if (replyTarget != null) {
             UiLayout.Rect reply = layout.replyBar;
             float replyH = s(26);
-            SkiaDraw.drawRoundedRect(canvas, reply.x(), reply.y(), reply.w(), replyH, s(8), Color.makeARGB(90, 74, 144, 226));
+            SkiaDraw.drawRoundedRect(canvas, reply.x(), reply.y(), reply.w(), replyH, UiTokens.radius(8), Color.makeARGB(90, 74, 144, 226));
             Font replyFont = FontManager.font(UiTokens.FONT_NAME);
             String replyLabel = tr("atomchat.reply.to", messageSenderName(replyTarget),
                     abbreviate(replyTarget.getContentText(), 26));
@@ -1456,7 +1549,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // card never has message content underneath it.
         UiLayout.Rect bar = layout.inputBar;
         boolean readOnly = isPrivateReadOnly();
-        SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), s(18), Color.makeARGB(60, 255, 255, 255));
+        SkiaDraw.drawRoundedShadow(canvas, bar.x(), bar.y(), bar.w(), bar.h(), UiTokens.radius(18), s(8), UiTokens.CHROME_SHADOW);
+        SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), UiTokens.radius(18), UiTokens.cardFill());
         if (!readOnly) {
             drawIconButton(canvas, layout.imageBtn.x(), layout.imageBtn.y(), 0, mouseX, mouseY);
             drawIconButton(canvas, layout.emojiBtn.x(), layout.emojiBtn.y(), 1, mouseX, mouseY);
@@ -1541,42 +1635,25 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
 
         // Scrollbar (e33chat style): fades in near/hinting scroll, draggable, highlights.
-        drawScrollbar(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY), currentScroll());
+        drawScrollbar(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY), scrollForNav(page));
         drawJumpLatest(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY));
-
-        drawEmojiPanel(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
-        drawContextMenu(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
-
-        if (navRunning) {
-            canvas.restore();
-            suppressHeader = false;
-            // Fixed status-bar header: it never slides with the page bodies.
-            if (!pageNavTo.isRoot()) {
-                ShellHeader.render(canvas, layout.header, shellTitleFor(pageNavTo), true,
-                        backButton(), backButtonHover, textPrimary(),
-                        pageNavTo.page() == AppPage.PRIVATE_CHAT
-                                ? isOnlinePlayer(pageNavTo.target()) : null);
-            } else {
-                UiLayout root = rootLayout();
-                ShellHeader.render(canvas, root.header, shellTitleFor(pageNavTo), false, null, 0.0F,
-                        textPrimary());
-            }
-        }
-
-        // Bezel ring last: nothing at the panel edge can sit on top of it.
-        drawBezel(canvas, layout);
     }
 
     /**
      * White phone-style ring around the panel. Drawn last on both world-chat
-     * and root pages so no component can sit on top of the clean edge.
+     * and root pages so no component can sit on top of the clean edge. Part
+     * of the frosted look — the opaque modern preset turns it off.
      */
     private void drawBezel(Canvas canvas, UiLayout layout) {
+        if (!AtomChatConfig.get().panelOutline) {
+            return;
+        }
         UiLayout.Rect panel = layout.rect();
         float strokeWidth = s(3);
-        try (Paint border = new Paint().setMode(PaintMode.STROKE).setStrokeWidth(strokeWidth).setColor(0xFFFFFFFF)) {
+        try (Paint border = new Paint().setMode(PaintMode.STROKE).setStrokeWidth(strokeWidth)
+                .setColor(AtomChatConfig.get().panelOutlineColor)) {
             canvas.drawRRect(RRect.makeXYWH(panel.x() + strokeWidth / 2.0F, panel.y() + strokeWidth / 2.0F,
-                    panel.w() - strokeWidth, panel.h() - strokeWidth, UiTokens.PANEL_RADIUS), border);
+                    panel.w() - strokeWidth, panel.h() - strokeWidth, UiTokens.panelRadius()), border);
         }
     }
 
@@ -1838,7 +1915,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         SkiaDraw.drawRoundedRect(canvas, bx, by, UiTokens.BUTTON_W, UiTokens.BUTTON_H, UiTokens.BUTTON_RADIUS, Color.makeARGB(fill, 255, 255, 255));
         // Active states take the accent colour: the emoji button while its
         // panel is open (a toggle), any button for a moment after a press.
-        boolean activeTint = (id == 1 && emojiOpen) || buttonPressed(id);
+        boolean activeTint = (id == 1 && emojiPanel.isOpen()) || buttonPressed(id);
         drawIcon(canvas, id == 0 ? ICON_IMAGE_PATH : ICON_EMOJI_PATH, bx, by,
                 activeTint ? accent() : textPrimary());
     }
@@ -2080,7 +2157,19 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             long now = System.currentTimeMillis();
             pruneEntranceSettled(now);
             float cursorY = y;
-            for (ChatMessage msg : messages) {
+            for (int mi = 0; mi < messages.size(); mi++) {
+                ChatMessage msg = messages.get(mi);
+                if (dividerBefore(messages, mi)) {
+                    // Clock pill between messages. Drawn only when its own
+                    // message is in the extended viewport, so occluded
+                    // dividers cost nothing.
+                    float divOffset = cursorY - y;
+                    if (divOffset <= scroll.getScrollY() + height + 80.0F
+                            && divOffset + TIME_DIVIDER_H >= scroll.getScrollY() - 80.0F) {
+                        drawTimeDivider(canvas, msg.getTimestamp(), x, width, cursorY);
+                    }
+                    cursorY += TIME_DIVIDER_H + UiTokens.LIST_GAP;
+                }
                 float h = messageHeight(msg, width);
                 float offset = cursorY - y;
                 if (offset > scroll.getScrollY() + height + 80.0F) {
@@ -2149,6 +2238,47 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
     }
 
+    /** Clock pill height between messages (see {@link #dividerBefore}). */
+    private static final float TIME_DIVIDER_H = UiTokens.s(24);
+
+    /**
+     * A time divider is drawn above a message when {@code
+     * timestampIntervalMinutes} have passed since the previous one. 0 (or a
+     * single-message list head) draws nothing.
+     */
+    private static boolean dividerBefore(List<ChatMessage> messages, int index) {
+        if (index <= 0) {
+            return false;
+        }
+        int minutes = AtomChatConfig.get().timestampIntervalMinutes;
+        if (minutes <= 0) {
+            return false;
+        }
+        return messages.get(index).getTimestamp() - messages.get(index - 1).getTimestamp()
+                >= minutes * 60_000L;
+    }
+
+    /** The clock pill itself: same capsule family as system messages. */
+    private void drawTimeDivider(Canvas canvas, long timestamp, float x, float width, float y) {
+        Font font = FontManager.font(UiTokens.FONT_QUOTE);
+        String time = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                .withZone(java.time.ZoneId.systemDefault())
+                .format(java.time.Instant.ofEpochMilli(timestamp));
+        float textW = SkiaFontRenderer.getStringWidth(font, time);
+        float pillW = textW + s(20);
+        float pillH = TIME_DIVIDER_H - s(6);
+        float pillX = x + (width - pillW) / 2.0F;
+        float pillY = y + s(3);
+        int rgb = otherBubble();
+        SkiaDraw.drawRoundedRect(canvas, pillX, pillY, pillW, pillH, UiTokens.radius(10),
+                Color.makeARGB(110,
+                        (rgb >> 16) & 0xFF,
+                        (rgb >> 8) & 0xFF,
+                        rgb & 0xFF));
+        SkiaFontRenderer.drawTextCentered(canvas, font, time, x + width / 2.0F, pillY + pillH / 2.0F,
+                textSecondary());
+    }
+
     /**
      * Raw 0..1 progress of a message's entrance. Messages that existed before
      * this screen was opened are already settled; messages arriving while the
@@ -2198,6 +2328,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         String raw = msg.getRawText();
         String imageUrl = extractImageUrl(raw);
         if (imageUrl != null) {
+            if (!AtomChatConfig.get().imageMessagesEnabled) {
+                return drawImagePlaceholderMessage(canvas, msg, x, y, maxWidth, index);
+            }
             return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index);
         }
         RichText content = msg.getContentRich();
@@ -2252,7 +2385,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.BUBBLE_RADIUS, msg.isOwn() ? ownBubble() : otherBubble());
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
         RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
-                lineHeight, bubbleText(), clickableSpans, true);
+                lineHeight, bubbleText(msg), clickableSpans, true);
 
         float bottom = bubbleTop + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, bubbleWidth, bottom);
@@ -2284,7 +2417,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // bubble's RGB (otherBubbleColor), so they are not darker than the
         // "image loading" capsule users already see as the chat's grey tone.
         int placeholderRgb = otherBubble();
-        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, s(10),
+        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.radius(10),
                 Color.makeARGB(150,
                         (placeholderRgb >> 16) & 0xFF,
                         (placeholderRgb >> 8) & 0xFF,
@@ -2329,12 +2462,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             String fullNamePart = name + ": ";
             float placeholderW = SkiaFontRenderer.getStringWidth(quoteFont, msg.getQuoteText());
             String namePart = truncateToWidth(quoteFont, fullNamePart, Math.max(0.0F, textMaxW - placeholderW));
-            SkiaFontRenderer.drawText(canvas, quoteFont, namePart, textStartX, centerBaselineY, bubbleText());
+            SkiaFontRenderer.drawText(canvas, quoteFont, namePart, textStartX, centerBaselineY, bubbleText(msg));
             float namePartW = SkiaFontRenderer.getStringWidth(quoteFont, namePart);
             SkiaFontRenderer.drawText(canvas, quoteFont, msg.getQuoteText(), textStartX + namePartW,
                     centerBaselineY, Color.makeARGB(255, 85, 255, 85));
         } else {
-            SkiaFontRenderer.drawText(canvas, quoteFont, display, textStartX, centerBaselineY, bubbleText());
+            SkiaFontRenderer.drawText(canvas, quoteFont, display, textStartX, centerBaselineY, bubbleText(msg));
         }
     }
 
@@ -2424,10 +2557,50 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, imageW, bottom);
     }
 
+    /**
+     * Image messages with the receiving toggle off: a compact capsule with the
+     * green [图片] placeholder — the same mark as the vanilla HUD, and nothing
+     * is fetched or decoded. Identity (name + avatar) stays so the sender is
+     * still readable.
+     */
+    private MessageHit drawImagePlaceholderMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
+        boolean hasQuote = msg.getQuoteName() != null;
+        float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
+        Font font = FontManager.font(UiTokens.FONT_QUOTE);
+        String placeholder = tr("atomchat.hud.image");
+        float textW = SkiaFontRenderer.getStringWidth(font, placeholder);
+        float pillW = Math.min(maxWidth - UiTokens.BUBBLE_RETRACT, textW + UiTokens.BUBBLE_PAD * 2.0F);
+        float lineHeight = SkiaFontRenderer.getHeight(font);
+        float pillH = lineHeight + UiTokens.SYSTEM_BUBBLE_PAD_Y;
+        float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
+        float pillX = msg.isOwn() ? x + maxWidth - pillW - nameOffset : x + nameOffset;
+        float pillTop = y + UiTokens.NAME_BAND + quoteH;
+        drawMessageName(canvas, msg, y, pillX, pillX + pillW);
+        float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
+        float avatarY = y + s(4);
+        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
+        if (hasQuote) {
+            drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
+        }
+        int placeholderRgb = otherBubble();
+        SkiaDraw.drawRoundedRect(canvas, pillX, pillTop, pillW, pillH, UiTokens.radius(10),
+                Color.makeARGB(150,
+                        (placeholderRgb >> 16) & 0xFF,
+                        (placeholderRgb >> 8) & 0xFF,
+                        placeholderRgb & 0xFF));
+        SkiaFontRenderer.drawTextCentered(canvas, font, placeholder,
+                pillX + pillW / 2.0F, pillTop + pillH / 2.0F, Color.makeARGB(255, 85, 255, 85));
+        float bottom = pillTop + pillH;
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, pillTop, pillX, pillW, bottom);
+    }
+
     private float measureContentHeight(List<ChatMessage> messages, float width) {
         float contentHeight = 0;
-        for (ChatMessage msg : messages) {
-            contentHeight += messageHeight(msg, width) + UiTokens.LIST_GAP;
+        for (int i = 0; i < messages.size(); i++) {
+            if (dividerBefore(messages, i)) {
+                contentHeight += TIME_DIVIDER_H + UiTokens.LIST_GAP;
+            }
+            contentHeight += messageHeight(messages.get(i), width) + UiTokens.LIST_GAP;
         }
         return contentHeight;
     }
@@ -2447,6 +2620,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
         ImageMeta imageMeta = parseImageMeta(msg.getRawText());
         if (imageMeta != null) {
+            if (!AtomChatConfig.get().imageMessagesEnabled) {
+                Font font = FontManager.font(UiTokens.FONT_QUOTE);
+                return UiTokens.NAME_BAND + quoteH
+                        + SkiaFontRenderer.getHeight(font) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
+            }
             return UiTokens.NAME_BAND + quoteH + imageBubbleSize(imageMeta, maxWidth)[1];
         }
         Font font = FontManager.font(UiTokens.FONT_BODY);
@@ -2454,155 +2632,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         float wrapW = Math.max(s(20), maxWidth - UiTokens.BUBBLE_RETRACT - UiTokens.BUBBLE_PAD * 2.0F);
         int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font, wrapW).size();
         return UiTokens.NAME_BAND + quoteH + UiTokens.BUBBLE_PAD_Y + Math.max(lineHeight, lines * lineHeight);
-    }
-
-    private static float emojiPanelW() {
-        return UiTokens.EMOJI_COLS * UiTokens.EMOJI_CELL + UiTokens.EMOJI_PANEL_PAD * 2.0F;
-    }
-
-    private static float emojiContentH() {
-        return UiTokens.EMOJI_VISIBLE_ROWS * UiTokens.EMOJI_CELL;
-    }
-
-    private static float emojiPanelH() {
-        return UiTokens.EMOJI_TAB_H + emojiContentH() + UiTokens.EMOJI_PANEL_PAD;
-    }
-
-    private static final String[] EMOJI_TAB_KEYS = {
-            "atomchat.emoji.tab.emoji",
-            "atomchat.emoji.tab.kaomoji",
-            "atomchat.emoji.tab.emote"
-    };
-
-    private static String[] emojiTabLabels() {
-        String[] labels = new String[EMOJI_TAB_KEYS.length];
-        for (int i = 0; i < labels.length; i++) {
-            labels[i] = tr(EMOJI_TAB_KEYS[i]);
-        }
-        return labels;
-    }
-
-    private static final String[] EMOJIS = {
-            "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂",
-            "🙂", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘",
-            "😋", "😛", "😜", "🤪", "😎", "🤗", "🤔", "😐",
-            "😢", "😭", "😤", "😡", "🥺", "😴", "😷", "🤒",
-            "🐱", "🐶", "🐼", "🐨", "🐰", "🦊", "🐸", "🐵",
-            "🐭", "🐹", "🐮", "🦁", "🐯", "🐻", "🐧", "🐤",
-            "🐴", "🦄", "🐝", "🐞", "🦋", "🐙", "🦀", "🐠",
-            "🐷", "🐖",
-            "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "💔",
-            "💕", "💖", "💗", "💘", "💝", "💟", "❣️", "💌",
-            "👍", "👎", "👏", "🙌", "💪", "🤝", "👋", "✌️",
-            "🎮", "🎯", "🎨", "🎵", "🎶", "🎤", "🎧", "🎼",
-            "⭐", "🌟", "🔥", "💧", "🌈", "❄️", "🎉", "🎊",
-            "🍕", "🍔", "🌮", "🍩", "🍪", "🎂", "☕", "🍺",
-            "⬆️", "⬇️", "✅", "❌", "❓", "❗", "💤", "💡",
-            "💀", "🗿", "🤡", "👀", "💯", "💢", "💬", "💭",
-    };
-
-    private static final String[] KAOMOJI = {
-            "(｡•̀ᴗ-)✧", "(๑˃̵ᴗ˂̵)و", "(๑•̀ㅂ•́)و✧", "(◍•ᴗ•◍)",
-            "╰(*°▽°*)╯", "(≧∇≦)ﾉ", "(＾▽＾)", "✧٩(ˊωˋ*)و✧",
-            "ฅ^•ﻌ•^ฅ", "(•ω•)", "(￣▽￣*)", "(⌒▽⌒)☆",
-            "(o゜▽゜)o☆", "＼(￣▽￣)／", "(◔◡◔)", "／(=✪ x ✪=)＼",
-            "¯\\_(ツ)_/¯", "(ー_ー゛)", "(￢_￢)", "(¬_¬)",
-            "(⇀‸↼‶)", "(｡ŏ_ŏ)", "(・∀・)", "_(:з」∠)_",
-            "(╯°□°）╯︵ ┻━┻", "(´;ω;｀)", "Σ(°△°|||)", "(◎ロ◎)",
-            "(∪.∪ )...zzz",
-    };
-
-    private float emojiPanelX() {
-        return panelX() + UiTokens.LIST_PAD_X;
-    }
-
-    /** Sits directly above the input bar, so it follows the bar's grown height. */
-    private float emojiPanelY() {
-        return layout().inputBar.y() - UiTokens.PANEL_TOP_GAP - emojiPanelH() - s(6);
-    }
-
-    private boolean overEmojiPanel(float mx, float my) {
-        float px = emojiPanelX();
-        float py = emojiPanelY();
-        return mx >= px && mx <= px + emojiPanelW() && my >= py && my <= py + emojiPanelH();
-    }
-
-    private String[] emojiTabItems() {
-        return emojiTab == 1 ? KAOMOJI : EMOJIS;
-    }
-
-    private int emojiMaxScroll() {
-        if (emojiTab == 2) {
-            // 10 emotes in six columns fill two rows and never exceed the fixed
-            // content height, so the emote grid never scrolls.
-            return 0;
-        }
-        String[] items = emojiTabItems();
-        int cols = emojiTab == 1 ? 2 : UiTokens.EMOJI_COLS;
-        float itemH = emojiTab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
-        int rows = (items.length + cols - 1) / cols;
-        float totalH = rows * itemH;
-        return Math.max(0, (int) Math.ceil(totalH - emojiContentH()));
-    }
-
-    private String emojiPanelClick(float mx, float my) {
-        float px = emojiPanelX();
-        float py = emojiPanelY();
-        float pw = emojiPanelW();
-        if (!overEmojiPanel(mx, my)) {
-            return null;
-        }
-        // Tab bar. The strip is inset by EMOJI_PANEL_PAD so it aligns with the
-        // content grid below; the active pill then keeps a uniform s(4) inside it.
-        if (my < py + UiTokens.EMOJI_TAB_H) {
-            String[] labels = emojiTabLabels();
-            float tabInset = UiTokens.EMOJI_PANEL_PAD;
-            float tabStripX = px + tabInset;
-            float tabStripW = pw - tabInset * 2.0F;
-            float tabW = tabStripW / labels.length;
-            int t = (int) ((mx - tabStripX) / tabW);
-            if (t >= 0 && t < labels.length && t != emojiTab) {
-                int from = emojiTab;
-                emojiTab = t;
-                emojiScroll = 0;
-                cellHover.clear();
-                if (t == 2) {
-                    // Rescan so files dropped into the emote dir by hand show up.
-                    emoteStore.refresh();
-                }
-                startTabTransition(from, t);
-            }
-            return "";
-        }
-        // The emote (sticker) tab has its own grid — images, an add slot and a
-        // per-cell remove button. It does its work inline and never inserts text.
-        if (emojiTab == 2) {
-            return emotePanelClick(mx, my);
-        }
-        // Content grid.
-        String[] items = emojiTabItems();
-        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
-        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
-        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
-        float itemH = emojiTab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
-        int cols = emojiTab == 1 ? 2 : UiTokens.EMOJI_COLS;
-        float contentH = emojiContentH();
-        // The padding strips and the strip below the last visible row are dead
-        // space. Unclamped maths used to wrap them around: col -1 landed on the
-        // previous row's last emoji and col == cols on the next row's first, so
-        // a click in the gutter silently inserted a different emoji.
-        if (mx < contentX || mx > contentX + contentW
-                || my < contentY || my > contentY + contentH) {
-            return "";
-        }
-        int col = (int) ((mx - contentX) / (contentW / cols));
-        int row = (int) ((my - contentY + emojiScroll) / itemH);
-        col = Math.max(0, Math.min(cols - 1, col));
-        int idx = row * cols + col;
-        if (idx >= 0 && idx < items.length) {
-            return items[idx];
-        }
-        return "";
     }
 
     private void drawJumpLatest(Canvas canvas, UiLayout layout, float vmx, float vmy) {
@@ -2641,351 +2670,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return vmx >= x && vmx <= x + size && vmy >= y && vmy <= y + size;
     }
 
-    private void drawEmojiPanel(Canvas canvas, float vmx, float vmy) {
-        if (emojiAnim < 0.01F) {
-            return;
-        }
-        float panelX = emojiPanelX();
-        float panelY = emojiPanelY();
-        float panelW = emojiPanelW();
-        float panelH = emojiPanelH();
-        emojiScroll = Math.max(0, Math.min(emojiScroll, emojiMaxScroll()));
-        canvas.save();
-        try (Paint layer = new Paint()) {
-            layer.setColor(Color.makeARGB((int) (255.0F * emojiAnim), 0, 0, 0));
-            canvas.saveLayer(Rect.makeXYWH(panelX - s(24), panelY - s(24), panelW + s(48), panelH + s(48)), layer);
-            float sc = 0.92F + 0.08F * emojiAnim;
-            float cx = panelX + panelW / 2.0F;
-            float cy = panelY + panelH / 2.0F;
-            canvas.translate(cx, cy);
-            canvas.scale(sc, sc);
-            canvas.translate(-cx, -cy);
-            canvas.translate(0.0F, (1.0F - emojiAnim) * s(10));
-            SkiaDraw.drawRoundedRect(canvas, panelX, panelY, panelW, panelH, s(14), Color.makeARGB(245, 35, 39, 47));
-            SkiaDraw.drawRoundedShadow(canvas, panelX, panelY, panelW, panelH, s(14), s(8), Color.makeARGB(100, 0, 0, 0));
-
-            // Tabs: the active pill slides between slots when the tab changes.
-            tabIndicatorAnim.update(frameDt);
-            tabContentAnim.update(frameDt);
-            if (tabContentAnim.isDone()) {
-                tabAnimFrom = -1;
-            }
-            updateEmojiTabHover(vmx, vmy);
-            Font tabFont = FontManager.font(UiTokens.FONT_BUTTON);
-            String[] labels = emojiTabLabels();
-            float tabInset = UiTokens.EMOJI_PANEL_PAD;
-            float tabStripX = panelX + tabInset;
-            float tabStripW = panelW - tabInset * 2.0F;
-            float tabW = tabStripW / labels.length;
-            float indicator = tabIndicatorAnim.getValue();
-            // The active pill keeps a uniform s(4) inset on every side of its tab
-            // slot, and the whole strip is inset so it never crowds the panel's
-            // rounded border (Apple-style calculated spacing).
-            // The active pill leaves s(6) above and only s(2) below: the extra
-            // bottom length makes the label's visual centre line up with the
-            // pill's centre (the text baseline is drawn slightly low).
-            SkiaDraw.drawRoundedRect(canvas, tabStripX + indicator * tabW + s(4), panelY + s(6),
-                    tabW - s(8), UiTokens.EMOJI_TAB_H - s(8), s(8), Color.makeARGB(90, 255, 255, 255));
-            for (int t = 0; t < labels.length; t++) {
-                float hov = emojiTabHover[t];
-                if (hov > 0.01F) {
-                    float hx = tabStripX + t * tabW + s(4);
-                    float hy = panelY + s(6);
-                    float hw = tabW - s(8);
-                    float hh = UiTokens.EMOJI_TAB_H - s(8);
-                    SkiaDraw.drawRoundedRect(canvas, hx, hy, hw, hh, s(8),
-                            Color.makeARGB((int) (45.0F * hov), 255, 255, 255));
-                }
-                float tx = tabStripX + t * tabW;
-                SkiaFontRenderer.drawTextCentered(canvas, tabFont, labels[t],
-                        tx + tabW / 2.0F, panelY + UiTokens.EMOJI_TAB_H / 2.0F + s(2), textPrimary());
-            }
-
-            // Content area (clipped, scrollable). Switching tabs plays an opaque
-            // push, like moving from one screen to the next: the outgoing tab is
-            // pushed out as the incoming one slides in from the same direction,
-            // both fully opaque and covering the full content width. A short
-            // faded slide reads as a jitter, not a screen change.
-            float contentX = panelX + UiTokens.EMOJI_PANEL_PAD;
-            float contentY = panelY + UiTokens.EMOJI_TAB_H + s(2);
-            float contentW = panelW - UiTokens.EMOJI_PANEL_PAD * 2.0F;
-            float contentH = emojiContentH();
-            updateGridHover(vmx, vmy);
-            canvas.save();
-            SkiaDraw.clip(canvas, contentX, contentY, contentW, contentH, 0.0F);
-            boolean transitioning = tabAnimFrom >= 0 && tabAnimFrom != emojiTab && !tabContentAnim.isDone();
-            float tp = transitioning ? tabContentAnim.getValue() : 1.0F;
-            if (transitioning) {
-                float travel = contentW;
-                float inSign = tabAnimTo > tabAnimFrom ? 1.0F : -1.0F;
-                drawEmojiTabContent(canvas, tabAnimFrom, contentX, contentY, contentW, contentH,
-                        -inSign * travel * tp, 1.0F, false);
-                drawEmojiTabContent(canvas, emojiTab, contentX, contentY, contentW, contentH,
-                        inSign * travel * (1.0F - tp), 1.0F, true);
-            } else {
-                drawEmojiTabContent(canvas, emojiTab, contentX, contentY, contentW, contentH,
-                        0.0F, 1.0F, true);
-            }
-            canvas.restore();
-            canvas.restore();
-        }
-        canvas.restore();
-    }
-
-    private void startTabTransition(int from, int to) {
-        tabAnimFrom = from;
-        tabAnimTo = to;
-        tabContentAnim.setValue(0.0F);
-        tabContentAnim.animateTo(UiMotion.TAB_MS, 1.0F);
-        tabIndicatorAnim.animateTo(UiMotion.TAB_MS, to);
-    }
-
-    private int gridHoverKey(int tab, int index) {
-        return tab * 1000 + index;
-    }
-
-    /**
-     * Hovered cell index for the active text tab (emoji/kaomoji), or -1 when the
-     * pointer is over the tab bar, a gutter or outside the content area. Matches
-     * emojiPanelClick's geometry so highlight and hit-test never drift.
-     */
-    private int textGridHoveredIndex(int tab, float mx, float my) {
-        String[] items = tab == 1 ? KAOMOJI : EMOJIS;
-        float px = emojiPanelX();
-        float py = emojiPanelY();
-        float pw = emojiPanelW();
-        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
-        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
-        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
-        float contentH = emojiContentH();
-        if (my < py + UiTokens.EMOJI_TAB_H
-                || mx < contentX || mx > contentX + contentW
-                || my < contentY || my > contentY + contentH) {
-            return -1;
-        }
-        int cols = tab == 1 ? 2 : UiTokens.EMOJI_COLS;
-        float itemH = tab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
-        int col = (int) ((mx - contentX) / (contentW / cols));
-        int row = (int) ((my - contentY + emojiScroll) / itemH);
-        if (col < 0 || col >= cols) {
-            return -1;
-        }
-        int idx = row * cols + col;
-        return idx >= 0 && idx < items.length ? idx : -1;
-    }
-
-    /**
-     * Hovered cell index for the emote tab (0..count, count = the "+" add slot),
-     * or -1 outside the content area / tab bar / gutters.
-     */
-    private int emoteGridHoveredIndex(float mx, float my) {
-        float px = emojiPanelX();
-        float py = emojiPanelY();
-        float pw = emojiPanelW();
-        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
-        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
-        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
-        float contentH = emojiContentH();
-        if (my < py + UiTokens.EMOJI_TAB_H
-                || mx < contentX || mx > contentX + contentW
-                || my < contentY || my > contentY + contentH) {
-            return -1;
-        }
-        float colW = contentW / UiTokens.EMOTE_COLS;
-        int col = (int) ((mx - contentX) / colW);
-        int row = (int) ((my - contentY) / UiTokens.EMOTE_CELL);
-        if (col < 0 || col >= UiTokens.EMOTE_COLS) {
-            return -1;
-        }
-        int idx = row * UiTokens.EMOTE_COLS + col;
-        int total = emoteStore.count() + 1;
-        return idx >= 0 && idx < total ? idx : -1;
-    }
-
-    /**
-     * Fades the emoji tab-strip hover washes. The capsule geometry is the same
-     * as the active pill, so hover follows the exact slots users click.
-     */
-    private void updateEmojiTabHover(float vmx, float vmy) {
-        int hovered = -1;
-        if (emojiOpen && overEmojiPanel(vmx, vmy)
-                && vmy < emojiPanelY() + UiTokens.EMOJI_TAB_H) {
-            float px = emojiPanelX();
-            float pw = emojiPanelW();
-            float inset = UiTokens.EMOJI_PANEL_PAD;
-            float stripX = px + inset;
-            float stripW = pw - inset * 2.0F;
-            if (vmx >= stripX && vmx <= stripX + stripW) {
-                String[] labels = emojiTabLabels();
-                float tabW = stripW / labels.length;
-                int t = (int) ((vmx - stripX) / tabW);
-                if (t >= 0 && t < labels.length) {
-                    hovered = t;
-                }
-            }
-        }
-        for (int i = 0; i < emojiTabHover.length; i++) {
-            emojiTabHover[i] = UiMotion.approach(emojiTabHover[i],
-                    i == hovered ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
-        }
-    }
-
-    /**
-     * Fades every tracked cell highlight toward its target — the pointer can only
-     * hover one cell, but every other cell must still decay when the mouse moves
-     * away. Called once per frame before the content layers are drawn, so both the
-     * outgoing and incoming tab layers read the same per-cell state.
-     */
-    private void updateGridHover(float vmx, float vmy) {
-        int hovered = -1;
-        if (emojiOpen && overEmojiPanel(vmx, vmy) && vmy >= emojiPanelY() + UiTokens.EMOJI_TAB_H) {
-            hovered = emojiTab == 2 ? emoteGridHoveredIndex(vmx, vmy) : textGridHoveredIndex(emojiTab, vmx, vmy);
-        }
-        int hoveredKey = hovered < 0 ? -1 : gridHoverKey(emojiTab, hovered);
-        Iterator<Map.Entry<Integer, Float>> it = cellHover.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Integer, Float> e = it.next();
-            boolean isHovered = e.getKey() == hoveredKey;
-            float next = UiMotion.approach(e.getValue(), isHovered ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
-            if (!isHovered && next <= 0.001F) {
-                it.remove();
-            } else {
-                e.setValue(next);
-            }
-        }
-        if (hoveredKey >= 0 && !cellHover.containsKey(hoveredKey)) {
-            cellHover.put(hoveredKey, 0.0F);
-        }
-    }
-
-    /**
-     * Draws one tab's content layer, optionally slid by dx and faded by alpha
-     * during a tab switch. The old layer is non-interactive (no hover highlights)
-     * because the pointer already targets the new tab.
-     */
-    private void drawEmojiTabContent(Canvas canvas, int tab, float contentX, float contentY, float contentW, float contentH,
-                                     float dx, float alpha, boolean interactive) {
-        if (alpha <= 0.005F) {
-            return;
-        }
-        boolean layered = alpha < 0.995F;
-        canvas.save();
-        canvas.translate(dx, 0.0F);
-        if (layered) {
-            try (Paint layer = new Paint()) {
-                layer.setColor(Color.makeARGB((int) (255.0F * alpha), 0, 0, 0));
-                // Cover the slide travel as well, or content leaving the layer's
-                // bounds would be cut out of the fade.
-                canvas.saveLayer(Rect.makeXYWH(contentX - s(24), contentY - s(8),
-                        contentW + s(48), contentH + s(16)), layer);
-                drawTabGrid(canvas, tab, contentX, contentY, contentW, contentH, interactive);
-            }
-        } else {
-            drawTabGrid(canvas, tab, contentX, contentY, contentW, contentH, interactive);
-        }
-        if (layered) {
-            canvas.restore();
-        }
-        canvas.restore();
-    }
-
-    private void drawTabGrid(Canvas canvas, int tab, float contentX, float contentY, float contentW, float contentH,
-                             boolean interactive) {
-        if (tab == 2) {
-            drawEmoteGrid(canvas, contentX, contentY, contentW, contentH, interactive);
-        } else {
-            drawEmojiTextGrid(canvas, tab, contentX, contentY, contentW, contentH, interactive);
-        }
-    }
-
-    /**
-     * Emoji/kaomoji text grid with a per-cell hover highlight that fades in and
-     * out (UiMotion.HOVER_MS), the same language as the buttons and emote cells.
-     * The capsule leaves a uniform s(2) margin from the cell; emoji glyphs are
-     * centred inside it while kaomoji rows keep a deliberate left padding so the
-     * text never touches the capsule edge.
-     */
-    private void drawEmojiTextGrid(Canvas canvas, int tab, float contentX, float contentY, float contentW, float contentH,
-                                   boolean interactive) {
-        String[] items = tab == 1 ? KAOMOJI : EMOJIS;
-        Font itemFont = FontManager.font(tab == 1 ? UiTokens.FONT_KAOMOJI : UiTokens.FONT_EMOJI);
-        float itemH = tab == 1 ? UiTokens.EMOJI_KAOMOJI_ROW_H : UiTokens.EMOJI_CELL;
-        int cols = tab == 1 ? 2 : UiTokens.EMOJI_COLS;
-        float cellW = contentW / cols;
-        for (int i = 0; i < items.length; i++) {
-            int col = i % cols;
-            int row = i / cols;
-            float ex = contentX + col * cellW;
-            float ey = contentY - emojiScroll + row * itemH;
-            if (ey + itemH < contentY || ey > contentY + contentH) {
-                continue;
-            }
-            if (interactive) {
-                float hov = cellHover.getOrDefault(gridHoverKey(tab, i), 0.0F);
-                if (hov > 0.01F) {
-                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), cellW - s(4), itemH - s(4), s(6),
-                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
-                }
-            }
-            if (tab == 1) {
-                SkiaFontRenderer.drawText(canvas, itemFont, items[i], ex + s(8),
-                        SkiaFontRenderer.centerBaselineY(itemFont, ey + itemH / 2.0F), textPrimary());
-            } else {
-                SkiaFontRenderer.drawTextCentered(canvas, itemFont, items[i],
-                        ex + cellW / 2.0F, ey + itemH / 2.0F, textPrimary());
-            }
-        }
-    }
-
-    /**
-     * Click handling for the emote (sticker) tab: tapping an emote sends it —
-     * upload the local file, drop its CICode into the draft — and closes the
-     * panel so the user cannot accidentally fire several uploads. The trailing
-     * "+" slot opens the picker; the hovered × deletes. Always returns "" because
-     * nothing here is inserted as plain text.
-     */
-    private String emotePanelClick(float mx, float my) {
-        float px = emojiPanelX();
-        float py = emojiPanelY();
-        float pw = emojiPanelW();
-        float contentX = px + UiTokens.EMOJI_PANEL_PAD;
-        float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
-        float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
-        float contentH = emojiContentH();
-        float colW = contentW / UiTokens.EMOTE_COLS;
-        if (mx < contentX || mx > contentX + contentW
-                || my < contentY || my > contentY + contentH) {
-            return "";
-        }
-        int col = Math.max(0, Math.min(UiTokens.EMOTE_COLS - 1, (int) ((mx - contentX) / colW)));
-        int row = (int) ((my - contentY) / UiTokens.EMOTE_CELL);
-        int idx = row * UiTokens.EMOTE_COLS + col;
-        List<File> emotes = emoteStore.list();
-        if (idx < emotes.size()) {
-            File emote = emotes.get(idx);
-            float ex = contentX + col * colW;
-            float ey = contentY + row * UiTokens.EMOTE_CELL;
-            float rs = UiTokens.EMOTE_REMOVE_SIZE;
-            // Remove button (top-right corner of the cell), hit before send.
-            if (mx >= ex + colW - rs - s(2) && mx <= ex + colW - s(2)
-                    && my >= ey + s(2) && my <= ey + s(2) + rs) {
-                emoteStore.remove(emote);
-                emoteImageCache.invalidate(emote);
-                cellHover.clear();
-                return "";
-            }
-            // Send: upload and close the panel (one sticker per tap).
-            emojiOpen = false;
-            uploadAndAppend(emote.toPath());
-            return "";
-        }
-        // The trailing "+" add slot, disabled once the pack is full.
-        if (idx == emotes.size() && !emoteStore.isFull()) {
-            pickEmoteFile();
-        }
-        return "";
-    }
-
     /**
      * Opens the FlatLaf image picker (same one as the image button) and copies
      * the chosen file into the emote store. The picker blocks its own worker
@@ -3003,83 +2687,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (file == null) {
                 return;
             }
-            this.client.execute(() -> {
-                if (emoteStore.add(file.toFile())) {
-                    // Adding may have overwritten an existing file of the same
-                    // name, so clear the decode cache rather than guess which
-                    // entry went stale. Ten entries, so it is cheap.
-                    emoteImageCache.clear();
-                    cellHover.clear();
-                }
-            });
+            this.client.execute(() -> emojiPanel.addEmote(file));
         }, "AtomChat-EmotePicker");
         worker.setDaemon(true);
         worker.start();
-    }
-
-    /**
-     * Emote (sticker) grid: six columns of {@code s(44)} cells. Each emote is
-     * fitted (never upscaled) into its cell; hovering highlights the cell and
-     * shows the × remove button; the last cell is the "+" add slot, grayed out
-     * when the pack is full.
-     */
-    private void drawEmoteGrid(Canvas canvas, float contentX, float contentY, float contentW, float contentH,
-                               boolean interactive) {
-        List<File> emotes = emoteStore.list();
-        float cell = UiTokens.EMOTE_CELL;
-        float colW = contentW / UiTokens.EMOTE_COLS;
-        float pad = s(4);
-        int total = emotes.size() + 1; // trailing "+" add slot
-        for (int i = 0; i < total; i++) {
-            int col = i % UiTokens.EMOTE_COLS;
-            int row = i / UiTokens.EMOTE_COLS;
-            float ex = contentX + col * colW;
-            float ey = contentY + row * cell;
-            if (ey + cell < contentY || ey > contentY + contentH) {
-                continue;
-            }
-            float hov = interactive ? cellHover.getOrDefault(gridHoverKey(2, i), 0.0F) : 0.0F;
-            if (i < emotes.size()) {
-                File emote = emotes.get(i);
-                // Image first, then the hover wash and remove button on top, so
-                // the × can never be buried under the picture.
-                Image img = emoteImageCache.image(emote);
-                float avail = cell - pad * 2.0F;
-                if (img != null) {
-                    // Fit into the cell, never upscale, centred.
-                    float scale = Math.min(1.0F, Math.min(avail / img.getWidth(), avail / img.getHeight()));
-                    float dw = Math.max(1.0F, img.getWidth() * scale);
-                    float dh = Math.max(1.0F, img.getHeight() * scale);
-                    SkiaDraw.drawRoundedImage(canvas, img,
-                            ex + (colW - dw) / 2.0F, ey + (cell - dh) / 2.0F, dw, dh, s(6));
-                } else {
-                    Font qFont = FontManager.font(UiTokens.FONT_QUOTE);
-                    SkiaFontRenderer.drawTextCentered(canvas, qFont, "?", ex + colW / 2.0F, ey + cell / 2.0F,
-                            textSecondary());
-                }
-                if (hov > 0.01F) {
-                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
-                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
-                    // Remove button.
-                    float rs = UiTokens.EMOTE_REMOVE_SIZE;
-                    SkiaDraw.drawRoundedRect(canvas, ex + colW - rs - s(2), ey + s(2), rs, rs, s(4),
-                            Color.makeARGB((int) (200.0F * hov), 214, 48, 48));
-                    Font xFont = FontManager.font(UiTokens.FONT_QUOTE);
-                    SkiaFontRenderer.drawTextCentered(canvas, xFont, "×",
-                            ex + colW - rs / 2.0F - s(2), ey + s(2) + rs / 2.0F,
-                            Color.makeARGB((int) (255.0F * hov), 255, 255, 255));
-                }
-            } else {
-                boolean disabled = emoteStore.isFull();
-                if (hov > 0.01F && !disabled) {
-                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
-                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
-                }
-                Font addFont = FontManager.font(UiTokens.FONT_EMOJI);
-                SkiaFontRenderer.drawTextCentered(canvas, addFont, "+", ex + colW / 2.0F, ey + cell / 2.0F,
-                        disabled ? Color.makeARGB(90, 255, 255, 255) : textPrimary());
-            }
-        }
     }
 
     private void drawContextMenu(Canvas canvas, float vmx, float vmy) {
@@ -3125,8 +2736,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             canvas.translate(menuX + menuW / 2.0F, menuY);
             canvas.scale(sc, sc);
             canvas.translate(-(menuX + menuW / 2.0F), -menuY);
-            SkiaDraw.drawRoundedRect(canvas, menuX, menuY, menuW, menuH, s(10), Color.makeARGB(245, 35, 39, 47));
-            SkiaDraw.drawRoundedShadow(canvas, menuX, menuY, menuW, menuH, s(10), s(8), Color.makeARGB(100, 0, 0, 0));
+            SkiaDraw.drawRoundedRect(canvas, menuX, menuY, menuW, menuH, UiTokens.radius(10), Color.makeARGB(245, 35, 39, 47));
+            SkiaDraw.drawRoundedShadow(canvas, menuX, menuY, menuW, menuH, UiTokens.radius(10), s(8), Color.makeARGB(100, 0, 0, 0));
             Font menuFont = FontManager.font(UiTokens.FONT_BUTTON);
             for (int row = 0; row < rows; row++) {
                 float rowY = menuY + row * rowH;
@@ -3149,7 +2760,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     label = bubbleContextLabel(row, imageMessage);
                     icon = bubbleContextIcon(row, imageMessage);
                 }
-                int textColor = textPrimary();
+                // Overlay surfaces keep the fixed overlay palette: they sit on
+                // their own opaque dark cards and must not follow the
+                // interface text colour setting.
+                int textColor = Color.makeARGB(255, 255, 255, 255);
                 if (playerMenu && row == 1 && !isOnlinePlayer(contextPlayer != null ? contextPlayer : lastContextPlayer)) {
                     textColor = Color.makeARGB(110, 255, 255, 255);
                 } else if (avatarMenu && row == 2) {
@@ -3364,43 +2978,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Wheel zooms the crop image around the circle centre while active.
-        if (imageCropper.isActive()) {
-            imageCropper.onScroll(layout().rect(), verticalAmount);
-            return true;
-        }
-        if (colorPicker.isActive()) {
-            colorPicker.onScroll(layout().rect(), verticalAmount);
-            return true;
-        }
-        float mx = toVirtualX(mouseX);
-        float my = toVirtualY(mouseY);
-        if (!isWorldChatPage()) {
-            // Dragging a slider must not scroll the list underneath it.
-            if (settingsSectionPage.isDraggingSlider()) {
-                return true;
-            }
-            UiLayout.Rect pageList = listLayout().list;
-            if (pageList.contains(mx, my)) {
-                listScroll().wheel((float) verticalAmount);
-                if (listScroll().getMaxScroll() > 0.0F) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        // Suggestion popup scrolls first when open.
-        if (chatInputSuggestor != null && chatInputSuggestor.mouseScrolled(verticalAmount)) {
-            return true;
-        }
-        if (emojiOpen && overEmojiPanel(mx, my)) {
-            emojiScroll = Math.max(0, Math.min(
-                    emojiScroll - (int) (verticalAmount * s(18)), emojiMaxScroll()));
-            return true;
-        }
-        UiLayout.Rect list = layout().list;
-        if (list.contains(mx, my)) {
-            currentScroll().wheel((float) verticalAmount);
+        if (inputRouter.scroll(mouseX, mouseY, horizontalAmount, verticalAmount)) {
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
@@ -3578,509 +3156,23 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (closing) {
+        if (inputRouter.click(mouseX, mouseY, button)) {
             return true;
-        }
-        // The avatar cropper is modal: while it is open it owns every click.
-        if (imageCropper.isActive()) {
-            imageCropper.onClick(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
-            return true;
-        }
-        // So is the colour picker.
-        if (colorPicker.isActive()) {
-            colorPicker.onClick(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
-            return true;
-        }
-        if (hasTextSelection() || selecting) {
-            clearTextSelection();
-        }
-        float mx = toVirtualX(mouseX);
-        float my = toVirtualY(mouseY);
-
-        // Root pages have no world-chat composer/message interactions. Route
-        // them before the hidden chat field/suggestion layer can see the click,
-        // and consume root clicks so ChatScreen's composer never gets focus.
-        if (!isWorldChatPage()) {
-            UiLayout pageLayout = listLayout();
-            ScrollController pageScroll = listScroll();
-            // Root-page player-card context menu gets priority over row clicks.
-            if (contextPlayer != null || lastContextPlayer != null) {
-                int rows = 2;
-                float rowH = UiTokens.MENU_H / 2.0F;
-                float menuH = rowH * rows;
-                float menuW = UiTokens.MENU_W;
-                float menuX = Math.min(contextX, panelX() + panelWidth() - menuW - s(8));
-                float menuY = Math.min(contextY, panelY() + panelHeight() - menuH - s(8));
-                boolean inside = mx >= menuX && mx <= menuX + menuW
-                        && my >= menuY && my <= menuY + menuH;
-                if (inside && button == 0) {
-                    int row = (int) ((my - menuY) / rowH);
-                    performPlayerCardAction(row);
-                    closeContextMenu();
-                    return true;
-                }
-                closeContextMenu();
-            }
-            if (button == 0 && overScrollbarTrack(pageLayout, mx, my, pageScroll)) {
-                pageScroll.beginDrag(my);
-                return true;
-            }
-            // A pushed settings sub-page: back arrow, then switch rows.
-            if (topPage() == AppPage.SETTINGS_SECTION) {
-                if (button == 0 && isBackButtonHit(mx, my)) {
-                    popPage();
-                    return true;
-                }
-                if (button == 0) {
-                    SettingsSection section = topNav().section();
-                    // A slider press starts a drag or nudges by one step; it
-                    // must never fall through to the row's other actions.
-                    SettingsSectionPage.SliderHit slider = settingsSectionPage.sliderHit(
-                            mx, my, pageLayout, section, pageScroll.getScrollY());
-                    if (slider != null) {
-                        float normalized = slider.row().slider()
-                                .normalize(slider.row().slider().value());
-                        if (slider.onKnob(mx, my, normalized)) {
-                            settingsSectionPage.beginSliderDrag(slider.index(), slider.row().slider(),
-                                    slider.rowRect(), mx);
-                        } else {
-                            settingsSectionPage.nudgeSlider(slider,
-                                    mx < slider.track().x() + slider.track().w() / 2.0F ? -1 : 1);
-                        }
-                        return true;
-                    }
-                    SettingsSectionPage.ColorHit colorHit = settingsSectionPage.colorHit(
-                            mx, my, pageLayout, section, pageScroll.getScrollY());
-                    if (colorHit != null) {
-                        if (colorHit.plus()) {
-                            colorPicker.open(colorHit.color());
-                        } else {
-                            settingsSectionPage.applyColor(colorHit);
-                        }
-                        return true;
-                    }
-                    SettingsSectionPage.RowHit hit = settingsSectionPage.hit(mx, my, pageLayout,
-                            section, pageScroll.getScrollY());
-                    if (hit != null && hit.onAction(mx, my)) {
-                        settingsSectionPage.perform(hit);
-                        return true;
-                    }
-                }
-                return true;
-            }
-            // A pushed profile detail: back arrow, then copyable rows/tiles.
-            if (topPage() == AppPage.PROFILE_DETAIL) {
-                if (button == 0 && isBackButtonHit(mx, my)) {
-                    popPage();
-                    return true;
-                }
-                if (button == 0) {
-                    profilePage.onClick(mx, my, detailLayout(), detailScroll.getScrollY());
-                }
-                return true;
-            }
-            if (button == 0 && handleBottomTabClick(mx, my)) {
-                return true;
-            }
-            if (topPage() == AppPage.SETTINGS && button == 0) {
-                SettingsSection section = settingsHomePage.hit(mx, my, pageLayout, pageScroll.getScrollY());
-                if (section != null) {
-                    openSettingsSection(section);
-                    return true;
-                }
-            }
-            if (topPage() == AppPage.PROFILE && button == 0) {
-                profilePage.onClick(mx, my, pageLayout, pageScroll.getScrollY());
-            }
-            if (topPage() == AppPage.CHAT_LIST) {
-                ConversationListPage.RowHit hit = conversationListPage.hit(mx, my, pageLayout, pageScroll.getScrollY());
-                if (hit != null) {
-                    if (hit.row().kind() == ConversationListPage.RowKind.PUBLIC && button == 0) {
-                        openWorldChat();
-                        return true;
-                    }
-                    if (hit.row().kind() == ConversationListPage.RowKind.PLAYER) {
-                        if (button == 0) {
-                            openPrivateChat(hit.row().player());
-                            return true;
-                        }
-                        if (button == 1) {
-                            contextMenuMode = ContextMenuMode.PLAYER_CARD;
-                            contextPlayer = hit.row().player();
-                            contextX = mx;
-                            contextY = my;
-                            contextMessage = null;
-                            return true;
-                        }
-                    }
-                }
-            }
-            return true;
-        }
-
-        float panelX = panelX();
-        float panelY = panelY();
-        UiLayout layout = layout();
-
-        // Vanilla suggestion layer gets first pick on clicks too (prevents click-through).
-        if (chatInputSuggestor != null && chatInputSuggestor.mouseClicked((int) mouseX, (int) mouseY, button)) {
-            return true;
-        }
-
-        // Back to the conversation list before any composer/emoji/message hit.
-        // resetTransientWorldUi() runs inside popPage() after any slide-out
-        // animation so the world page still looks intact while it leaves.
-        if (button == 0 && isBackButtonHit(mx, my)) {
-            popPage();
-            return true;
-        }
-
-        // Private read-only pages (offline/blocked) must not let the composer
-        // buttons or the text field take focus.
-        if (isPrivateReadOnly()
-                && (layout.inputBar.contains((float) mx, (float) my)
-                || layout.imageBtn.contains((float) mx, (float) my)
-                || layout.emojiBtn.contains((float) mx, (float) my)
-                || layout.sendBtn.contains((float) mx, (float) my))) {
-            return true;
-        }
-
-        // The emoji toggle button is tested before the panel's own "click outside
-        // dismisses" rule, otherwise closing and reopening in the same click nets
-        // back to open and the button can never toggle the panel off.
-        if (button == 0 && layout.emojiBtn.contains((float) mx, (float) my)) {
-            pressButton(1);
-            inputFocused = true;
-            emojiOpen = !emojiOpen;
-            if (emojiOpen) {
-                // Rescan on open: files dropped into the emote dir by hand appear.
-                emoteStore.refresh();
-                cellHover.clear();
-            }
-            return true;
-        }
-
-        // Emoji panel click: tabs first, then the currently visible grid.
-        if (emojiOpen) {
-            if (overEmojiPanel((float) mx, (float) my)) {
-                String inserted = emojiPanelClick((float) mx, (float) my);
-                if (inserted != null && !inserted.isEmpty()) {
-                    inputAppend(inserted);
-                }
-                return true;
-            }
-            emojiOpen = false;
-        }
-
-        // Context menu click. Remember the target before dismissing so a
-        // right-click on the same bubble/avatar toggles instead of reopening.
-        ChatMessage menuBefore = contextMessage;
-        ContextMenuMode menuBeforeMode = contextMenuMode;
-        if (contextMessage != null) {
-            float menuW = UiTokens.MENU_W;
-            boolean avatarMenu = contextMenuMode == ContextMenuMode.AVATAR;
-            boolean imageMessage = !avatarMenu && extractImageUrl(contextMessage.getRawText()) != null;
-            int rows = avatarMenu ? 4 : (imageMessage ? 3 : 2);
-            float rowH = UiTokens.MENU_H / 2.0F;
-            float menuH = rowH * rows;
-            float menuX = Math.min(contextX, panelX + panelWidth() - menuW - s(8));
-            float menuY = Math.min(contextY, panelY + panelHeight() - menuH - s(8));
-            boolean inside = (float) mx >= menuX && (float) mx <= menuX + menuW
-                    && (float) my >= menuY && (float) my <= menuY + menuH;
-            if (inside && button == 0) {
-                int row = (int) ((my - menuY) / rowH);
-                if (avatarMenu) {
-                    performAvatarMenuAction(row, contextMessage);
-                } else if (row == 0) {
-                    copyToClipboard(contextMessage.getContentText());
-                } else if (row == 1) {
-                    replyTarget = contextMessage;
-                    inputFocused = true;
-                    setFocused(chatField);
-                    chatField.setFocused(true);
-                } else {
-                    saveImage(contextMessage);
-                }
-                closeContextMenu();
-                return true;
-            }
-            // Any other click — including a right-click aimed at another bubble —
-            // dismisses first; the handlers below may then open a new menu.
-            closeContextMenu();
-        }
-
-        // Jump-to-latest bubble sits above the message list and takes priority
-        // over ordinary message clicks when it is visible.
-        if (button == 0 && overJumpLatest(layout, mx, my)) {
-            currentScroll().scrollToBottom(true);
-            return true;
-        }
-
-        // Button row: image / emoji / send share one row and one size,
-        // geometry comes from UiLayout so hits can never drift from the drawing.
-        if (button == 0 && layout.imageBtn.contains((float) mx, (float) my)) {
-            pressButton(0);
-            inputFocused = true;
-            pickAndUploadImage();
-            return true;
-        }
-        // Inserting an emoji must NOT close the panel: users often want to pick several
-        // in a row. The panel still closes on any outside click or the toggle button.
-        if (button == 0 && layout.sendBtn.contains((float) mx, (float) my)) {
-            pressButton(2);
-            sendMessage(inputGetText());
-            return true;
-        }
-
-        // Input box focus
-        inputFocused = false;
-        dismissSuggestor();
-        if (button == 0 && layout.inputBar.contains((float) mx, (float) my)) {
-            inputFocused = true;
-            setFocused(chatField);
-            chatField.setFocused(true);
-            // Click-to-position / drag-select on the multi-line Skia input:
-            // map the virtual point to a text index ourselves (the hidden
-            // EditBox geometry is caret-shifted and single-line, useless here).
-            int idx = inputCaretIndexAt(layout, (float) mx, (float) my);
-            if (hasShiftDown() && inputDragAnchor >= 0) {
-                chatField.setSelectionEnd(idx);
-            } else {
-                inputDragAnchor = idx;
-                chatField.setCursor(idx, false);
-            }
-            inputDragging = true;
-            return true;
-        }
-        setFocused(null);
-        chatField.setFocused(false);
-
-        // Scrollbar drag start
-        if (button == 0 && overScrollbarTrack(layout, mx, my, currentScroll())) {
-            currentScroll().beginDrag(my);
-            return true;
-        }
-
-        // Arm a click candidate for every left press before message interactions.
-        // This covers clickable sender names and any clickable span outside bubble
-        // text; the text-line branch below may overwrite it with the same result.
-        if (button == 0) {
-            pendingClickSpan = findClickableSpan(mx, my);
-            pendingClickMoved = false;
-        }
-
-        // Message interactions. Left avatar click only arms the double-click
-        // poke; single-click @ is deliberately gone (use the right-click menu).
-        // Right-click opens the bubble menu only when the pointer is actually on
-        // the bubble; right-click on a real player's avatar opens the avatar menu.
-        for (MessageHit hit : hits) {
-            if (my < hit.y() || my > hit.bottom()) {
-                continue;
-            }
-            if (button == 1 && hit.avatarSize() > 0F
-                    && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
-                    && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()
-                    && canOpenAvatarMenu(hit.message())) {
-                // Right-clicking the avatar the avatar menu is already on closes it.
-                if (menuBefore == hit.message() && menuBeforeMode == ContextMenuMode.AVATAR) {
-                    return true;
-                }
-                contextMenuMode = ContextMenuMode.AVATAR;
-                contextMessage = hit.message();
-                contextX = mx;
-                contextY = my;
-                return true;
-            }
-            if (button == 1 && !hit.message().isSystem()
-                    && mx >= hit.bubbleX() && mx <= hit.bubbleX() + hit.bubbleWidth()
-                    && my >= hit.bubbleY() && my <= hit.bubbleBottom()) {
-                // Right-clicking the bubble the menu is already on closes it.
-                if (menuBefore == hit.message()) {
-                    return true;
-                }
-                contextMenuMode = ContextMenuMode.BUBBLE;
-                contextMessage = hit.message();
-                contextX = mx;
-                contextY = my;
-                return true;
-            }
-            if (button == 0) {
-                List<MessageTextLine> textLines = textLinesForHit(hit);
-                for (MessageTextLine line : textLines) {
-                    float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
-                            FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
-                            line.text());
-                    if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
-                        // Remember any clickable run under the mouse before the
-                        // selection anchor is armed. Dragging from this point will
-                        // select text instead of firing the click; a clean click
-                        // (no drag) will fire it on mouse release.
-                        pendingClickSpan = findClickableSpan(mx, my);
-                        pendingClickMoved = false;
-                        selectionMessage = hit.message();
-                        selectionMessageLines = textLines.stream().map(MessageTextLine::text).toList();
-                        selectionAnchorLine = selectionFocusLine = line.line();
-                        selectionAnchorChar = selectionFocusChar = charAtLine(line, mx);
-                        selecting = true;
-                        selectionMoved = false;
-                        return true;
-                    }
-                }
-            }
-            if (button == 0 && hit.avatarSize() > 0F
-                    && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
-                    && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()) {
-                long now = System.currentTimeMillis();
-                boolean pokeEnabled = Animations.avatarPoke() && Animations.enabled();
-                boolean doubleClick = pokeEnabled
-                        && lastAvatarClickIndex == hit.index()
-                        && now - lastAvatarClickTime < AVATAR_CLICK_WINDOW_MS;
-                if (doubleClick) {
-                    // Double click → poke; cancels the pending single click.
-                    lastAvatarClickTime = 0;
-                    pendingAvatarClickMessage = null;
-                    pokeIndex = hit.index();
-                    pokeStartTime = now;
-                } else if (pokeEnabled) {
-                    // QQ-style competition window: the single click waits for
-                    // the double-click threshold before opening the profile.
-                    lastAvatarClickTime = now;
-                    lastAvatarClickIndex = hit.index();
-                    pendingAvatarClickTime = now;
-                    pendingAvatarClickIndex = hit.index();
-                    pendingAvatarClickMessage = hit.message();
-                } else {
-                    // With poke (or decorative motion) off a double click does
-                    // nothing, so there is nothing to compete with: jump at once.
-                    lastAvatarClickTime = 0;
-                    openProfileFor(hit.message());
-                }
-                return true;
-            }
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        // Pan the avatar-crop image while the modal cropper is open.
-        if (imageCropper.isActive()) {
-            imageCropper.onDrag(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+        if (inputRouter.drag(mouseX, mouseY, button, dragX, dragY)) {
             return true;
-        }
-        if (colorPicker.isActive()) {
-            colorPicker.onDrag(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
-            return true;
-        }
-        // Input drag selection: extend from the press anchor to the pointer.
-        if (inputDragging && isWorldChatPage() && button == 0 && chatField != null) {
-            int idx = inputCaretIndexAt(layout(), toVirtualX(mouseX), toVirtualY(mouseY));
-            chatField.setSelectionEnd(idx);
-            return true;
-        }
-        // Root pages have no world-chat selection state, but they do share the
-        // scrollbar drag model; do not forward drags to the hidden composer.
-        if (!isWorldChatPage()) {
-            // An active slider drag owns the pointer until release; the value
-            // follows the pointer's X even outside the row.
-            if (settingsSectionPage.isDraggingSlider()) {
-                UiLayout layout = listLayout();
-                settingsSectionPage.dragSlider(layout, topNav().section(),
-                        listScroll().getScrollY(), toVirtualX(mouseX));
-                return true;
-            }
-            if (button == 0 && listScroll().isDragging()) {
-                listScroll().dragTo(toVirtualY(mouseY), listLayout().list.h());
-                return true;
-            }
-            return false;
-        }
-        // Any drag while a click is pending must suppress the click-on-release,
-        // including drags that do not start a text selection (e.g. name bars).
-        if (button == 0 && pendingClickSpan != null) {
-            pendingClickMoved = true;
-        }
-        if (selecting && button == 0 && selectionMessage != null) {
-            float mx = toVirtualX(mouseX);
-            float my = toVirtualY(mouseY);
-            for (MessageHit hit : hits) {
-                if (my < hit.y() || my > hit.bottom() || hit.message() != selectionMessage) {
-                    continue;
-                }
-                for (MessageTextLine line : textLinesForHit(hit)) {
-                    float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
-                            FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
-                            line.text());
-                    if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
-                        int ch = charAtLine(line, mx);
-                        if (ch != selectionFocusChar || line.line() != selectionFocusLine) {
-                            selectionFocusLine = line.line();
-                            selectionFocusChar = ch;
-                            selectionMoved = true;
-                            pendingClickMoved = true;
-                        }
-                        return true;
-                    }
-                }
-            }
-            // A drag that leaves the text is still a drag, so it must suppress
-            // any click captured on mouse press even when no selection changed.
-            pendingClickMoved = true;
-            return true; // drag outside text keeps current selection active
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        // Root pages have no world-chat click-on-release handling, but the
-        // root scrollbar drag still ends here.
-        if (imageCropper.isActive()) {
-            imageCropper.endDrag();
-            return true;
-        }
-        if (colorPicker.isActive()) {
-            colorPicker.endDrag();
-            return true;
-        }
-        if (!isWorldChatPage()) {
-            settingsSectionPage.endSliderDrag();
-            if (button == 0 && listScroll().isDragging()) {
-                listScroll().endDrag();
-                return true;
-            }
-            return false;
-        }
-        if (button == 0) {
-            float mx = toVirtualX(mouseX);
-            float my = toVirtualY(mouseY);
-            boolean wasSelecting = selecting;
-            ClickableSpan pending = pendingClickSpan;
-            pendingClickSpan = null;
-            ClickableSpan released = findClickableSpan(mx, my);
-            boolean shouldClick = pending != null && !pendingClickMoved
-                    && pending.style().getClickEvent() != null
-                    && pending.equals(released);
-            if (wasSelecting) {
-                selecting = false;
-                if (!selectionMoved) {
-                    clearTextSelection();
-                }
-            }
-            pendingClickMoved = false;
-            if (inputDragging) {
-                inputDragging = false;
-            }
-            if (shouldClick) {
-                this.handleTextClick(pending.style());
-                return true;
-            }
-            if (wasSelecting) {
-                return true;
-            }
-        }
-        if (currentScroll().isDragging() && button == 0) {
-            currentScroll().endDrag();
+        if (inputRouter.release(mouseX, mouseY, button)) {
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -4088,144 +3180,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // The cropper is modal: Esc cancels it, every other key is swallowed.
-        if (imageCropper.isActive()) {
-            if (keyCode == 256) {
-                imageCropper.cancel();
-            }
+        if (inputRouter.key(keyCode, scanCode, modifiers)) {
             return true;
         }
-        if (colorPicker.isActive()) {
-            if (colorPicker.isInputFocused()) {
-                // Focused hex input: Esc leaves the input (auto-applying a
-                // legal buffer), Backspace deletes, everything else swallowed.
-                if (keyCode == 256) {
-                    colorPicker.blurInput();
-                } else if (keyCode == 259) {
-                    colorPicker.onBackspace();
-                }
-            } else if (keyCode == 256) {
-                colorPicker.cancel();
-            }
-            return true;
-        }
-        if (keyCode == 256) { // Esc: animated close
-            dismissSuggestor();
-            requestClose();
-            return true;
-        }
-        if (closing) {
-            return true;
-        }
-        if (isPrivateReadOnly()) {
-            return true;
-        }
-        // Root pages have no world-chat composer keyboard handling yet. The
-        // vanilla chat key still opens the World Chat page from any root page:
-        // replace with CHAT_LIST then push WORLD_CHAT so back returns to the
-        // conversation list. All other keys are consumed so they never reach the
-        // hidden ChatScreen chat field/history.
-        if (!isWorldChatPage()) {
-            if (isVanillaChatKey(keyCode, scanCode)) {
-                switchRoot(AppPage.CHAT_LIST);
-                pushPage(AppPage.WORLD_CHAT);
-                return true;
-            }
-            if (topPage() == AppPage.SETTINGS_SECTION && keyCode == 256) { // Esc
-                popPage();
-                return true;
-            }
-            if (topPage() == AppPage.PROFILE_DETAIL && keyCode == 256) { // Esc
-                popPage();
-                return true;
-            }
-            return true;
-        }
-        // Copy selected message text before the vanilla field/suggestion layer
-        // consumes Ctrl+C.
-        if (keyCode == 67 && (modifiers & 2) != 0 && hasTextSelection()) {
-            String copied = copySelectedText();
-            if (!copied.isEmpty()) {
-                this.client.keyboard.setClipboard(copied);
-            }
-            return true;
-        }
-        // Ctrl+V with a picture on the clipboard. MC's clipboard API only hands
-        // out strings, so the vanilla field would paste nothing at all; that
-        // flavour has to be intercepted before it gets that far.
-        if (keyCode == GLFW_KEY_V && (modifiers & 2) != 0) {
-            DataFlavor flavor = ClipboardImages.peek();
-            if (flavor != null) {
-                pasteFromClipboard(flavor);
-                return true;
-            }
-        }
-        // Vanilla suggestion layer gets first pick (Tab/arrows over the popup).
-        if (chatInputSuggestor != null && chatInputSuggestor.keyPressed(keyCode, scanCode, modifiers)) {
-            return true;
-        }
-        if (keyCode == 257 || keyCode == 335) { // Enter
-            if (inputFocused) {
-                sendMessage(inputGetText());
-            }
-            return true;
-        }
-        // Up/Down become caret navigation as soon as the text wraps onto a second
-        // line (>= INPUT_MAX_LINES). Once multiline, Up/Down never fall back to
-        // vanilla chat history — that remains a single-line behaviour.
-        if (inputFocused && chatField != null && (keyCode == 265 || keyCode == 264)) {
-            List<String> lines = wrappedInput(layout().inputTextMaxWidth());
-            if (lines.size() >= UiTokens.INPUT_MAX_LINES) {
-                int caret = caretIndex();
-                int row = caretLine(lines, caret);
-                int target = (keyCode == 265) ? row - 1 : row + 1;
-                if (target >= 0 && target < lines.size()) {
-                    int rowStart = 0;
-                    for (int i = 0; i < row; i++) {
-                        rowStart += lines.get(i).length();
-                    }
-                    int targetStart = 0;
-                    for (int i = 0; i < target; i++) {
-                        targetStart += lines.get(i).length();
-                    }
-                    // Move straight up/down at the same visual column, clamped to
-                    // the target line's length (standard text-editor behaviour).
-                    int col = MathHelper.clamp(caret - rowStart, 0, lines.get(row).length());
-                    int pos = targetStart + Math.min(col, lines.get(target).length());
-                    chatField.setCursor(pos, false);
-                }
-                return true;
-            }
-        }
-        if (inputFocused && AtomChatConfig.get().debug) {
-            AtomChat.LOGGER.info("keyPressed: {} (sc {}) mod {}", keyCode, scanCode, modifiers);
-        }
-        // Falls through to super (ChatScreen): the focused chatField consumes
-        // backspace/ctrl+v/arrows/IME input; up/down drive vanilla chat history.
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
     public boolean charTyped(char chr, int modifiers) {
-        if (closing) {
+        if (inputRouter.charTyped(chr, modifiers)) {
             return true;
-        }
-        // The colour picker's hex input swallows typed characters while active.
-        if (colorPicker.isActive()) {
-            colorPicker.onChar(chr);
-            return true;
-        }
-        if (imageCropper.isActive()) {
-            return true;
-        }
-        // Root pages do not own the composer, so typing must not reach the
-        // hidden ChatScreen chat field.
-        if (!isWorldChatPage()) {
-            return true;
-        }
-        if (AtomChatConfig.get().debug) {
-            AtomChat.LOGGER.info("charTyped: '{}' (U+{}) focused={} field={}",
-                    chr, Integer.toHexString(chr), inputFocused, chatField != null && chatField.isFocused());
         }
         return super.charTyped(chr, modifiers);
     }
@@ -4619,13 +3583,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private int textSecondary() {
-        // Derived from the primary text colour; no longer a separate setting.
-        return AtomChatConfig.get().derivedTextSecondary();
+        return AtomChatConfig.get().textSecondaryColor;
     }
 
     /** Text inside a chat bubble (body rich text and quoted text). */
-    private int bubbleText() {
-        return AtomChatConfig.get().bubbleTextColor;
+    private int bubbleText(ChatMessage msg) {
+        return msg != null && msg.isOwn()
+                ? AtomChatConfig.get().bubbleTextColor
+                : AtomChatConfig.get().otherBubbleTextColor;
     }
 
     private int panelBg() {
@@ -4799,5 +3764,805 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private record MessageHit(ChatMessage message, int index, float x, float y, float maxWidth, float bottom,
                               float avatarX, float avatarY, float avatarSize, float bubbleY, float bubbleX,
                               float bubbleWidth, float bubbleBottom) {
+    }
+
+    // ------------------------------------------------------------------ input handlers
+    //
+    // Ordered by the registration sequence in `inputRouter`. Each handler owns
+    // one interaction domain and answers events with consume/pass; nothing may
+    // ever be inserted "into the middle of a chain" again.
+
+    /** Consumes input while the close animation runs; clears message selection on any non-closing click. */
+    private final class ClosingStateInput implements InputHandler {
+        @Override
+        public boolean onClick(double mouseX, double mouseY, int button) {
+            if (closing) {
+                return true;
+            }
+            // Any non-modal click clears message text selection. This used to
+            // run after the modal checks; a modal can never be open together
+            // with a message selection, so checking it first is equivalent.
+            if (hasTextSelection() || selecting) {
+                clearTextSelection();
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onKey(int keyCode, int scanCode, int modifiers) {
+            return closing;
+        }
+
+        @Override
+        public boolean onChar(char chr, int modifiers) {
+            return closing;
+        }
+    }
+
+    /** The avatar cropper and the colour picker are modals: while active, each owns every event. */
+    private final class ModalInput implements InputHandler {
+        @Override
+        public boolean onClick(double mouseX, double mouseY, int button) {
+            // The avatar cropper is modal: while it is open it owns every click.
+            if (imageCropper.isActive()) {
+                imageCropper.onClick(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+                return true;
+            }
+            // So is the colour picker.
+            if (colorPicker.isActive()) {
+                colorPicker.onClick(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onDrag(double mouseX, double mouseY, int button, double dragX, double dragY) {
+            // Pan the avatar-crop image while the modal cropper is open.
+            if (imageCropper.isActive()) {
+                imageCropper.onDrag(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+                return true;
+            }
+            if (colorPicker.isActive()) {
+                colorPicker.onDrag(toVirtualX(mouseX), toVirtualY(mouseY), layout().rect());
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onRelease(double mouseX, double mouseY, int button) {
+            if (imageCropper.isActive()) {
+                imageCropper.endDrag();
+                return true;
+            }
+            if (colorPicker.isActive()) {
+                colorPicker.endDrag();
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onScroll(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+            // Wheel zooms the crop image around the circle centre while active.
+            if (imageCropper.isActive()) {
+                imageCropper.onScroll(layout().rect(), verticalAmount);
+                return true;
+            }
+            if (colorPicker.isActive()) {
+                colorPicker.onScroll(layout().rect(), verticalAmount);
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onKey(int keyCode, int scanCode, int modifiers) {
+            // The cropper is modal: Esc cancels it, every other key is swallowed.
+            if (imageCropper.isActive()) {
+                if (keyCode == 256) {
+                    imageCropper.cancel();
+                }
+                return true;
+            }
+            if (colorPicker.isActive()) {
+                if (colorPicker.isInputFocused()) {
+                    // Focused hex input: Esc leaves the input (auto-applying a
+                    // legal buffer), Backspace deletes, everything else swallowed.
+                    if (keyCode == 256) {
+                        colorPicker.blurInput();
+                    } else if (keyCode == 259) {
+                        colorPicker.onBackspace();
+                    }
+                } else if (keyCode == 256) {
+                    colorPicker.cancel();
+                }
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onChar(char chr, int modifiers) {
+            // The colour picker's hex input swallows typed characters while active.
+            if (colorPicker.isActive()) {
+                colorPicker.onChar(chr);
+                return true;
+            }
+            if (imageCropper.isActive()) {
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Esc closes the whole AtomChat screen with its animated close — from any
+     * page, including pushed sub-pages. Closing everything at once is the
+     * intended design (confirmed by the author 2026-09-06); do not "fix" it
+     * into a per-page pop.
+     */
+    private final class ScreenEscInput implements InputHandler {
+        @Override
+        public boolean onKey(int keyCode, int scanCode, int modifiers) {
+            if (keyCode == 256) { // Esc: animated close
+                dismissSuggestor();
+                requestClose();
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /** Root pages (conversation list / profile / settings): no composer, own scroll and rows. */
+    private final class RootPageInput implements InputHandler {
+        @Override
+        public boolean onClick(double mouseX, double mouseY, int button) {
+            // Root pages have no world-chat composer/message interactions. Route
+            // them before the hidden chat field/suggestion layer can see the click,
+            // and consume root clicks so ChatScreen's composer never gets focus.
+            if (isWorldChatPage()) {
+                return false;
+            }
+            float mx = toVirtualX(mouseX);
+            float my = toVirtualY(mouseY);
+            UiLayout pageLayout = listLayout();
+            ScrollController pageScroll = listScroll();
+            // Root-page player-card context menu gets priority over row clicks.
+            if (contextPlayer != null || lastContextPlayer != null) {
+                int rows = 2;
+                float rowH = UiTokens.MENU_H / 2.0F;
+                float menuH = rowH * rows;
+                float menuW = UiTokens.MENU_W;
+                float menuX = Math.min(contextX, panelX() + panelWidth() - menuW - s(8));
+                float menuY = Math.min(contextY, panelY() + panelHeight() - menuH - s(8));
+                boolean inside = mx >= menuX && mx <= menuX + menuW
+                        && my >= menuY && my <= menuY + menuH;
+                if (inside && button == 0) {
+                    int row = (int) ((my - menuY) / rowH);
+                    performPlayerCardAction(row);
+                    closeContextMenu();
+                    return true;
+                }
+                closeContextMenu();
+            }
+            if (button == 0 && overScrollbarTrack(pageLayout, mx, my, pageScroll)) {
+                pageScroll.beginDrag(my);
+                return true;
+            }
+            // A pushed settings sub-page: back arrow, then switch rows.
+            if (topPage() == AppPage.SETTINGS_SECTION) {
+                if (button == 0 && isBackButtonHit(mx, my)) {
+                    popPage();
+                    return true;
+                }
+                if (button == 0) {
+                    SettingsSection section = topNav().section();
+                    // A slider press starts a drag or nudges by one step; it
+                    // must never fall through to the row's other actions.
+                    SettingsSectionPage.SliderHit slider = settingsSectionPage.sliderHit(
+                            mx, my, pageLayout, section, pageScroll.getScrollY());
+                    if (slider != null) {
+                        float normalized = slider.row().slider()
+                                .normalize(slider.row().slider().value());
+                        if (slider.onKnob(mx, my, normalized)) {
+                            settingsSectionPage.beginSliderDrag(slider.index(), slider.row().slider(),
+                                    slider.rowRect(), mx);
+                        } else {
+                            settingsSectionPage.nudgeSlider(slider,
+                                    mx < slider.track().x() + slider.track().w() / 2.0F ? -1 : 1);
+                        }
+                        return true;
+                    }
+                    SettingsSectionPage.ColorHit colorHit = settingsSectionPage.colorHit(
+                            mx, my, pageLayout, section, pageScroll.getScrollY());
+                    if (colorHit != null) {
+                        if (colorHit.plus()) {
+                            colorPicker.open(colorHit.color());
+                        } else {
+                            settingsSectionPage.applyColor(colorHit);
+                        }
+                        return true;
+                    }
+                    SettingsSectionPage.RowHit hit = settingsSectionPage.hit(mx, my, pageLayout,
+                            section, pageScroll.getScrollY());
+                    if (hit != null && hit.onAction(mx, my)) {
+                        settingsSectionPage.perform(hit);
+                        return true;
+                    }
+                }
+                return true;
+            }
+            // A pushed profile detail: back arrow, then copyable rows/tiles.
+            if (topPage() == AppPage.PROFILE_DETAIL) {
+                if (button == 0 && isBackButtonHit(mx, my)) {
+                    popPage();
+                    return true;
+                }
+                if (button == 0) {
+                    profilePage.onClick(mx, my, detailLayout(), detailScroll.getScrollY());
+                }
+                return true;
+            }
+            if (button == 0 && handleBottomTabClick(mx, my)) {
+                return true;
+            }
+            if (topPage() == AppPage.SETTINGS && button == 0) {
+                SettingsSection section = settingsHomePage.hit(mx, my, pageLayout, pageScroll.getScrollY());
+                if (section != null) {
+                    openSettingsSection(section);
+                    return true;
+                }
+            }
+            if (topPage() == AppPage.PROFILE && button == 0) {
+                profilePage.onClick(mx, my, pageLayout, pageScroll.getScrollY());
+            }
+            if (topPage() == AppPage.CHAT_LIST) {
+                ConversationListPage.RowHit hit = conversationListPage.hit(mx, my, pageLayout, pageScroll.getScrollY());
+                if (hit != null) {
+                    if (hit.row().kind() == ConversationListPage.RowKind.PUBLIC && button == 0) {
+                        openWorldChat();
+                        return true;
+                    }
+                    if (hit.row().kind() == ConversationListPage.RowKind.PLAYER) {
+                        if (button == 0) {
+                            openPrivateChat(hit.row().player());
+                            return true;
+                        }
+                        if (button == 1) {
+                            contextMenuMode = ContextMenuMode.PLAYER_CARD;
+                            contextPlayer = hit.row().player();
+                            contextX = mx;
+                            contextY = my;
+                            contextMessage = null;
+                            return true;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        @Override
+        public boolean onDrag(double mouseX, double mouseY, int button, double dragX, double dragY) {
+            if (isWorldChatPage()) {
+                return false;
+            }
+            // Root pages have no world-chat selection state, but they do share the
+            // scrollbar drag model; do not forward drags to the hidden composer.
+            // An active slider drag owns the pointer until release; the value
+            // follows the pointer's X even outside the row.
+            if (settingsSectionPage.isDraggingSlider()) {
+                UiLayout layout = listLayout();
+                settingsSectionPage.dragSlider(layout, topNav().section(),
+                        listScroll().getScrollY(), toVirtualX(mouseX));
+                return true;
+            }
+            if (button == 0 && listScroll().isDragging()) {
+                listScroll().dragTo(toVirtualY(mouseY), listLayout().list.h());
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onRelease(double mouseX, double mouseY, int button) {
+            if (isWorldChatPage()) {
+                return false;
+            }
+            settingsSectionPage.endSliderDrag();
+            if (button == 0 && listScroll().isDragging()) {
+                listScroll().endDrag();
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onScroll(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+            if (isWorldChatPage()) {
+                return false;
+            }
+            float mx = toVirtualX(mouseX);
+            float my = toVirtualY(mouseY);
+            // Dragging a slider must not scroll the list underneath it.
+            if (settingsSectionPage.isDraggingSlider()) {
+                return true;
+            }
+            UiLayout.Rect pageList = listLayout().list;
+            if (pageList.contains(mx, my)) {
+                listScroll().wheel((float) verticalAmount);
+                return listScroll().getMaxScroll() > 0.0F;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onKey(int keyCode, int scanCode, int modifiers) {
+            if (isWorldChatPage()) {
+                return false;
+            }
+            // Root pages have no world-chat composer keyboard handling yet. The
+            // vanilla chat key still opens the World Chat page from any root page:
+            // replace with CHAT_LIST then push WORLD_CHAT so back returns to the
+            // conversation list. All other keys are consumed so they never reach the
+            // hidden ChatScreen chat field/history. (Esc is handled earlier by
+            // ScreenEscInput: it closes the whole screen from any page by design.)
+            if (isVanillaChatKey(keyCode, scanCode)) {
+                switchRoot(AppPage.CHAT_LIST);
+                pushPage(AppPage.WORLD_CHAT);
+            }
+            return true;
+        }
+
+        @Override
+        public boolean onChar(char chr, int modifiers) {
+            // Root pages do not own the composer, so typing must not reach the
+            // hidden ChatScreen chat field.
+            return !isWorldChatPage();
+        }
+    }
+
+    /** World chat and private chats: composer, emoji panel, message list, context menus. */
+    private final class WorldChatInput implements InputHandler {
+        @Override
+        public boolean onClick(double mouseX, double mouseY, int button) {
+            if (!isWorldChatPage()) {
+                return false;
+            }
+            float mx = toVirtualX(mouseX);
+            float my = toVirtualY(mouseY);
+            float panelX = panelX();
+            float panelY = panelY();
+            UiLayout layout = layout();
+
+            // Vanilla suggestion layer gets first pick on clicks too (prevents click-through).
+            if (chatInputSuggestor != null && chatInputSuggestor.mouseClicked((int) mouseX, (int) mouseY, button)) {
+                return true;
+            }
+
+            // Back to the conversation list before any composer/emoji/message hit.
+            // resetTransientWorldUi() runs inside popPage() after any slide-out
+            // animation so the world page still looks intact while it leaves.
+            if (button == 0 && isBackButtonHit(mx, my)) {
+                popPage();
+                return true;
+            }
+
+            // Private read-only pages (offline/blocked) must not let the composer
+            // buttons or the text field take focus.
+            if (isPrivateReadOnly()
+                    && (layout.inputBar.contains((float) mx, (float) my)
+                    || layout.imageBtn.contains((float) mx, (float) my)
+                    || layout.emojiBtn.contains((float) mx, (float) my)
+                    || layout.sendBtn.contains((float) mx, (float) my))) {
+                return true;
+            }
+
+            // The emoji toggle button is tested before the panel's own "click outside
+            // dismisses" rule, otherwise closing and reopening in the same click nets
+            // back to open and the button can never toggle the panel off.
+            if (button == 0 && layout.emojiBtn.contains((float) mx, (float) my)) {
+                pressButton(1);
+                inputFocused = true;
+                emojiPanel.toggle();
+                return true;
+            }
+
+            // Emoji panel click: tabs first, then the currently visible grid.
+            if (emojiPanel.isOpen()) {
+                if (emojiPanel.overPanel(layout, mx, my)) {
+                    String inserted = emojiPanel.click(layout, mx, my);
+                    if (inserted != null && !inserted.isEmpty()) {
+                        inputAppend(inserted);
+                    }
+                    return true;
+                }
+                emojiPanel.close();
+            }
+
+            // Context menu click. Remember the target before dismissing so a
+            // right-click on the same bubble/avatar toggles instead of reopening.
+            ChatMessage menuBefore = contextMessage;
+            ContextMenuMode menuBeforeMode = contextMenuMode;
+            if (contextMessage != null) {
+                float menuW = UiTokens.MENU_W;
+                boolean avatarMenu = contextMenuMode == ContextMenuMode.AVATAR;
+                boolean imageMessage = !avatarMenu && extractImageUrl(contextMessage.getRawText()) != null;
+                int rows = avatarMenu ? 4 : (imageMessage ? 3 : 2);
+                float rowH = UiTokens.MENU_H / 2.0F;
+                float menuH = rowH * rows;
+                float menuX = Math.min(contextX, panelX + panelWidth() - menuW - s(8));
+                float menuY = Math.min(contextY, panelY + panelHeight() - menuH - s(8));
+                boolean inside = (float) mx >= menuX && (float) mx <= menuX + menuW
+                        && (float) my >= menuY && (float) my <= menuY + menuH;
+                if (inside && button == 0) {
+                    int row = (int) ((my - menuY) / rowH);
+                    if (avatarMenu) {
+                        performAvatarMenuAction(row, contextMessage);
+                    } else if (row == 0) {
+                        copyToClipboard(contextMessage.getContentText());
+                    } else if (row == 1) {
+                        replyTarget = contextMessage;
+                        inputFocused = true;
+                        setFocused(chatField);
+                        chatField.setFocused(true);
+                    } else {
+                        saveImage(contextMessage);
+                    }
+                    closeContextMenu();
+                    return true;
+                }
+                // Any other click — including a right-click aimed at another bubble —
+                // dismisses first; the handlers below may then open a new menu.
+                closeContextMenu();
+            }
+
+            // Jump-to-latest bubble sits above the message list and takes priority
+            // over ordinary message clicks when it is visible.
+            if (button == 0 && overJumpLatest(layout, mx, my)) {
+                currentScroll().scrollToBottom(true);
+                return true;
+            }
+
+            // Button row: image / emoji / send share one row and one size,
+            // geometry comes from UiLayout so hits can never drift from the drawing.
+            if (button == 0 && layout.imageBtn.contains((float) mx, (float) my)) {
+                pressButton(0);
+                inputFocused = true;
+                pickAndUploadImage();
+                return true;
+            }
+            // Inserting an emoji must NOT close the panel: users often want to pick several
+            // in a row. The panel still closes on any outside click or the toggle button.
+            if (button == 0 && layout.sendBtn.contains((float) mx, (float) my)) {
+                pressButton(2);
+                sendMessage(inputGetText());
+                return true;
+            }
+
+            // Input box focus
+            inputFocused = false;
+            dismissSuggestor();
+            if (button == 0 && layout.inputBar.contains((float) mx, (float) my)) {
+                inputFocused = true;
+                setFocused(chatField);
+                chatField.setFocused(true);
+                // Click-to-position / drag-select on the multi-line Skia input:
+                // map the virtual point to a text index ourselves (the hidden
+                // EditBox geometry is caret-shifted and single-line, useless here).
+                int idx = inputCaretIndexAt(layout, (float) mx, (float) my);
+                if (hasShiftDown() && inputDragAnchor >= 0) {
+                    chatField.setSelectionEnd(idx);
+                } else {
+                    inputDragAnchor = idx;
+                    chatField.setCursor(idx, false);
+                }
+                inputDragging = true;
+                return true;
+            }
+            setFocused(null);
+            chatField.setFocused(false);
+
+            // Scrollbar drag start
+            if (button == 0 && overScrollbarTrack(layout, mx, my, currentScroll())) {
+                currentScroll().beginDrag(my);
+                return true;
+            }
+
+            // Arm a click candidate for every left press before message interactions.
+            // This covers clickable sender names and any clickable span outside bubble
+            // text; the text-line branch below may overwrite it with the same result.
+            if (button == 0) {
+                pendingClickSpan = findClickableSpan(mx, my);
+                pendingClickMoved = false;
+            }
+
+            // Message interactions. Left avatar click only arms the double-click
+            // poke; single-click @ is deliberately gone (use the right-click menu).
+            // Right-click opens the bubble menu only when the pointer is actually on
+            // the bubble; right-click on a real player's avatar opens the avatar menu.
+            for (MessageHit hit : hits) {
+                if (my < hit.y() || my > hit.bottom()) {
+                    continue;
+                }
+                if (button == 1 && hit.avatarSize() > 0F
+                        && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
+                        && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()
+                        && canOpenAvatarMenu(hit.message())) {
+                    // Right-clicking the avatar the avatar menu is already on closes it.
+                    if (menuBefore == hit.message() && menuBeforeMode == ContextMenuMode.AVATAR) {
+                        return true;
+                    }
+                    contextMenuMode = ContextMenuMode.AVATAR;
+                    contextMessage = hit.message();
+                    contextX = mx;
+                    contextY = my;
+                    return true;
+                }
+                if (button == 1 && !hit.message().isSystem()
+                        && mx >= hit.bubbleX() && mx <= hit.bubbleX() + hit.bubbleWidth()
+                        && my >= hit.bubbleY() && my <= hit.bubbleBottom()) {
+                    // Right-clicking the bubble the menu is already on closes it.
+                    if (menuBefore == hit.message()) {
+                        return true;
+                    }
+                    contextMenuMode = ContextMenuMode.BUBBLE;
+                    contextMessage = hit.message();
+                    contextX = mx;
+                    contextY = my;
+                    return true;
+                }
+                if (button == 0) {
+                    List<MessageTextLine> textLines = textLinesForHit(hit);
+                    for (MessageTextLine line : textLines) {
+                        float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
+                                FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
+                                line.text());
+                        if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
+                            // Remember any clickable run under the mouse before the
+                            // selection anchor is armed. Dragging from this point will
+                            // select text instead of firing the click; a clean click
+                            // (no drag) will fire it on mouse release.
+                            pendingClickSpan = findClickableSpan(mx, my);
+                            pendingClickMoved = false;
+                            selectionMessage = hit.message();
+                            selectionMessageLines = textLines.stream().map(MessageTextLine::text).toList();
+                            selectionAnchorLine = selectionFocusLine = line.line();
+                            selectionAnchorChar = selectionFocusChar = charAtLine(line, mx);
+                            selecting = true;
+                            selectionMoved = false;
+                            return true;
+                        }
+                    }
+                }
+                if (button == 0 && hit.avatarSize() > 0F
+                        && mx >= hit.avatarX() && mx <= hit.avatarX() + hit.avatarSize()
+                        && my >= hit.avatarY() && my <= hit.avatarY() + hit.avatarSize()) {
+                    long now = System.currentTimeMillis();
+                    boolean pokeEnabled = Animations.avatarPoke() && Animations.enabled();
+                    boolean doubleClick = pokeEnabled
+                            && lastAvatarClickIndex == hit.index()
+                            && now - lastAvatarClickTime < AVATAR_CLICK_WINDOW_MS;
+                    if (doubleClick) {
+                        // Double click → poke; cancels the pending single click.
+                        lastAvatarClickTime = 0;
+                        pendingAvatarClickMessage = null;
+                        pokeIndex = hit.index();
+                        pokeStartTime = now;
+                    } else if (pokeEnabled) {
+                        // QQ-style competition window: the single click waits for
+                        // the double-click threshold before opening the profile.
+                        lastAvatarClickTime = now;
+                        lastAvatarClickIndex = hit.index();
+                        pendingAvatarClickTime = now;
+                        pendingAvatarClickIndex = hit.index();
+                        pendingAvatarClickMessage = hit.message();
+                    } else {
+                        // With poke (or decorative motion) off a double click does
+                        // nothing, so there is nothing to compete with: jump at once.
+                        lastAvatarClickTime = 0;
+                        openProfileFor(hit.message());
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onDrag(double mouseX, double mouseY, int button, double dragX, double dragY) {
+            if (!isWorldChatPage()) {
+                return false;
+            }
+            // Input drag selection: extend from the press anchor to the pointer.
+            if (inputDragging && button == 0 && chatField != null) {
+                int idx = inputCaretIndexAt(layout(), toVirtualX(mouseX), toVirtualY(mouseY));
+                chatField.setSelectionEnd(idx);
+                return true;
+            }
+            // Any drag while a click is pending must suppress the click-on-release,
+            // including drags that do not start a text selection (e.g. name bars).
+            if (button == 0 && pendingClickSpan != null) {
+                pendingClickMoved = true;
+            }
+            if (selecting && button == 0 && selectionMessage != null) {
+                float mx = toVirtualX(mouseX);
+                float my = toVirtualY(mouseY);
+                for (MessageHit hit : hits) {
+                    if (my < hit.y() || my > hit.bottom() || hit.message() != selectionMessage) {
+                        continue;
+                    }
+                    for (MessageTextLine line : textLinesForHit(hit)) {
+                        float lineRight = line.x() + SkiaFontRenderer.getStringWidth(
+                                FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY),
+                                line.text());
+                        if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
+                            int ch = charAtLine(line, mx);
+                            if (ch != selectionFocusChar || line.line() != selectionFocusLine) {
+                                selectionFocusLine = line.line();
+                                selectionFocusChar = ch;
+                                selectionMoved = true;
+                                pendingClickMoved = true;
+                            }
+                            return true;
+                        }
+                    }
+                }
+                // A drag that leaves the text is still a drag, so it must suppress
+                // any click captured on mouse press even when no selection changed.
+                pendingClickMoved = true;
+                return true; // drag outside text keeps current selection active
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onRelease(double mouseX, double mouseY, int button) {
+            if (!isWorldChatPage()) {
+                return false;
+            }
+            if (button == 0) {
+                float mx = toVirtualX(mouseX);
+                float my = toVirtualY(mouseY);
+                boolean wasSelecting = selecting;
+                ClickableSpan pending = pendingClickSpan;
+                pendingClickSpan = null;
+                ClickableSpan released = findClickableSpan(mx, my);
+                boolean shouldClick = pending != null && !pendingClickMoved
+                        && pending.style().getClickEvent() != null
+                        && pending.equals(released);
+                if (wasSelecting) {
+                    selecting = false;
+                    if (!selectionMoved) {
+                        clearTextSelection();
+                    }
+                }
+                pendingClickMoved = false;
+                if (inputDragging) {
+                    inputDragging = false;
+                }
+                if (shouldClick) {
+                    handleTextClick(pending.style());
+                    return true;
+                }
+                if (wasSelecting) {
+                    return true;
+                }
+            }
+            if (currentScroll().isDragging() && button == 0) {
+                currentScroll().endDrag();
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onScroll(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+            if (!isWorldChatPage()) {
+                return false;
+            }
+            float mx = toVirtualX(mouseX);
+            float my = toVirtualY(mouseY);
+            // Suggestion popup scrolls first when open.
+            if (chatInputSuggestor != null && chatInputSuggestor.mouseScrolled(verticalAmount)) {
+                return true;
+            }
+            if (emojiPanel.isOpen() && emojiPanel.overPanel(layout(), mx, my)) {
+                emojiPanel.scroll(layout(), verticalAmount);
+                return true;
+            }
+            UiLayout.Rect list = layout().list;
+            if (list.contains(mx, my)) {
+                currentScroll().wheel((float) verticalAmount);
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onKey(int keyCode, int scanCode, int modifiers) {
+            if (!isWorldChatPage()) {
+                return false;
+            }
+            if (isPrivateReadOnly()) {
+                return true;
+            }
+            // Copy selected message text before the vanilla field/suggestion layer
+            // consumes Ctrl+C.
+            if (keyCode == 67 && (modifiers & 2) != 0 && hasTextSelection()) {
+                String copied = copySelectedText();
+                if (!copied.isEmpty()) {
+                    client.keyboard.setClipboard(copied);
+                }
+                return true;
+            }
+            // Ctrl+V with a picture on the clipboard. MC's clipboard API only hands
+            // out strings, so the vanilla field would paste nothing at all; that
+            // flavour has to be intercepted before it gets that far.
+            if (keyCode == GLFW_KEY_V && (modifiers & 2) != 0) {
+                DataFlavor flavor = ClipboardImages.peek();
+                if (flavor != null) {
+                    pasteFromClipboard(flavor);
+                    return true;
+                }
+            }
+            // Vanilla suggestion layer gets first pick (Tab/arrows over the popup).
+            if (chatInputSuggestor != null && chatInputSuggestor.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            if (keyCode == 257 || keyCode == 335) { // Enter
+                if (inputFocused) {
+                    sendMessage(inputGetText());
+                }
+                return true;
+            }
+            // Up/Down become caret navigation as soon as the text wraps onto a second
+            // line (>= INPUT_MAX_LINES). Once multiline, Up/Down never fall back to
+            // vanilla chat history — that remains a single-line behaviour.
+            if (inputFocused && chatField != null && (keyCode == 265 || keyCode == 264)) {
+                List<String> lines = wrappedInput(layout().inputTextMaxWidth());
+                if (lines.size() >= UiTokens.INPUT_MAX_LINES) {
+                    int caret = caretIndex();
+                    int row = caretLine(lines, caret);
+                    int target = (keyCode == 265) ? row - 1 : row + 1;
+                    if (target >= 0 && target < lines.size()) {
+                        int rowStart = 0;
+                        for (int i = 0; i < row; i++) {
+                            rowStart += lines.get(i).length();
+                        }
+                        int targetStart = 0;
+                        for (int i = 0; i < target; i++) {
+                            targetStart += lines.get(i).length();
+                        }
+                        // Move straight up/down at the same visual column, clamped to
+                        // the target line's length (standard text-editor behaviour).
+                        int col = MathHelper.clamp(caret - rowStart, 0, lines.get(row).length());
+                        int pos = targetStart + Math.min(col, lines.get(target).length());
+                        chatField.setCursor(pos, false);
+                    }
+                    return true;
+                }
+            }
+            if (inputFocused && AtomChatConfig.get().debug) {
+                AtomChat.LOGGER.info("keyPressed: {} (sc {}) mod {}", keyCode, scanCode, modifiers);
+            }
+            // Falls through to super (ChatScreen): the focused chatField consumes
+            // backspace/ctrl+v/arrows/IME input; up/down drive vanilla chat history.
+            return false;
+        }
+
+        @Override
+        public boolean onChar(char chr, int modifiers) {
+            if (!isWorldChatPage()) {
+                return false;
+            }
+            if (AtomChatConfig.get().debug) {
+                AtomChat.LOGGER.info("charTyped: '{}' (U+{}) focused={} field={}",
+                        chr, Integer.toHexString(chr), inputFocused, chatField != null && chatField.isFocused());
+            }
+            return false;
+        }
     }
 }

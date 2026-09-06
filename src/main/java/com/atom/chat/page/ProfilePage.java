@@ -135,12 +135,16 @@ public final class ProfilePage {
         float alpha = copyHover.computeIfAbsent(index, k -> 0.0F);
         alpha = UiMotion.approach(alpha, hovered ? 1.0F : 0.0F, dtMs, UiMotion.HOVER_MS);
         copyHover.put(index, alpha);
-        if (hovered) {
+        if (alpha > 0.01F) {
             float inset = s(3);
+            // Selection language (white 90) rather than the row-wash white 45:
+            // the button sits inside a highlighted row, so a 45-on-45 wash is
+            // invisible — the reason hover feedback looked missing entirely.
             SkiaDraw.drawRoundedRect(canvas, button.x() + inset, button.y() + inset,
-                    button.w() - inset * 2.0F, button.h() - inset * 2.0F, s(8),
-                    Color.makeARGB((int) (45.0F * alpha), 255, 255, 255));
+                    button.w() - inset * 2.0F, button.h() - inset * 2.0F, UiTokens.radius(8),
+                    Color.makeARGB((int) (90.0F * alpha), 255, 255, 255));
         }
+        int iconColor = Color.makeARGB((int) (210.0F + 45.0F * alpha), 255, 255, 255);
         float cx = button.x() + button.w() / 2.0F;
         float cy = button.y() + button.h() / 2.0F;
         if (copied) {
@@ -151,7 +155,9 @@ public final class ProfilePage {
             try (Paint paint = new Paint().setAntiAlias(true)
                     .setColor(accentColor())
                     .setMode(PaintMode.STROKE)
-                    .setStrokeWidth(s(1.8F))
+                    // The canvas scales after the paint is built: divide the
+                    // stroke by the scale or the glyph draws ~1.4x too thick.
+                    .setStrokeWidth(s(1.8F) / sc)
                     .setStrokeCap(PaintStrokeCap.ROUND)
                     .setStrokeJoin(PaintStrokeJoin.ROUND)) {
                 canvas.save();
@@ -168,11 +174,12 @@ public final class ProfilePage {
                     accentColor());
             return;
         }
-        int iconColor = Color.makeARGB(210, 255, 255, 255);
         try (Paint paint = new Paint().setAntiAlias(true)
                 .setColor(iconColor)
                 .setMode(PaintMode.STROKE)
-                .setStrokeWidth(s(1.5F))
+                // Same scale compensation as the check glyph above: the canvas
+                // scale would otherwise fatten the 1.5-unit stroke to ~2.2.
+                .setStrokeWidth(s(1.5F) / (s(13) / COPY_GLYPH_UNITS))
                 .setStrokeCap(PaintStrokeCap.ROUND)
                 .setStrokeJoin(PaintStrokeJoin.ROUND)) {
             canvas.save();
@@ -320,6 +327,17 @@ public final class ProfilePage {
 
     private static float s(float v) {
         return UiTokens.s(v);
+    }
+
+    /** Title/value colour — follows the interface text colour setting. */
+    private static int textPrimary() {
+        return com.atom.chat.config.AtomChatConfig.get().textPrimaryColor;
+    }
+
+    /** Muted label colour — follows the secondary text colour setting. */
+    private static int sec(int alpha) {
+        int c = com.atom.chat.config.AtomChatConfig.get().textSecondaryColor;
+        return Color.makeARGB(alpha, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
     }
 
     private static String tr(String key) {
@@ -587,7 +605,9 @@ public final class ProfilePage {
             return;
         }
         SkiaDraw.drawRoundedRect(canvas, hero.x(), hero.y(), hero.w(), hero.h(),
-                UiTokens.SETTINGS_TILE_RADIUS, Color.makeARGB(60, 255, 255, 255));
+                UiTokens.settingsTileRadius(), UiTokens.cardFill());
+        SkiaDraw.drawEdgeHighlight(canvas, hero.x(), hero.y(), hero.w(), hero.h(),
+                UiTokens.settingsTileRadius(), s(1.2F), UiTokens.CARD_EDGE);
 
         // Avatar: the local custom avatar when the subject is self and one is
         // set (decoded off-thread; the skin shows while the decode is in
@@ -626,7 +646,7 @@ public final class ProfilePage {
         SkiaFontRenderer.drawTextCentered(canvas, nameFont, subjectName(),
                 hero.x() + hero.w() / 2.0F,
                 avatar.bottom() + s(26),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
     }
 
     /** Dashboard tiles: big value centred, small label under it. */
@@ -640,14 +660,16 @@ public final class ProfilePage {
                 continue;
             }
             SkiaDraw.drawRoundedRect(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
-                    UiTokens.PROFILE_ROW_RADIUS, Color.makeARGB(60, 255, 255, 255));
+                    UiTokens.profileRowRadius(), UiTokens.cardFill());
+            SkiaDraw.drawEdgeHighlight(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
+                    UiTokens.profileRowRadius(), s(1.2F), UiTokens.CARD_EDGE);
             float cx = tile.x() + tile.w() / 2.0F;
             String value = SkiaFontRenderer.truncate(valueFont, tiles.get(i).value(),
                     tile.w() - UiTokens.PROFILE_ROW_PAD);
             SkiaFontRenderer.drawTextCentered(canvas, valueFont, value,
-                    cx, tile.y() + tile.h() / 2.0F - s(4), Color.makeARGB(255, 255, 255, 255));
+                    cx, tile.y() + tile.h() / 2.0F - s(4), textPrimary());
             SkiaFontRenderer.drawTextCentered(canvas, labelFont, tiles.get(i).label(),
-                    cx, tile.y() + tile.h() / 2.0F + s(15), Color.makeARGB(200, 170, 170, 186));
+                    cx, tile.y() + tile.h() / 2.0F + s(15), sec(200));
         }
     }
 
@@ -661,16 +683,18 @@ public final class ProfilePage {
                 continue;
             }
             SkiaDraw.drawRoundedRect(canvas, row.x(), row.y(), row.w(), row.h(),
-                    UiTokens.PROFILE_ROW_RADIUS, Color.makeARGB(60, 255, 255, 255));
+                    UiTokens.profileRowRadius(), UiTokens.cardFill());
+            SkiaDraw.drawEdgeHighlight(canvas, row.x(), row.y(), row.w(), row.h(),
+                    UiTokens.profileRowRadius(), s(1.2F), UiTokens.CARD_EDGE);
             if (rowHover > 0.01F && i == hoverRowIndex) {
                 SkiaDraw.drawRoundedRect(canvas, row.x(), row.y(), row.w(), row.h(),
-                        UiTokens.PROFILE_ROW_RADIUS, Color.makeARGB((int) (45.0F * rowHover), 255, 255, 255));
+                        UiTokens.profileRowRadius(), UiTokens.cardHover(rowHover));
             }
             float cy = row.y() + row.h() / 2.0F;
             SkiaFontRenderer.drawText(canvas, labelFont, rows.get(i).label(),
                     row.x() + UiTokens.PROFILE_ROW_PAD,
                     SkiaFontRenderer.centerBaselineY(labelFont, cy),
-                    Color.makeARGB(255, 255, 255, 255));
+                    textPrimary());
             String value = rows.get(i).value();
             float valueMaxW = row.w() - UiTokens.PROFILE_ROW_PAD * 2
                     - SkiaFontRenderer.getStringWidth(labelFont, rows.get(i).label());
@@ -680,7 +704,7 @@ public final class ProfilePage {
                     SkiaFontRenderer.truncate(valueFont, value, Math.max(s(24), valueMaxW)),
                     row.right() - UiTokens.PROFILE_ROW_PAD,
                     cy,
-                    Color.makeARGB(255, 255, 255, 255));
+                    textPrimary());
             if (i < COPY_ROWS) {
                 drawCopyButton(canvas, layout, i, scrollY, lastDtMs);
             }

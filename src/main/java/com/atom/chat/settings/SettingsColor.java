@@ -19,17 +19,24 @@ import java.util.function.IntSupplier;
 public final class SettingsColor {
     private final String id;
     private final String titleKey;
+    private final String group;
     private final int[] presets;
     private final IntSupplier getter;
     private final IntConsumer setter;
 
-    public SettingsColor(String id, String titleKey, int[] presets,
+    public SettingsColor(String id, String titleKey, String group, int[] presets,
                          IntSupplier getter, IntConsumer setter) {
         this.id = id;
         this.titleKey = titleKey;
+        this.group = group;
         this.presets = presets;
         this.getter = getter;
         this.setter = setter;
+    }
+
+    /** Sub-group inside the colours section: "bubble" or "ui". */
+    public String group() {
+        return group;
     }
 
     public String id() {

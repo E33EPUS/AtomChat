@@ -92,6 +92,17 @@ public final class ConversationListPage {
         this.host = host;
     }
 
+    /** Title/name colour — follows the interface text colour setting. */
+    private static int textPrimary() {
+        return com.atom.chat.config.AtomChatConfig.get().textPrimaryColor;
+    }
+
+    /** Preview/time/muted colour — follows the secondary text colour setting. */
+    private static int textSecondary(int alpha) {
+        int c = com.atom.chat.config.AtomChatConfig.get().textSecondaryColor;
+        return Color.makeARGB(alpha, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+    }
+
     private static String tr(String key, Object... args) {
         return Text.translatable(key, args).getString();
     }
@@ -100,8 +111,37 @@ public final class ConversationListPage {
         return UiTokens.s(v);
     }
 
-    /** Builds the row list in display order. */
+    /** Offline conversation cards kept below the online block — a month of
+     *  chatting must not leave five hundred former teammates in the list. */
+    private static final int OFFLINE_CARD_CAP = 30;
+    /**
+     * The row list rebuilds at most every 250ms: render/measure/hit ask for it
+     * every frame, but the underlying data (unread counts, latest messages,
+     * online set) changes at human speed. Cheap bound instead of change hooks
+     * in three stores.
+     */
+    private static final long ROWS_REBUILD_MS = 250L;
+    private List<Row> cachedRows = List.of();
+    private long rowsBuiltAt = Long.MIN_VALUE / 2L;
+    private boolean rowsDirty = true;
+
+    /** Row list in display order (cached; see {@link #ROWS_REBUILD_MS}). */
     public List<Row> rows() {
+        long now = System.currentTimeMillis();
+        if (rowsDirty || now - rowsBuiltAt >= ROWS_REBUILD_MS) {
+            cachedRows = buildRows();
+            rowsBuiltAt = now;
+            rowsDirty = false;
+        }
+        return cachedRows;
+    }
+
+    /** Forces the next {@link #rows()} call to rebuild (rarely needed — the throttle covers it). */
+    public void invalidateRows() {
+        rowsDirty = true;
+    }
+
+    private List<Row> buildRows() {
         MinecraftClient client = MinecraftClient.getInstance();
         List<Row> all = new ArrayList<>();
         all.add(new Row(RowKind.PUBLIC, null, latestPublic(), ChatStore.publicUnread(), true, false));
@@ -135,7 +175,16 @@ public final class ConversationListPage {
         if (!sortedPlayers.isEmpty()) {
             result.add(divider());
         }
-        result.addAll(sortedPlayers);
+        int offlineSeen = 0;
+        for (Row row : sortedPlayers) {
+            if (!row.online()) {
+                offlineSeen++;
+                if (offlineSeen > OFFLINE_CARD_CAP) {
+                    continue;
+                }
+            }
+            result.add(row);
+        }
         return result;
     }
 
@@ -268,7 +317,7 @@ public final class ConversationListPage {
     /** Centred section heading with a rule on each side, matching the settings page. */
     private void drawDivider(Canvas canvas, float x, float y, float w, float h) {
         Font font = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
-        int lineColor = Color.makeARGB(190, 170, 170, 186);
+        int lineColor = textSecondary(190);
         String text = tr("atomchat.conversation.private_group");
         float textW = SkiaFontRenderer.getStringWidth(font, text);
         float cy = y + h / 2.0F;
@@ -317,10 +366,11 @@ public final class ConversationListPage {
     }
 
     private void drawNormalRow(Canvas canvas, Row row, float x, float y, float w, float hoverAlpha) {
-        SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, s(12), Color.makeARGB(60, 255, 255, 255));
+        SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, UiTokens.radius(12), UiTokens.cardFill());
+        SkiaDraw.drawEdgeHighlight(canvas, x, y, w, ROW_H, UiTokens.radius(12), UiTokens.s(1.2F), UiTokens.CARD_EDGE);
         if (hoverAlpha > 0.01F) {
-            SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, s(12),
-                    Color.makeARGB((int) (45.0F * hoverAlpha), 255, 255, 255));
+            SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, UiTokens.radius(12),
+                    UiTokens.cardHover(hoverAlpha));
         }
         drawRowContent(canvas, row, x, y, w);
     }
@@ -335,10 +385,11 @@ public final class ConversationListPage {
         canvas.save();
         try (Paint layer = new Paint().setColorFilter(ColorFilter.makeMatrix(new ColorMatrix(matrix)))) {
             canvas.saveLayer(Rect.makeXYWH(x - 1, y - 1, w + 2, ROW_H + 2), layer);
-            SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, s(12), Color.makeARGB(60, 255, 255, 255));
+            SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, UiTokens.radius(12), UiTokens.cardFill());
+            SkiaDraw.drawEdgeHighlight(canvas, x, y, w, ROW_H, UiTokens.radius(12), UiTokens.s(1.2F), UiTokens.CARD_EDGE);
             if (hoverAlpha > 0.01F) {
-                SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, s(12),
-                        Color.makeARGB((int) (45.0F * hoverAlpha), 255, 255, 255));
+                SkiaDraw.drawRoundedRect(canvas, x, y, w, ROW_H, UiTokens.radius(12),
+                        UiTokens.cardHover(hoverAlpha));
             }
             drawRowContent(canvas, row, x, y, w);
             canvas.restore();
@@ -359,7 +410,7 @@ public final class ConversationListPage {
                     Color.makeARGB(60, 255, 255, 255));
             drawIconCentered(canvas, AppIcons.ICON_GLOBE_PATH,
                     iconX + iconSize / 2.0F, iconY + iconSize / 2.0F, s(26),
-                    Color.makeARGB(255, 255, 255, 255));
+                    textPrimary());
         } else if (row.player() != null) {
             drawPlayerAvatar(canvas, row.player(), iconX, iconY, iconSize);
         }
@@ -397,7 +448,7 @@ public final class ConversationListPage {
         String name = truncateToWidth(nameFont, row.title(), nameMaxW);
         SkiaFontRenderer.drawText(canvas, nameFont, name, textX,
                 SkiaFontRenderer.centerBaselineY(nameFont, nameCenterY),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
         if (row.kind == RowKind.PLAYER) {
             float drawnNameW = SkiaFontRenderer.getStringWidth(nameFont, name);
             float dotR = s(3);
@@ -411,7 +462,7 @@ public final class ConversationListPage {
         if (!time.isEmpty()) {
             SkiaFontRenderer.drawText(canvas, timeFont, time, timeX,
                     SkiaFontRenderer.centerBaselineY(timeFont, nameCenterY),
-                    Color.makeARGB(255, 255, 255, 255));
+                    textSecondary(255));
         }
 
         float maxPreviewW = Math.max(0.0F, x + w - textX - s(8) - (badgeW > 0 ? badgeW + s(8) : 0.0F));
@@ -422,7 +473,7 @@ public final class ConversationListPage {
         preview = truncateToWidth(subFont, preview, maxPreviewW);
         SkiaFontRenderer.drawText(canvas, subFont, preview, textX,
                 SkiaFontRenderer.centerBaselineY(subFont, previewCenterY),
-                Color.makeARGB(220, 170, 170, 186));
+                textSecondary(220));
 
         if (badgeW > 0) {
             Font badgeFont = FontManager.font(UiTokens.FONT_QUOTE);

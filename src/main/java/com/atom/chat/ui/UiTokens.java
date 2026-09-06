@@ -12,14 +12,60 @@ public final class UiTokens {
         return v * SCALE;
     }
 
+    /**
+     * Corner-scaled radius for the surrounding chrome — panel, cards, pills,
+     * popups. Chat bubbles are deliberately excluded (their radius is part of
+     * the message identity), so bubble draws keep using {@link #BUBBLE_RADIUS}.
+     */
+    public static float radius(float v) {
+        return s(v) * com.atom.chat.theme.ThemeService.cornerFactor(
+                com.atom.chat.config.AtomChatConfig.get().cornerStyle);
+    }
+
+    /**
+     * Card/chrome surface fill: the configured card colour with its alpha
+     * driven by the card-tint slider (60 at 0% → 255 at 100%). The default
+     * white at 0% reproduces the shipped frosted wash exactly; a dark colour
+     * at 100% is the modern flat "black background, white text". Hover stays
+     * a plain white overlay at every position, so one hover language covers
+     * the whole axis.
+     */
+    public static int cardFill() {
+        com.atom.chat.config.AtomChatConfig config = com.atom.chat.config.AtomChatConfig.get();
+        float t = Math.max(0.0F, Math.min(1.0F, config.cardTint));
+        int rgb = config.cardColor & 0x00FFFFFF;
+        // The slider is the card opacity and it means it: 0% = no fill at all,
+        // text floats directly on the panel. The shipped frosted look lives at
+        // ~24% (white @ alpha 60), which is the config default.
+        return io.github.humbleui.skija.Color.makeARGB(Math.round(255.0F * t),
+                (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+    }
+
+    /** Hover wash on a card surface; {@code weight} 0..1. White at every tint position. */
+    public static int cardHover(float weight) {
+        return io.github.humbleui.skija.Color.makeARGB((int) (45.0F * weight), 255, 255, 255);
+    }
+
     // Panel
-    public static final float PANEL_RADIUS = s(28);
+    public static float panelRadius() {
+        return radius(28);
+    }
+
+    /**
+     * Inner edge highlight for content cards: a fixed subtle white that reads
+     * as a lit edge on opaque surfaces and disappears on frosted ones.
+     */
+    public static final int CARD_EDGE = io.github.humbleui.skija.Color.makeARGB(30, 255, 255, 255);
+    /** Shared drop-shadow colour for floating chrome (header, composer, tab bar). */
+    public static final int CHROME_SHADOW = io.github.humbleui.skija.Color.makeARGB(100, 0, 0, 0);
     public static final float PANEL_ANCHOR_X = s(24);
     public static final float PANEL_TOP_GAP = s(8);
 
     // Header
     public static final float HEADER_HEIGHT = s(44);
-    public static final float HEADER_RADIUS = s(16);
+    public static float headerRadius() {
+        return radius(16);
+    }
     public static final float HEADER_PAD_X = s(20);
 
     // Input bar. INPUT_HEIGHT is the one-line baseline; the bar grows upward by
@@ -150,7 +196,9 @@ public final class UiTokens {
      * its label form one centred group inside that square.
      */
     public static final float SETTINGS_TILE_GAP = s(10);
-    public static final float SETTINGS_TILE_RADIUS = s(12);
+    public static float settingsTileRadius() {
+        return radius(12);
+    }
     public static final float SETTINGS_TILE_ICON = s(34);
     public static final float SETTINGS_TILE_TITLE = s(15);
     public static final float SETTINGS_TILE_SUB = s(12);
@@ -165,7 +213,9 @@ public final class UiTokens {
     public static final float SETTINGS_HERO_FONT = s(24);
     public static final float SETTINGS_ROW_GAP = s(8);
     public static final float SETTINGS_ROW_PAD = s(14);
-    public static final float SETTINGS_ROW_RADIUS = s(12);
+    public static float settingsRowRadius() {
+        return radius(12);
+    }
     /** Group heading inside a section (e.g. the blocked-players list title). */
     public static final float SETTINGS_LABEL_H = s(32);
     /** Glyph size for the "nothing here" empty state under a group heading. */
@@ -181,7 +231,9 @@ public final class UiTokens {
     public static final float PROFILE_NAME_FONT = s(20);
     public static final float PROFILE_ROW_H = s(48);
     public static final float PROFILE_ROW_PAD = s(14);
-    public static final float PROFILE_ROW_RADIUS = s(12);
+    public static float profileRowRadius() {
+        return radius(12);
+    }
     public static final float PROFILE_ROW_FONT = s(15);
     public static final float PROFILE_ROW_VALUE_FONT = s(13);
     public static final float PROFILE_TILE_H = s(62);

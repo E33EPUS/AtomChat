@@ -4,6 +4,7 @@ import com.atom.chat.AtomChat;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.wallpaper.WallpaperStore;
 import io.github.humbleui.skija.Color;
+import net.minecraft.text.Text;
 
 import java.util.List;
 
@@ -44,6 +45,11 @@ public final class SettingsCatalog {
                             () -> AtomChatConfig.get().blurEnabled,
                             v -> AtomChatConfig.get().blurEnabled = v,
                             () -> !WallpaperStore.isSet()),
+                    new SettingsItem("outline",
+                            "atomchat.settings.appearance.outline",
+                            "atomchat.settings.appearance.outline.desc",
+                            () -> AtomChatConfig.get().panelOutline,
+                            v -> AtomChatConfig.get().panelOutline = v),
                     new SettingsItem("motion",
                             "atomchat.settings.appearance.motion",
                             "atomchat.settings.appearance.motion.desc",
@@ -59,7 +65,12 @@ public final class SettingsCatalog {
                             "atomchat.settings.chat.poke",
                             "atomchat.settings.chat.poke.desc",
                             () -> AtomChatConfig.get().avatarPokeEnabled,
-                            v -> AtomChatConfig.get().avatarPokeEnabled = v));
+                            v -> AtomChatConfig.get().avatarPokeEnabled = v),
+                    new SettingsItem("images",
+                            "atomchat.settings.chat.images",
+                            "atomchat.settings.chat.images.desc",
+                            () -> AtomChatConfig.get().imageMessagesEnabled,
+                            v -> AtomChatConfig.get().imageMessagesEnabled = v));
             case PRIVACY -> List.of(
                     new SettingsItem("hideBlocked",
                             "atomchat.settings.privacy.hide",
@@ -104,7 +115,22 @@ public final class SettingsCatalog {
                             0.75F, 1.50F, 0.05F,
                             () -> AtomChatConfig.get().uiScale,
                             v -> AtomChatConfig.get().uiScale = v,
-                            v -> "x" + String.format(java.util.Locale.ROOT, "%.2f", v)));
+                            v -> "x" + String.format(java.util.Locale.ROOT, "%.2f", v)),
+                    new SettingsSlider("cardtint",
+                            "atomchat.settings.appearance.cardtint",
+                            0.00F, 1.00F, 0.05F,
+                            () -> AtomChatConfig.get().cardTint,
+                            v -> AtomChatConfig.get().cardTint = v,
+                            v -> Math.round(v * 100.0F) + "%"));
+            case CHAT -> List.of(
+                    new SettingsSlider("timestamp",
+                            "atomchat.settings.chat.timestamp",
+                            0.00F, 60.0F, 1.0F,
+                            () -> AtomChatConfig.get().timestampIntervalMinutes,
+                            v -> AtomChatConfig.get().timestampIntervalMinutes = Math.round(v),
+                            v -> Math.round(v) == 0
+                                    ? Text.translatable("atomchat.settings.chat.timestamp.off").getString()
+                                    : Math.round(v) + " min"));
             default -> List.of();
         };
     }
@@ -122,57 +148,92 @@ public final class SettingsCatalog {
             case APPEARANCE -> List.of(
                     new SettingsColor("bubble_text",
                             "atomchat.settings.appearance.bubbletext",
+                            "bubble",
                             new int[]{
                                     Color.makeARGB(255, 255, 255, 255),  // white
-                                    Color.makeARGB(255, 255, 246, 224),  // warm white
                                     Color.makeARGB(255, 232, 234, 240),  // pale grey
-                                    Color.makeARGB(255, 255, 233, 168),  // light amber
-                                    Color.makeARGB(255, 191, 240, 228),  // light mint
-                                    Color.makeARGB(255, 255, 214, 224)}, // light pink
+                                    Color.makeARGB(255, 255, 246, 224),  // warm white
+                                    Color.makeARGB(255, 20, 22, 27)},    // near-black
                             () -> AtomChatConfig.get().bubbleTextColor,
                             v -> AtomChatConfig.get().bubbleTextColor = v),
                     new SettingsColor("own_bubble",
                             "atomchat.settings.appearance.ownbubble",
+                            "bubble",
                             new int[]{
                                     Color.makeARGB(255, 30, 144, 255),   // e33chat DodgerBlue
-                                    Color.makeARGB(255, 74, 144, 226),   // classic blue
                                     Color.makeARGB(255, 26, 188, 156),   // teal
-                                    Color.makeARGB(255, 46, 204, 113),   // green
                                     Color.makeARGB(255, 155, 89, 182),   // purple
                                     Color.makeARGB(255, 233, 30, 99)},   // pink
                             () -> AtomChatConfig.get().ownBubbleColor,
                             v -> AtomChatConfig.get().ownBubbleColor = v),
+                    new SettingsColor("other_bubble_text",
+                            "atomchat.settings.appearance.otherbubbletext",
+                            "bubble",
+                            new int[]{
+                                    Color.makeARGB(255, 255, 255, 255),  // white
+                                    Color.makeARGB(255, 232, 234, 240),  // pale grey
+                                    Color.makeARGB(255, 255, 246, 224),  // warm white
+                                    Color.makeARGB(255, 20, 22, 27)},    // near-black
+                            () -> AtomChatConfig.get().otherBubbleTextColor,
+                            v -> AtomChatConfig.get().otherBubbleTextColor = v),
                     new SettingsColor("other_bubble",
                             "atomchat.settings.appearance.otherbubble",
+                            "bubble",
                             new int[]{
                                     Color.makeARGB(255, 52, 58, 68),     // classic dark
-                                    Color.makeARGB(255, 44, 62, 80),     // dark blue-grey
-                                    Color.makeARGB(255, 22, 25, 31),     // panel black
-                                    Color.makeARGB(255, 31, 41, 55),     // slate
-                                    Color.makeARGB(255, 59, 66, 82),     // grey blue
+                                    Color.makeARGB(255, 30, 41, 59),     // navy
+                                    Color.makeARGB(255, 20, 22, 27),     // near-black
                                     Color.makeARGB(255, 75, 85, 99)},    // light grey
                             () -> AtomChatConfig.get().otherBubbleColor,
                             v -> AtomChatConfig.get().otherBubbleColor = v),
                     new SettingsColor("text_primary",
                             "atomchat.settings.appearance.textprimary",
+                            "ui",
                             new int[]{
                                     Color.makeARGB(255, 255, 255, 255),  // white
-                                    Color.makeARGB(255, 255, 246, 224),  // warm white
                                     Color.makeARGB(255, 232, 234, 240),  // pale grey
-                                    Color.makeARGB(255, 255, 233, 168),  // light amber
-                                    Color.makeARGB(255, 191, 240, 228),  // light mint
-                                    Color.makeARGB(255, 255, 214, 224)}, // light pink
+                                    Color.makeARGB(255, 255, 246, 224),  // warm white
+                                    Color.makeARGB(255, 20, 22, 27)},    // near-black
                             () -> AtomChatConfig.get().textPrimaryColor,
                             v -> AtomChatConfig.get().textPrimaryColor = v),
+                    new SettingsColor("text_secondary",
+                            "atomchat.settings.appearance.textsecondary",
+                            "ui",
+                            new int[]{
+                                    Color.makeARGB(255, 220, 170, 186),  // shipped default
+                                    Color.makeARGB(255, 232, 234, 240),  // pale grey
+                                    Color.makeARGB(255, 255, 246, 224),  // warm white
+                                    Color.makeARGB(255, 20, 22, 27)},    // near-black
+                            () -> AtomChatConfig.get().textSecondaryColor,
+                            v -> AtomChatConfig.get().textSecondaryColor = v),
+                    new SettingsColor("card",
+                            "atomchat.settings.appearance.cardcolor",
+                            "ui",
+                            new int[]{
+                                    Color.makeARGB(255, 255, 255, 255),  // white (frosted default)
+                                    Color.makeARGB(255, 34, 40, 49),     // slate
+                                    Color.makeARGB(255, 30, 41, 59),     // navy
+                                    Color.makeARGB(255, 20, 22, 27)},    // near-black
+                            () -> AtomChatConfig.get().cardColor,
+                            v -> AtomChatConfig.get().cardColor = v),
+                    new SettingsColor("outline",
+                            "atomchat.settings.appearance.outlinecolor",
+                            "ui",
+                            new int[]{
+                                    Color.makeARGB(255, 255, 255, 255),  // white
+                                    Color.makeARGB(255, 200, 210, 222),  // silver grey
+                                    Color.makeARGB(255, 96, 165, 250),   // link blue
+                                    Color.makeARGB(255, 20, 22, 27)},    // near-black
+                            () -> AtomChatConfig.get().panelOutlineColor,
+                            v -> AtomChatConfig.get().panelOutlineColor = v),
                     new SettingsColor("accent",
                             "atomchat.settings.appearance.accent",
+                            "ui",
                             new int[]{
                                     Color.makeARGB(255, 74, 144, 226),   // classic blue
-                                    Color.makeARGB(255, 30, 144, 255),   // e33chat DodgerBlue
-                                    Color.makeARGB(255, 155, 89, 182),   // purple
-                                    Color.makeARGB(255, 233, 30, 99),    // pink
                                     Color.makeARGB(255, 26, 188, 156),   // teal
-                                    Color.makeARGB(255, 46, 204, 113)},  // green
+                                    Color.makeARGB(255, 155, 89, 182),   // purple
+                                    Color.makeARGB(255, 233, 30, 99)},   // pink
                             () -> AtomChatConfig.get().accentColor,
                             v -> AtomChatConfig.get().accentColor = v));
             default -> List.of();

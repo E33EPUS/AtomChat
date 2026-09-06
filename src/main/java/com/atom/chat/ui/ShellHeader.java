@@ -28,8 +28,12 @@ public final class ShellHeader {
         if (header == null || header.w() <= 0.0F || header.h() <= 0.0F) {
             return;
         }
+        // Floating chrome: same elevation language as the menus (shadow behind
+        // an opaque-ish surface), unlike the edge-highlighted content cards.
+        SkiaDraw.drawRoundedShadow(canvas, header.x(), header.y(), header.w(), header.h(),
+                UiTokens.headerRadius(), UiTokens.s(8), UiTokens.CHROME_SHADOW);
         SkiaDraw.drawRoundedRect(canvas, header.x(), header.y(), header.w(), header.h(),
-                UiTokens.HEADER_RADIUS, Color.makeARGB(60, 255, 255, 255));
+                UiTokens.headerRadius(), UiTokens.cardFill());
 
         if (showBack && backButton != null) {
             if (backHover > 0.01F) {
@@ -38,8 +42,8 @@ public final class ShellHeader {
                 float y = backButton.y() + inset;
                 float w = backButton.w() - inset * 2.0F;
                 float h = backButton.h() - inset * 2.0F;
-                SkiaDraw.drawRoundedRect(canvas, x, y, w, h, UiTokens.s(8),
-                        Color.makeARGB((int) (45.0F * backHover), 255, 255, 255));
+                SkiaDraw.drawRoundedRect(canvas, x, y, w, h, UiTokens.radius(8),
+                        UiTokens.cardHover(backHover));
             }
             drawIconCentered(canvas, AppIcons.ICON_BACK_PATH,
                     backButton.x() + backButton.w() / 2.0F,

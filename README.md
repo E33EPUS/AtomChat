@@ -1,6 +1,6 @@
 # AtomChat
 
-Fabric 1.21.1 客户端聊天模组：用 Skija 渲染的手机 App 风格聊天面板。
+为 Minecraft 带来手机 App 风格的聊天体验（Fabric 1.21.1，Skia 渲染）。
 
 > 本分支 `master` 是**源码分支**。完整用户文档（中文 / English）位于默认分支 [Master/README.md](https://github.com/E33EPUS/atomchat/blob/Master/README.md)。
 

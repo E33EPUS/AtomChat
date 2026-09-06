@@ -117,10 +117,12 @@ public final class SettingsSectionPage {
     private static final String LABEL_MOD_INFO = "atomchat.settings.about.modinfo";
     private static final String LABEL_ADVANCED = "atomchat.settings.group.advanced";
     private static final String LABEL_ADJUST = "atomchat.settings.group.adjust";
-    private static final String LABEL_COLORS = "atomchat.settings.group.colors";
+    private static final String LABEL_BUBBLE_COLORS = "atomchat.settings.group.bubblecolors";
+    private static final String LABEL_UI_COLORS = "atomchat.settings.group.uicolors";
     private static final String ACTION_WALLPAPER_PICK = "wallpaper_pick";
     private static final String ACTION_WALLPAPER_CLEAR = "wallpaper_clear";
     private static final String ACTION_TELEPORT_MODE = "teleport_mode";
+    private static final String ACTION_THEME = "theme_cycle";
 
     /** Per-section heading for the leading switch/action group. */
     private static String groupKey(SettingsSection section) {
@@ -158,6 +160,30 @@ public final class SettingsSectionPage {
         });
     }
 
+    /** Two-step clear: first tap arms a red "确定清除？", second tap within
+     *  the window really clears. Guards against accidental wipes. */
+    private static final long CLEAR_ARM_MS = 3000L;
+    private boolean wallpaperClearArmed;
+    private long wallpaperClearArmAt;
+
+    /** Whether the clear-wallpaper card is currently showing its confirm state. */
+    public boolean wallpaperClearArmed() {
+        return wallpaperClearArmed && System.currentTimeMillis() - wallpaperClearArmAt <= CLEAR_ARM_MS;
+    }
+
+    /**
+     * Theme card, parked: the preset system works but the look it should
+     * encapsulate is still settling (card tint slider landed first), so the
+     * card renders veiled with a "coming soon" subtitle and ignores clicks.
+     */
+    private SettingsItem themeItem() {
+        return new SettingsItem("theme_cycle",
+                "atomchat.settings.appearance.theme",
+                "atomchat.settings.appearance.theme.desc",
+                () -> false, v -> {
+        }, () -> false);
+    }
+
     private final Map<String, ToggleSwitch> switches = new HashMap<>();
     private final Map<Integer, Float> rowHover = new HashMap<>();
     private String draggingSliderId;
@@ -175,6 +201,17 @@ public final class SettingsSectionPage {
 
     private static float s(float v) {
         return UiTokens.s(v);
+    }
+
+    /** Title/value/verb/icon colour — follows the interface text colour setting. */
+    private static int textPrimary() {
+        return AtomChatConfig.get().textPrimaryColor;
+    }
+
+    /** Subtitle/divider/muted colour at a given alpha over the secondary text colour. */
+    private static int sec(int alpha) {
+        int c = AtomChatConfig.get().textSecondaryColor;
+        return Color.makeARGB(alpha, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
     }
 
     private static String tr(String key) {
@@ -198,12 +235,17 @@ public final class SettingsSectionPage {
             rows.add(Row.ofSwitch(item));
         }
         if (section == SettingsSection.APPEARANCE) {
+            // The theme card leads the look group: it writes whole appearance
+            // values at once, and every knob below it stays editable after.
+            rows.add(Row.ofAction(ACTION_THEME, themeItem()));
             // The wallpaper cards live with the background controls they
             // compete with, not in a group of their own.
             rows.add(Row.ofAction(ACTION_WALLPAPER_PICK, wallpaperPickItem()));
             if (WallpaperStore.isSet()) {
                 rows.add(Row.ofAction(ACTION_WALLPAPER_CLEAR, wallpaperClearItem()));
             }
+            // Corner-style card deliberately deferred (author call, 2026-09-06):
+            // cornerStyle stays config-only until the knob ships.
         }
         if (section == SettingsSection.CHAT) {
             rows.add(Row.ofAction(ACTION_TELEPORT_MODE, teleportModeItem()));
@@ -215,9 +257,19 @@ public final class SettingsSectionPage {
             rows.add(Row.ofSlider(slider));
         }
         if (section == SettingsSection.APPEARANCE) {
-            rows.add(Row.ofLabel(LABEL_COLORS));
+            // Colours split into two labelled groups: message bubbles vs the
+            // surrounding interface. Same rows, easier to scan.
+            rows.add(Row.ofLabel(LABEL_BUBBLE_COLORS));
             for (SettingsColor color : SettingsCatalog.colors(section)) {
-                rows.add(Row.ofColor(color));
+                if ("bubble".equals(color.group())) {
+                    rows.add(Row.ofColor(color));
+                }
+            }
+            rows.add(Row.ofLabel(LABEL_UI_COLORS));
+            for (SettingsColor color : SettingsCatalog.colors(section)) {
+                if ("ui".equals(color.group())) {
+                    rows.add(Row.ofColor(color));
+                }
             }
         }
         if (section == SettingsSection.PRIVACY) {
@@ -370,10 +422,12 @@ public final class SettingsSectionPage {
             return;
         }
         SkiaDraw.drawRoundedRect(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
-                UiTokens.SETTINGS_ROW_RADIUS, Color.makeARGB(60, 255, 255, 255));
+                UiTokens.settingsRowRadius(), UiTokens.cardFill());
+        SkiaDraw.drawEdgeHighlight(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
+                UiTokens.settingsRowRadius(), s(1.2F), UiTokens.CARD_EDGE);
         if (hover > 0.01F) {
             SkiaDraw.drawRoundedRect(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
-                    UiTokens.SETTINGS_ROW_RADIUS, Color.makeARGB((int) (45.0F * hover), 255, 255, 255));
+                    UiTokens.settingsRowRadius(), UiTokens.cardHover(hover));
         }
         switch (row.kind()) {
             case HERO -> drawHero(canvas, rect);
@@ -406,11 +460,11 @@ public final class SettingsSectionPage {
                 SkiaFontRenderer.truncate(titleFont, tr(color.titleKey()), rect.w() - UiTokens.SETTINGS_ROW_PAD * 2.0F),
                 rect.x() + UiTokens.SETTINGS_ROW_PAD,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(18)),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
         SkiaFontRenderer.drawTextRight(canvas, valueFont,
                 String.format("#%06X", color.value() & 0xFFFFFF),
                 rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
 
         float r = UiTokens.s(9);
         float cy = swatchCy(rect);
@@ -432,7 +486,7 @@ public final class SettingsSectionPage {
         SkiaDraw.drawRoundedRect(canvas, px - r, cy - r, 2.0F * r, 2.0F * r, r,
                 Color.makeARGB(70, 255, 255, 255));
         drawIconCentered(canvas, AppIcons.ICON_PLUS_PATH, px, cy, s(12),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
     }
 
     private static void drawIconCentered(Canvas canvas, io.github.humbleui.skija.Path icon,
@@ -466,7 +520,9 @@ public final class SettingsSectionPage {
      */
     private void drawHero(Canvas canvas, UiLayout.Rect rect) {
         SkiaDraw.drawRoundedRect(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
-                UiTokens.SETTINGS_ROW_RADIUS, Color.makeARGB(60, 255, 255, 255));
+                UiTokens.settingsRowRadius(), UiTokens.cardFill());
+        SkiaDraw.drawEdgeHighlight(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
+                UiTokens.settingsRowRadius(), s(1.2F), UiTokens.CARD_EDGE);
         Image hero = heroImage();
         float plate = UiTokens.SETTINGS_HERO_PLATE;
         float plateX = rect.x() + UiTokens.SETTINGS_ROW_PAD;
@@ -482,7 +538,7 @@ public final class SettingsSectionPage {
         SkiaFontRenderer.drawText(canvas, heroFont, tr("atomchat.screen.title"),
                 plateX + plate + s(14),
                 SkiaFontRenderer.centerBaselineY(heroFont, rect.y() + rect.h() / 2.0F),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
     }
 
     private static Image heroImage;
@@ -509,9 +565,18 @@ public final class SettingsSectionPage {
         float textX = rect.x() + UiTokens.SETTINGS_ROW_PAD;
         float maxW = rect.w() - UiTokens.SETTINGS_ROW_PAD * 2.0F;
 
+        boolean available = row.item().available();
+        boolean redConfirm = ACTION_WALLPAPER_CLEAR.equals(row.actionId()) && wallpaperClearArmed();
         String subtitle;
         String verb;
-        if (ACTION_WALLPAPER_PICK.equals(row.actionId())) {
+        if (!available) {
+            subtitle = tr(row.item().subtitleKey() + ".unavailable");
+            verb = "";
+        } else if (redConfirm) {
+            // Armed state: red confirm text instead of the file name.
+            subtitle = tr("atomchat.settings.appearance.wallpaper.clear.confirm");
+            verb = tr("atomchat.settings.action.clear");
+        } else if (ACTION_WALLPAPER_PICK.equals(row.actionId())) {
             Path wallpaper = WallpaperStore.current();
             subtitle = wallpaper != null && wallpaper.getFileName() != null
                     ? wallpaper.getFileName().toString()
@@ -521,6 +586,11 @@ public final class SettingsSectionPage {
             String mode = AtomChatConfig.get().teleportCommandMode;
             subtitle = tr("atomchat.settings.chat.teleport." + (mode == null ? "auto" : mode));
             verb = tr("atomchat.settings.action.cycle");
+        } else if (ACTION_THEME.equals(row.actionId())) {
+            String theme = AtomChatConfig.get().themeName;
+            subtitle = tr("atomchat.settings.theme."
+                    + (theme == null || theme.isBlank() ? "none" : theme));
+            verb = tr("atomchat.settings.action.cycle");
         } else {
             subtitle = tr(row.item().subtitleKey());
             verb = tr("atomchat.settings.action.clear");
@@ -529,18 +599,25 @@ public final class SettingsSectionPage {
         SkiaFontRenderer.drawText(canvas, titleFont,
                 SkiaFontRenderer.truncate(titleFont, tr(row.item().titleKey()), maxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
         Font verbFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
         SkiaFontRenderer.drawText(canvas, subFont,
                 SkiaFontRenderer.truncate(subFont, subtitle,
                         maxW - SkiaFontRenderer.getStringWidth(verbFont, verb) - s(12)), textX,
                 SkiaFontRenderer.centerBaselineY(subFont, rect.y() + s(37)),
-                Color.makeARGB(200, 170, 170, 186));
+                redConfirm ? Color.makeARGB(255, 235, 64, 52) : sec(available ? 200 : 130));
         // Same treatment as the link cards' "Open": full-weight, centred —
         // the card's call to action, not a footnote.
-        SkiaFontRenderer.drawTextRight(canvas, verbFont, verb,
-                rect.right() - UiTokens.SETTINGS_ROW_PAD,
-                rect.y() + rect.h() / 2.0F, Color.makeARGB(255, 255, 255, 255));
+        if (available) {
+            SkiaFontRenderer.drawTextRight(canvas, verbFont, verb,
+                    rect.right() - UiTokens.SETTINGS_ROW_PAD,
+                    rect.y() + rect.h() / 2.0F, textPrimary());
+        }
+        // Unavailable veil, same language as the wallpaper-gated blur switch.
+        if (!available) {
+            SkiaDraw.drawRoundedRect(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
+                    UiTokens.settingsRowRadius(), Color.makeARGB(90, 10, 12, 16));
+        }
     }
 
     /**
@@ -549,7 +626,7 @@ public final class SettingsSectionPage {
      */
     private void drawLabel(Canvas canvas, Row row, UiLayout.Rect rect) {
         Font font = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
-        int lineColor = Color.makeARGB(190, 170, 170, 186);
+        int lineColor = sec(190);
         String text = tr(row.labelKey());
         float textW = SkiaFontRenderer.getStringWidth(font, text);
         float cy = rect.y() + rect.h() / 2.0F;
@@ -603,14 +680,14 @@ public final class SettingsSectionPage {
         SkiaFontRenderer.drawText(canvas, titleFont,
                 SkiaFontRenderer.truncate(titleFont, tr(item.titleKey()), maxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
         SkiaFontRenderer.drawText(canvas, subFont,
                 SkiaFontRenderer.truncate(subFont, tr(subtitleKey), maxW), textX,
                 SkiaFontRenderer.centerBaselineY(subFont, rect.y() + s(37)),
-                Color.makeARGB(item.available() ? 200 : 130, 170, 170, 186));
+                sec(item.available() ? 200 : 130));
         if (!item.available()) {
             SkiaDraw.drawRoundedRect(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
-                    UiTokens.SETTINGS_ROW_RADIUS, Color.makeARGB(90, 10, 12, 16));
+                    UiTokens.settingsRowRadius(), Color.makeARGB(90, 10, 12, 16));
         }
     }
 
@@ -626,10 +703,10 @@ public final class SettingsSectionPage {
         SkiaFontRenderer.drawText(canvas, titleFont,
                 SkiaFontRenderer.truncate(titleFont, tr(slider.titleKey()), titleMaxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(18)),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
         SkiaFontRenderer.drawTextRight(canvas, valueFont, slider.displayValue(),
                 rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
-                dragging ? accent : Color.makeARGB(255, 255, 255, 255));
+                dragging ? accent : textPrimary());
 
         UiLayout.Rect track = sliderTrackRect(rect);
         float t = knobPosition(slider, dragging);
@@ -642,7 +719,7 @@ public final class SettingsSectionPage {
         float knobX = track.x() + track.w() * t - UiTokens.SLIDER_KNOB / 2.0F;
         float knobY = track.y() + track.h() / 2.0F - UiTokens.SLIDER_KNOB / 2.0F;
         SkiaDraw.drawRoundedRect(canvas, knobX, knobY, UiTokens.SLIDER_KNOB, UiTokens.SLIDER_KNOB,
-                UiTokens.SLIDER_KNOB / 2.0F, Color.makeARGB(255, 255, 255, 255));
+                UiTokens.SLIDER_KNOB / 2.0F, Color.makeARGB(255, 255, 255, 255)); // knob: mechanical white
     }
 
     private void drawInfo(Canvas canvas, Row row, UiLayout.Rect rect) {
@@ -661,7 +738,7 @@ public final class SettingsSectionPage {
         SkiaFontRenderer.drawText(canvas, titleFont,
                 SkiaFontRenderer.truncate(titleFont, tr(row.info().titleKey()), maxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
 
         String value = SkiaFontRenderer.truncate(valueFont, row.info().value(), valueMaxW);
         // Link affordance = colour plus underline, so it stays distinct from
@@ -669,7 +746,7 @@ public final class SettingsSectionPage {
         // tells the user the whole card is clickable before they try it.
         SkiaFontRenderer.drawText(canvas, valueFont, value, textX,
                 SkiaFontRenderer.centerBaselineY(valueFont, rect.y() + s(37)),
-                link ? LINK_COLOR : Color.makeARGB(200, 170, 170, 186));
+                link ? LINK_COLOR : sec(200));
         if (link) {
             float underlineY = rect.y() + s(37) + SkiaFontRenderer.textHeight(valueFont) / 2.0F + s(2);
             SkiaDraw.drawRoundedRect(canvas, textX, underlineY,
@@ -680,7 +757,7 @@ public final class SettingsSectionPage {
             Font hintFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
             SkiaFontRenderer.drawTextRight(canvas, hintFont, hint,
                     rect.right() - UiTokens.SETTINGS_ROW_PAD,
-                    rect.y() + rect.h() / 2.0F, Color.makeARGB(255, 255, 255, 255));
+                    rect.y() + rect.h() / 2.0F, textPrimary());
         }
     }
 
@@ -707,7 +784,7 @@ public final class SettingsSectionPage {
         SkiaFontRenderer.drawText(canvas, nameFont,
                 SkiaFontRenderer.truncate(nameFont, name, maxNameW), nameX,
                 SkiaFontRenderer.centerBaselineY(nameFont, rect.y() + rect.h() / 2.0F),
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
 
         float buttonH = s(28);
         float buttonY = rect.y() + (rect.h() - buttonH) / 2.0F;
@@ -715,7 +792,7 @@ public final class SettingsSectionPage {
                 Color.makeARGB((int) (70.0F + 45.0F * hover), 255, 255, 255));
         SkiaFontRenderer.drawTextCentered(canvas, buttonFont, label,
                 buttonX + buttonW / 2.0F, buttonY + buttonH / 2.0F,
-                Color.makeARGB(255, 255, 255, 255));
+                textPrimary());
     }
 
     // ------------------------------------------------------------------ input
@@ -906,9 +983,21 @@ public final class SettingsSectionPage {
                 }
             }
             case ACTION -> {
-                if (actionHandler != null) {
-                    actionHandler.onAction(hit.row().actionId());
+                if (!hit.row().item().available() || actionHandler == null) {
+                    return;
                 }
+                if ("wallpaper_clear".equals(hit.row().actionId())) {
+                    // Two-step confirm: first tap arms, second tap fires.
+                    long now = System.currentTimeMillis();
+                    if (!wallpaperClearArmed()
+                            || now - wallpaperClearArmAt > CLEAR_ARM_MS) {
+                        wallpaperClearArmed = true;
+                        wallpaperClearArmAt = now;
+                        return;
+                    }
+                    wallpaperClearArmed = false;
+                }
+                actionHandler.onAction(hit.row().actionId());
             }
             case BLOCKED -> {
                 if (hit.row().player() != null) {
