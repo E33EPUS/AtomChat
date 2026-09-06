@@ -43,6 +43,7 @@
   "atomchat.context.mention": "Mention",
   "atomchat.context.whisper": "Message",
   "atomchat.context.tp": "Teleport",
+  "atomchat.context.profile": "Profile",
   "atomchat.context.block": "Block",
   "atomchat.hud.image": "[Image]",
   "atomchat.hud.quote": "[Quote] ",

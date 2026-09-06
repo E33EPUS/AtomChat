@@ -89,6 +89,72 @@ public final class ProfilePage {
     private int hoverRowIndex = -1;
     private final float[] menuItemHover = new float[2];
     private final float[] tileHover = new float[3];
+    /** Per-row/tile copy-button hover alpha (key: row index, 100+i = tile index). */
+    private final java.util.Map<Integer, Float> copyHover = new java.util.HashMap<>();
+    /** Last frame's pointer + delta, reused by the copy-button hover draw. */
+    private float lastVmx;
+    private float lastVmy;
+    private float lastDtMs;
+    /** Speech-bubble copy glyph, same language as the context-menu quote icon. */
+    private static final io.github.humbleui.skija.Path ROW_COPY_ICON =
+            io.github.humbleui.skija.Path.makeFromSVGString(
+                    "M3 4 L17 4 L17 14 L10 14 L6 18 L7 14 L3 14 Z");
+
+    /** Small copy button docked at the right edge of a copyable row/tile. */
+    private UiLayout.Rect copyButtonRect(UiLayout.Rect row) {
+        float size = s(24);
+        return new UiLayout.Rect(
+                row.right() - UiTokens.PROFILE_ROW_PAD - size,
+                row.y() + (row.h() - size) / 2.0F,
+                size, size);
+    }
+
+    private void drawCopyButton(Canvas canvas, int key, UiLayout.Rect button, float dtMs) {
+        boolean hovered = button.contains(lastVmx, lastVmy);
+        float alpha = copyHover.computeIfAbsent(key, k -> 0.0F);
+        alpha = UiMotion.approach(alpha, hovered ? 1.0F : 0.0F, dtMs, UiMotion.HOVER_MS);
+        copyHover.put(key, alpha);
+        if (hovered) {
+            SkiaDraw.drawRoundedRect(canvas, button.x(), button.y(), button.w(), button.h(),
+                    button.h() / 2.0F, Color.makeARGB((int) (70 * alpha), 96, 165, 250));
+        } else if (alpha > 0.01F) {
+            SkiaDraw.drawRoundedRect(canvas, button.x(), button.y(), button.w(), button.h(),
+                    button.h() / 2.0F, Color.makeARGB((int) (40 * alpha), 255, 255, 255));
+        }
+        try (Paint paint = new Paint().setAntiAlias(true)
+                .setColor(Color.makeARGB((int) (120 + 135 * alpha), 255, 255, 255))
+                .setMode(PaintMode.STROKE)
+                .setStrokeWidth(s(1.5F))
+                .setStrokeCap(PaintStrokeCap.ROUND)
+                .setStrokeJoin(PaintStrokeJoin.ROUND)) {
+            canvas.save();
+            float sc = button.w() * 0.62F / 20.0F;
+            canvas.translate(button.x() + button.w() / 2.0F - 10.0F * sc,
+                    button.y() + button.h() / 2.0F - 11.0F * sc);
+            canvas.scale(sc, sc);
+            canvas.drawPath(ROW_COPY_ICON, paint);
+            canvas.restore();
+        }
+    }
+
+    /** True when the point sits on a row/tile copy button (click = copy). */
+    private boolean onCopyButton(UiLayout layout, float scrollY, float vmx, float vmy) {
+        List<InfoRow> rows = infoRows();
+        for (int i = 0; i < rows.size(); i++) {
+            if (copyButtonRect(rowRect(layout, i, scrollY)).contains(vmx, vmy)) {
+                handler.copyText(rows.get(i).value());
+                return true;
+            }
+        }
+        List<StatTile> tiles = statTiles();
+        for (int i = 0; i < tiles.size(); i++) {
+            if (copyButtonRect(tileRect(layout, i, scrollY)).contains(vmx, vmy)) {
+                handler.copyText(tiles.get(i).copy());
+                return true;
+            }
+        }
+        return false;
+    }
     private boolean avatarMenuOpen;
     /** Fade/scale progress of the avatar menu; keeps drawing while fading out. */
     private float menuAnim;
@@ -413,21 +479,8 @@ public final class ProfilePage {
             }
             return true;
         }
-        List<StatTile> tiles = statTiles();
-        for (int i = 0; i < tiles.size(); i++) {
-            if (tileRect(layout, i, scrollY).contains(vmx, vmy)) {
-                handler.copyText(tiles.get(i).copy());
-                return true;
-            }
-        }
-        List<InfoRow> rows = infoRows();
-        for (int i = 0; i < rows.size(); i++) {
-            if (rowRect(layout, i, scrollY).contains(vmx, vmy)) {
-                handler.copyText(rows.get(i).value());
-                return true;
-            }
-        }
-        return false;
+        // Copying happens on the dedicated right-edge button, not the whole row.
+        return onCopyButton(layout, scrollY, vmx, vmy);
     }
 
     // ------------------------------------------------------------------
@@ -438,6 +491,9 @@ public final class ProfilePage {
         long now = System.currentTimeMillis();
         float dt = Math.min(50.0F, Math.max(1.0F, now - lastFrameMs));
         lastFrameMs = now;
+        lastVmx = vmx;
+        lastVmy = vmy;
+        lastDtMs = dt;
 
         canvas.save();
         try {
@@ -548,13 +604,14 @@ public final class ProfilePage {
                 SkiaDraw.drawRoundedRect(canvas, tile.x(), tile.y(), tile.w(), tile.h(),
                         UiTokens.PROFILE_ROW_RADIUS, Color.makeARGB((int) (45.0F * tileHover[i]), 255, 255, 255));
             }
-            float cx = tile.x() + tile.w() / 2.0F;
+            float cx = tile.x() + (tile.w() - s(26)) / 2.0F;
             String value = SkiaFontRenderer.truncate(valueFont, tiles.get(i).value(),
-                    tile.w() - UiTokens.PROFILE_ROW_PAD);
+                    tile.w() - UiTokens.PROFILE_ROW_PAD - s(26));
             SkiaFontRenderer.drawTextCentered(canvas, valueFont, value,
                     cx, tile.y() + tile.h() / 2.0F - s(4), Color.makeARGB(255, 255, 255, 255));
             SkiaFontRenderer.drawTextCentered(canvas, labelFont, tiles.get(i).label(),
                     cx, tile.y() + tile.h() / 2.0F + s(15), Color.makeARGB(200, 170, 170, 186));
+            drawCopyButton(canvas, 100 + i, copyButtonRect(tile), lastDtMs);
         }
     }
 
@@ -580,14 +637,16 @@ public final class ProfilePage {
                     Color.makeARGB(255, 255, 255, 255));
             String value = rows.get(i).value();
             float valueMaxW = row.w() - UiTokens.PROFILE_ROW_PAD * 2
-                    - SkiaFontRenderer.getStringWidth(labelFont, rows.get(i).label());
+                    - SkiaFontRenderer.getStringWidth(labelFont, rows.get(i).label())
+                    - s(26);
             // drawTextRight already centres on cy internally — passing a
             // pre-converted baseline double-converts and draws the text high.
             SkiaFontRenderer.drawTextRight(canvas, valueFont,
                     SkiaFontRenderer.truncate(valueFont, value, Math.max(s(24), valueMaxW)),
-                    row.right() - UiTokens.PROFILE_ROW_PAD,
+                    row.right() - UiTokens.PROFILE_ROW_PAD - s(26),
                     cy,
                     Color.makeARGB(255, 255, 255, 255));
+            drawCopyButton(canvas, i, copyButtonRect(row), lastDtMs);
         }
     }
 

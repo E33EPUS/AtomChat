@@ -593,6 +593,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (page.page() == AppPage.SETTINGS_SECTION) {
             resetSettingsUi();
         }
+        if (page.page() == AppPage.PROFILE_DETAIL) {
+            detailScroll.reset();
+        }
         if (!page.isRoot() && fromPage.isRoot()) {
             rootTabAnim.setValue(rootIndex(fromPage));
             startPageNav(topNav(), page, false);
@@ -622,6 +625,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     public void popPage() {
         if (navigation.size() <= 1) {
             return;
+        }
+        // Leaving a pushed profile detail falls back to the local player, so
+        // the Profile root tab never shows a stale injected subject.
+        if (topPage() == AppPage.PROFILE_DETAIL) {
+            profilePage.resetSubject();
         }
         if (topPage().isRoot()) {
             navigation.pop();
@@ -694,7 +702,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return pushing ? travel * (1.0F - progress) : travel * progress;
     }
 
-    /** Opens the profile root page for another player (avatar single click). */
+    /** Opens another player's profile as a pushed detail page. */
+    public void openProfileDetail(PlayerRef player) {
+        if (player == null || player.realName() == null) {
+            return;
+        }
+        profilePage.setSubject(player);
+        pushPage(AppPage.PROFILE_DETAIL);
+    }
+
+    /** Opens the profile detail for a message's sender (avatar single click). */
     private void openProfileFor(ChatMessage msg) {
         if (msg == null || msg.isSystem() || msg.isOwn()) {
             return;
@@ -703,8 +720,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (player == null || player.realName() == null) {
             return;
         }
-        profilePage.setSubject(player);
-        switchRoot(AppPage.PROFILE);
+        openProfileDetail(player);
     }
 
     @Override
@@ -1384,11 +1400,26 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     drawBezel(canvas, detailLayout());
                     return;
                 }
+                if (moving.page() == AppPage.PROFILE_DETAIL) {
+                    drawProfileDetail(canvas, mouseX, mouseY);
+                    canvas.restore();
+                    suppressHeader = false;
+                    drawPushedHeader(canvas, vmx, vmy, pushing ? moving : navRoot);
+                    drawBezel(canvas, detailLayout());
+                    return;
+                }
             }
         }
         // A settled settings sub-page: header + list, nothing else.
         if (!navRunning && topPage() == AppPage.SETTINGS_SECTION) {
             drawSettingsSection(canvas, mouseX, mouseY, topNav().section());
+            drawPushedHeader(canvas, vmx, vmy, topNav());
+            drawBezel(canvas, detailLayout());
+            return;
+        }
+        // A settled profile detail: same chrome, profile body.
+        if (!navRunning && topPage() == AppPage.PROFILE_DETAIL) {
+            drawProfileDetail(canvas, mouseX, mouseY);
             drawPushedHeader(canvas, vmx, vmy, topNav());
             drawBezel(canvas, detailLayout());
             return;
@@ -1560,11 +1591,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** Layout and scroll controller of whatever list the top page is showing. */
     private UiLayout listLayout() {
-        return topPage() == AppPage.SETTINGS_SECTION ? detailLayout() : rootLayout();
+        return topPage() == AppPage.SETTINGS_SECTION || topPage() == AppPage.PROFILE_DETAIL
+                ? detailLayout() : rootLayout();
     }
 
     private ScrollController listScroll() {
-        return topPage() == AppPage.SETTINGS_SECTION ? detailScroll : rootScroll;
+        return topPage() == AppPage.SETTINGS_SECTION || topPage() == AppPage.PROFILE_DETAIL
+                ? detailScroll : rootScroll;
     }
 
     private float measureRootContent(UiLayout root, AppPage page) {
@@ -1597,6 +1630,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // active-but-unrendered modal eats every click and freezes the screen.
         imageCropper.render(canvas, layout.rect(), vmx, vmy);
         colorPicker.render(canvas, layout.rect(), vmx, vmy, accent());
+    }
+
+    /** Body of a pushed profile detail page (another player's profile). */
+    private void drawProfileDetail(Canvas canvas, int mouseX, int mouseY) {
+        UiLayout layout = detailLayout();
+        float vmx = toVirtualX(mouseX);
+        float vmy = toVirtualY(mouseY);
+        detailScroll.setContent(profilePage.measureContent(layout), layout.list.h());
+        detailScroll.updateAnimation(System.currentTimeMillis());
+        profilePage.render(canvas, layout, vmx, vmy, detailScroll.getScrollY());
+        drawScrollbar(canvas, layout, vmx, vmy, detailScroll);
     }
 
     /** Fixed header (with back affordance) for a pushed settings sub-page. */
@@ -1710,7 +1754,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             case CHAT_LIST -> 0;
             case PROFILE -> 1;
             case SETTINGS -> 2;
-            case WORLD_CHAT, PRIVATE_CHAT, SETTINGS_SECTION ->
+            case WORLD_CHAT, PRIVATE_CHAT, SETTINGS_SECTION, PROFILE_DETAIL ->
                     throw new IllegalStateException("Pushed pages have no bottom tab index");
         };
     }
@@ -1747,6 +1791,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             case PRIVATE_CHAT -> activePrivateTarget() != null
                     ? activePrivateTarget().realName() : tr("atomchat.channel.private");
             case SETTINGS_SECTION -> tr("atomchat.tab.settings");
+            case PROFILE_DETAIL -> tr("atomchat.page.profile.title");
         };
     }
 
@@ -3060,7 +3105,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         boolean bubbleMenu = !avatarMenu && !playerMenu;
         ChatMessage shown = contextMessage != null ? contextMessage : lastContextMessage;
         boolean imageMessage = bubbleMenu && shown != null && extractImageUrl(shown.getRawText()) != null;
-        int rows = avatarMenu ? 4 : playerMenu ? 2 : (imageMessage ? 3 : 2);
+        int rows = avatarMenu ? 4 : playerMenu ? 3 : (imageMessage ? 3 : 2);
         float rowH = UiTokens.MENU_H / 2.0F;
         float menuH = rowH * rows;
         float menuW = UiTokens.MENU_W;
@@ -3105,7 +3150,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     icon = bubbleContextIcon(row, imageMessage);
                 }
                 int textColor = textPrimary();
-                if (playerMenu && row == 0 && !isOnlinePlayer(contextPlayer != null ? contextPlayer : lastContextPlayer)) {
+                if (playerMenu && row == 1 && !isOnlinePlayer(contextPlayer != null ? contextPlayer : lastContextPlayer)) {
                     textColor = Color.makeARGB(110, 255, 255, 255);
                 } else if (avatarMenu && row == 2) {
                     ChatMessage avatarMsg = contextMessage != null ? contextMessage : lastContextMessage;
@@ -3183,16 +3228,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private String playerCardContextLabel(int row) {
         return switch (row) {
-            case 0 -> tr("atomchat.context.tp");
-            case 1 -> isBlockedContextPlayer() ? tr("atomchat.context.unblock") : tr("atomchat.context.block");
+            case 0 -> tr("atomchat.context.profile");
+            case 1 -> tr("atomchat.context.tp");
+            case 2 -> isBlockedContextPlayer() ? tr("atomchat.context.unblock") : tr("atomchat.context.block");
             default -> "";
         };
     }
 
     private static io.github.humbleui.skija.Path playerCardContextIcon(int row) {
         return switch (row) {
-            case 0 -> ICON_TP_PATH;
-            case 1 -> ICON_BLOCK_PATH;
+            case 0 -> com.atom.chat.ui.AppIcons.ICON_TAB_PROFILE_PATH;
+            case 1 -> ICON_TP_PATH;
+            case 2 -> ICON_BLOCK_PATH;
             default -> ICON_TP_PATH;
         };
     }
@@ -3277,10 +3324,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return;
         }
         if (row == 0) {
+            openProfileDetail(player);
+        } else if (row == 1) {
             if (isOnlinePlayer(player)) {
                 sendTeleportCommand(player);
             }
-        } else if (row == 1) {
+        } else if (row == 2) {
             toggleBlock(player);
         }
     }
@@ -3616,6 +3665,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                         settingsSectionPage.perform(hit);
                         return true;
                     }
+                }
+                return true;
+            }
+            // A pushed profile detail: back arrow, then copyable rows/tiles.
+            if (topPage() == AppPage.PROFILE_DETAIL) {
+                if (button == 0 && isBackButtonHit(mx, my)) {
+                    popPage();
+                    return true;
+                }
+                if (button == 0) {
+                    profilePage.onClick(mx, my, detailLayout(), detailScroll.getScrollY());
                 }
                 return true;
             }
@@ -4072,6 +4132,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 return true;
             }
             if (topPage() == AppPage.SETTINGS_SECTION && keyCode == 256) { // Esc
+                popPage();
+                return true;
+            }
+            if (topPage() == AppPage.PROFILE_DETAIL && keyCode == 256) { // Esc
                 popPage();
                 return true;
             }

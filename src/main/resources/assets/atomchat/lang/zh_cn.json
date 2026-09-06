@@ -43,6 +43,7 @@
   "atomchat.context.mention": "@ 提及",
   "atomchat.context.whisper": "私聊",
   "atomchat.context.tp": "传送",
+  "atomchat.context.profile": "个人档案",
   "atomchat.context.block": "屏蔽",
   "atomchat.hud.image": "[图片]",
   "atomchat.hud.quote": "[引用] ",
