@@ -3174,7 +3174,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     SettingsSectionPage.RowHit hit = settingsSectionPage.hit(mx, my, pageLayout,
                             section, pageScroll.getScrollY());
                     if (hit != null && hit.onAction(mx, my)) {
-                        settingsSectionPage.perform(hit, mx, section);
+                        settingsSectionPage.perform(hit);
                         return true;
                     }
                     settingsSectionPage.disarmAction();

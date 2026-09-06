@@ -91,7 +91,9 @@ public final class SettingsSectionPage {
         }
 
         public boolean onAction(float px, float py) {
-            return contains(px, py) && px >= actionX && row.kind() != RowKind.LABEL;
+            // LABEL rows pass too: foldable colour groups toggle on click,
+            // plain labels no-op inside perform().
+            return contains(px, py) && px >= actionX;
         }
     }
 
@@ -182,7 +184,7 @@ public final class SettingsSectionPage {
 
     /** Destructive actions that must pass through the two-step confirm. */
     private static boolean needsConfirm(String actionId) {
-        return ACTION_WALLPAPER_CLEAR.equals(actionId) || actionId.startsWith("reset_colors_");
+        return ACTION_WALLPAPER_CLEAR.equals(actionId);
     }
 
     /** The colour group folded/unfolded by a label row, or null for plain labels. */
@@ -194,15 +196,6 @@ public final class SettingsSectionPage {
             return "ui";
         }
         return null;
-    }
-
-    private static String resetActionId(String group) {
-        return "reset_colors_" + group;
-    }
-
-    private static String resetVerb(boolean armed) {
-        return tr(armed ? "atomchat.settings.appearance.wallpaper.clear.confirm"
-                : "atomchat.settings.appearance.group.reset");
     }
 
     /**
@@ -381,19 +374,10 @@ public final class SettingsSectionPage {
     }
 
     /** Left edge of the clickable action for a row rect. */
-    private float actionX(Row row, UiLayout.Rect rect, Font buttonFont) {
+    private static float actionX(Row row, UiLayout.Rect rect, Font buttonFont) {
         if (row.kind() == RowKind.BLOCKED) {
             float textW = SkiaFontRenderer.getStringWidth(buttonFont, tr("atomchat.settings.privacy.unblock"));
             return rect.right() - UiTokens.SETTINGS_ROW_PAD - (textW + s(18));
-        }
-        if (row.kind() == RowKind.LABEL) {
-            String group = foldableColorGroup(row.labelKey());
-            if (group != null && !collapsedColorGroups.contains(group)) {
-                // Expanded colour groups carry a reset button on the right.
-                float textW = SkiaFontRenderer.getStringWidth(buttonFont,
-                        resetVerb(actionArmed(resetActionId(group))));
-                return rect.right() - UiTokens.SETTINGS_ROW_PAD - (textW + s(18));
-            }
         }
         return rect.x();
     }
@@ -513,17 +497,13 @@ public final class SettingsSectionPage {
         SkiaFontRenderer.drawTextRight(canvas, valueFont, hex,
                 rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
                 textPrimary());
-        // Live element preview: the current value rendered in its target
-        // shape — a bubble pill for the message group, a capsule for the
-        // shared secondary-capsule family, a square for plain interface
-        // colours. Answers "what does this setting colour?" at a glance.
-        boolean messageGroup = "bubble".equals(color.group());
-        float prevH = s(11);
-        float prevW = messageGroup ? s(18) : prevH;
-        float prevR = messageGroup ? s(3) : prevH / 2.0F;
+        // Live element preview: the current value as one small square, same
+        // shape for every colour row.
+        float prevW = s(11);
+        float prevR = s(3);
         float prevRight = rect.right() - UiTokens.SETTINGS_ROW_PAD - hexW - s(8);
-        SkiaDraw.drawRoundedRect(canvas, prevRight - prevW, rect.y() + s(18) - prevH / 2.0F,
-                prevW, prevH, prevR, color.value());
+        SkiaDraw.drawRoundedRect(canvas, prevRight - prevW, rect.y() + s(18) - prevW / 2.0F,
+                prevW, prevW, prevR, color.value());
 
         float r = UiTokens.s(9);
         float cy = swatchCy(rect);
@@ -709,10 +689,8 @@ public final class SettingsSectionPage {
             SkiaFontRenderer.drawTextCentered(canvas, font, text, rect.x() + rect.w() / 2.0F, cy, lineColor);
             return;
         }
-        // Foldable colour group: chevron + centred caption, and while expanded
-        // a right-aligned group reset that goes through the two-step confirm.
+        // Foldable colour group: chevron + centred caption.
         boolean collapsed = collapsedColorGroups.contains(group);
-        boolean armed = actionArmed(resetActionId(group));
         String text = tr(row.labelKey());
         float textW = SkiaFontRenderer.getStringWidth(font, text);
         float chevron = s(7);
@@ -723,12 +701,6 @@ public final class SettingsSectionPage {
         drawChevron(canvas, startX, cy, chevron, collapsed, lineColor);
         SkiaFontRenderer.drawTextCentered(canvas, font, text,
                 startX + chevron + gap + textW / 2.0F, cy, lineColor);
-        if (!collapsed) {
-            Font buttonFont = FontManager.font(UiTokens.FONT_QUOTE);
-            SkiaFontRenderer.drawTextRight(canvas, buttonFont, resetVerb(armed),
-                    rect.right() - UiTokens.SETTINGS_ROW_PAD, cy,
-                    armed ? Color.makeARGB(255, 235, 64, 52) : sec(200));
-        }
     }
 
     /** Small fold indicator: right-pointing when collapsed, down when open.
@@ -1073,8 +1045,8 @@ public final class SettingsSectionPage {
 
     /** Applies a hit: flips a switch, opens a link, fires an action, folds a
      *  colour group, or unblocks. Destructive actions go through the two-step
-     *  confirm; {@code px} is the click X, used by the reset-zone check. */
-    public void perform(RowHit hit, float px, SettingsSection section) {
+     *  confirm. */
+    public void perform(RowHit hit) {
         if (hit == null) {
             return;
         }
@@ -1096,22 +1068,9 @@ public final class SettingsSectionPage {
                 if (group == null) {
                     return;
                 }
-                if (collapsedColorGroups.contains(group) || px < hit.actionX()) {
-                    // Fold toggle; the reset zone only exists while expanded.
-                    if (!collapsedColorGroups.remove(group)) {
-                        collapsedColorGroups.add(group);
-                    }
-                    return;
+                if (!collapsedColorGroups.remove(group)) {
+                    collapsedColorGroups.add(group);
                 }
-                String actionId = resetActionId(group);
-                long now = System.currentTimeMillis();
-                if (!actionArmed(actionId) || now - armedActionAt > CONFIRM_ARM_MS) {
-                    armedActionId = actionId;
-                    armedActionAt = now;
-                    return;
-                }
-                armedActionId = null;
-                SettingsCatalog.resetColorGroup(group);
             }
             case ACTION -> {
                 if (!hit.row().item().available() || actionHandler == null) {

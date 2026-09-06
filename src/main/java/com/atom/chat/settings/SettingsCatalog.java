@@ -143,33 +143,6 @@ public final class SettingsCatalog {
         return COLOR_CACHE.computeIfAbsent(section, SettingsCatalog::buildColors);
     }
 
-    /** Restores every colour in a group to its shipped default and persists. */
-    public static void resetColorGroup(String group) {
-        AtomChatConfig defaults = new AtomChatConfig();
-        for (SettingsColor color : colors(SettingsSection.APPEARANCE)) {
-            if (group.equals(color.group())) {
-                color.apply(defaultValueOf(color.id(), defaults));
-            }
-        }
-    }
-
-    private static int defaultValueOf(String id, AtomChatConfig defaults) {
-        return switch (id) {
-            case "bubble_text" -> defaults.bubbleTextColor;
-            case "own_bubble" -> defaults.ownBubbleColor;
-            case "other_bubble_text" -> defaults.otherBubbleTextColor;
-            case "other_bubble" -> defaults.otherBubbleColor;
-            case "secondary_capsule_bg" -> defaults.secondaryCapsuleBg;
-            case "secondary_capsule_text" -> defaults.secondaryCapsuleText;
-            case "text_primary" -> defaults.textPrimaryColor;
-            case "text_secondary" -> defaults.textSecondaryColor;
-            case "card" -> defaults.cardColor;
-            case "outline" -> defaults.panelOutlineColor;
-            case "accent" -> defaults.accentColor;
-            default -> defaults.accentColor;
-        };
-    }
-
     private static List<SettingsColor> buildColors(SettingsSection section) {
         return switch (section) {
             case APPEARANCE -> List.of(
