@@ -74,14 +74,16 @@ public final class MessageListView {
     private final List<MessageHit> hits = new ArrayList<>();
     private final List<ClickableSpan> clickableSpans = new ArrayList<>();
 
-    private ChatMessage selectionMessage;
+    private ChatMessage selectionAnchorMessage;
+    private ChatMessage selectionFocusMessage;
     private int selectionAnchorLine = -1;
     private int selectionAnchorChar = -1;
     private int selectionFocusLine = -1;
     private int selectionFocusChar = -1;
     private boolean selecting;
     private boolean selectionMoved;
-    private List<String> selectionMessageLines = List.of();
+    /** Messages list from the most recent draw; used to order cross-message ranges. */
+    private List<ChatMessage> currentMessages = List.of();
 
     private final Map<ChatMessage, Long> messageEnterStart = new HashMap<>();
     private final Set<ChatMessage> messageEnterSettled = new HashSet<>();
@@ -100,6 +102,7 @@ public final class MessageListView {
                      List<ChatMessage> messages, ScrollController scroll) {
         hits.clear();
         clickableSpans.clear();
+        currentMessages = messages;
         // Snapshot "was at bottom" before maxScroll grows: after new messages
         // arrive the old target is no longer near the new max, so comparing after
         // recompute would make us miss the follow and leave a growing gap.
@@ -218,8 +221,12 @@ public final class MessageListView {
     }
 
     public boolean hasSelection() {
-        if (selectionMessage == null || selectionAnchorLine < 0 || selectionFocusLine < 0) {
+        if (selectionAnchorMessage == null || selectionFocusMessage == null
+                || selectionAnchorLine < 0 || selectionFocusLine < 0) {
             return false;
+        }
+        if (selectionAnchorMessage != selectionFocusMessage) {
+            return true;
         }
         return selectionAnchorLine != selectionFocusLine || selectionAnchorChar != selectionFocusChar;
     }
@@ -229,26 +236,24 @@ public final class MessageListView {
     }
 
     public void clearSelection() {
-        selectionMessage = null;
+        selectionAnchorMessage = null;
+        selectionFocusMessage = null;
         selectionAnchorLine = -1;
         selectionAnchorChar = -1;
         selectionFocusLine = -1;
         selectionFocusChar = -1;
         selecting = false;
         selectionMoved = false;
-        selectionMessageLines = List.of();
     }
 
     /**
      * Arms a text selection on the message line under the pointer. The screen
      * keeps its own pending-click bookkeeping (span + moved flag) and calls
-     * this after it; the line list is recomputed so the copied lines always
-     * match what was hit-tested.
+     * this after it.
      */
     public void beginSelection(MessageHit hit, MessageTextLine line, float mx) {
-        List<MessageTextLine> textLines = textLinesForHit(hit);
-        selectionMessage = hit.message();
-        selectionMessageLines = textLines.stream().map(MessageTextLine::text).toList();
+        selectionAnchorMessage = hit.message();
+        selectionFocusMessage = hit.message();
         selectionAnchorLine = selectionFocusLine = line.line();
         selectionAnchorChar = selectionFocusChar = charAtLine(line, mx);
         selecting = true;
@@ -256,16 +261,16 @@ public final class MessageListView {
     }
 
     /**
-     * Extends the active selection to the pointer. Returns whether the drag was
-     * consumed; the screen translates consumption into its own pending-click
-     * suppression rules.
+     * Extends the active selection to the pointer, across message boundaries.
+     * Returns whether the drag was consumed; the screen translates consumption
+     * into its own pending-click suppression rules.
      */
     public boolean dragSelection(float mx, float my) {
-        if (!selecting || selectionMessage == null) {
+        if (!selecting || selectionAnchorMessage == null) {
             return false;
         }
         for (MessageHit hit : hits) {
-            if (my < hit.y() || my > hit.bottom() || hit.message() != selectionMessage) {
+            if (my < hit.y() || my > hit.bottom()) {
                 continue;
             }
             for (MessageTextLine line : textLinesForHit(hit)) {
@@ -274,7 +279,10 @@ public final class MessageListView {
                         line.text());
                 if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
                     int ch = charAtLine(line, mx);
-                    if (ch != selectionFocusChar || line.line() != selectionFocusLine) {
+                    boolean changed = line.message() != selectionFocusMessage
+                            || ch != selectionFocusChar || line.line() != selectionFocusLine;
+                    if (changed) {
+                        selectionFocusMessage = line.message();
                         selectionFocusLine = line.line();
                         selectionFocusChar = ch;
                         selectionMoved = true;
@@ -299,41 +307,89 @@ public final class MessageListView {
         }
     }
 
+    /**
+     * Copies the selected text, joining messages with a newline. The range may
+     * span any number of messages in the order they appear in the current feed.
+     */
     public String copySelection() {
-        if (!hasSelection()) {
+        if (!hasSelection() || hits.isEmpty()) {
             return "";
         }
-        List<String> lines = selectionMessageLines;
-        if (lines.isEmpty()) {
+        int anchorHit = hitIndexFor(selectionAnchorMessage);
+        int focusHit = hitIndexFor(selectionFocusMessage);
+        if (anchorHit < 0 || focusHit < 0) {
             return "";
         }
-        int aLine = Math.max(0, Math.min(selectionAnchorLine, lines.size() - 1));
-        int aChar = selectionAnchorChar;
-        int fLine = Math.max(0, Math.min(selectionFocusLine, lines.size() - 1));
-        int fChar = selectionFocusChar;
-        if (aLine > fLine || (aLine == fLine && aChar > fChar)) {
-            int tmpLine = aLine;
-            aLine = fLine;
-            fLine = tmpLine;
-            int tmpChar = aChar;
-            aChar = fChar;
-            fChar = tmpChar;
+        // Normalise to a start/end pair in display order.
+        int startHit = anchorHit;
+        int endHit = focusHit;
+        boolean reverse = anchorHit > focusHit;
+        if (!reverse && anchorHit == focusHit) {
+            reverse = selectionAnchorLine > selectionFocusLine
+                    || (selectionAnchorLine == selectionFocusLine
+                    && selectionAnchorChar > selectionFocusChar);
         }
+        if (reverse) {
+            startHit = focusHit;
+            endHit = anchorHit;
+        }
+        ChatMessage startMsg = reverse ? selectionFocusMessage : selectionAnchorMessage;
+        ChatMessage endMsg = reverse ? selectionAnchorMessage : selectionFocusMessage;
+        int startLine = reverse ? selectionFocusLine : selectionAnchorLine;
+        int startChar = reverse ? selectionFocusChar : selectionAnchorChar;
+        int endLine = reverse ? selectionAnchorLine : selectionFocusLine;
+        int endChar = reverse ? selectionAnchorChar : selectionFocusChar;
+
         StringBuilder sb = new StringBuilder();
-        for (int i = aLine; i <= fLine; i++) {
-            String line = lines.get(i);
-            int start = i == aLine ? aChar : 0;
-            int end = i == fLine ? fChar : line.length();
-            start = Math.max(0, Math.min(start, line.length()));
-            end = Math.max(0, Math.min(end, line.length()));
-            if (start < end) {
-                if (sb.length() > 0) {
+        boolean first = true;
+        for (int h = startHit; h <= endHit; h++) {
+            MessageHit hit = hits.get(h);
+            List<MessageTextLine> lines = textLinesForHit(hit);
+            if (lines.isEmpty()) {
+                continue;
+            }
+            boolean isStart = hit.message() == startMsg;
+            boolean isEnd = hit.message() == endMsg;
+            for (MessageTextLine line : lines) {
+                int local = line.line();
+                if (isStart && local < startLine) {
+                    continue;
+                }
+                if (isEnd && local > endLine) {
+                    continue;
+                }
+                String text = line.text();
+                int from = 0;
+                int to = text.length();
+                if (isStart && local == startLine) {
+                    from = startChar;
+                }
+                if (isEnd && local == endLine) {
+                    to = endChar;
+                }
+                from = Math.max(0, Math.min(from, text.length()));
+                to = Math.max(0, Math.min(to, text.length()));
+                if (from >= to) {
+                    continue;
+                }
+                if (!first) {
                     sb.append('\n');
                 }
-                sb.append(line, start, end);
+                first = false;
+                sb.append(text, from, to);
             }
         }
         return sb.toString();
+    }
+
+    /** Index of the hit row for a message, or -1 when it is not currently drawn. */
+    private int hitIndexFor(ChatMessage message) {
+        for (int i = 0; i < hits.size(); i++) {
+            if (hits.get(i).message() == message) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** Arms the avatar poke wobble for one message (double-click side effect). */
@@ -879,25 +935,22 @@ public final class MessageListView {
 
     /**
      * Draws the active selection highlight for one message before its text is
-     * drawn, so the glyphs stay readable above the blue block.
+     * drawn, so the glyphs stay readable above the blue block. The range may
+     * start or end in another message.
      */
     private void drawMessageSelection(Canvas canvas, ChatMessage msg, List<String> lines, float textX,
                                       float centerY, float lineHeight, Font font) {
-        if (selectionMessage != msg || !hasSelection()) {
+        if (lines.isEmpty() || !hasSelection()) {
             return;
         }
-        int aLine = selectionAnchorLine;
-        int aChar = selectionAnchorChar;
-        int fLine = selectionFocusLine;
-        int fChar = selectionFocusChar;
-        if (aLine > fLine || (aLine == fLine && aChar > fChar)) {
-            int tmpLine = aLine;
-            aLine = fLine;
-            fLine = tmpLine;
-            int tmpChar = aChar;
-            aChar = fChar;
-            fChar = tmpChar;
+        int[] range = selectionRangeFor(msg, lines.size());
+        if (range == null) {
+            return;
         }
+        int aLine = range[0];
+        int aChar = range[1];
+        int fLine = range[2];
+        int fChar = range[3];
         float totalH = lines.size() * lineHeight;
         float blockTop = centerY - totalH / 2.0F;
         for (int i = 0; i < lines.size(); i++) {
@@ -930,6 +983,69 @@ public final class MessageListView {
             float y = blockTop + i * lineHeight;
             SkiaDraw.drawRoundedRect(canvas, x0, y, Math.max(1.0F, x1 - x0), lineHeight, s(1), 0xE02D6FD6);
         }
+    }
+
+    /**
+     * @return {@code {startLine, startChar, endLine, endCharExclusive}} for this
+     *         message within the current selection, or null when the message is
+     *         outside the range. An end char of {@link Integer#MAX_VALUE} means
+     *         "to the end of the line".
+     */
+    private int[] selectionRangeFor(ChatMessage msg, int lineCount) {
+        if (currentMessages == null || currentMessages.isEmpty() || lineCount <= 0) {
+            return null;
+        }
+        int ai = indexOfIdentity(currentMessages, selectionAnchorMessage);
+        int fi = indexOfIdentity(currentMessages, selectionFocusMessage);
+        int mi = indexOfIdentity(currentMessages, msg);
+        if (ai < 0 || fi < 0 || mi < 0) {
+            return null;
+        }
+        boolean reverse = ai > fi
+                || (ai == fi && (selectionAnchorLine > selectionFocusLine
+                || (selectionAnchorLine == selectionFocusLine
+                && selectionAnchorChar > selectionFocusChar)));
+        int startIdx = reverse ? fi : ai;
+        int endIdx = reverse ? ai : fi;
+        if (mi < startIdx || mi > endIdx) {
+            return null;
+        }
+        ChatMessage startMsg = reverse ? selectionFocusMessage : selectionAnchorMessage;
+        ChatMessage endMsg = reverse ? selectionAnchorMessage : selectionFocusMessage;
+        int sl = reverse ? selectionFocusLine : selectionAnchorLine;
+        int sc = reverse ? selectionFocusChar : selectionAnchorChar;
+        int el = reverse ? selectionAnchorLine : selectionFocusLine;
+        int ec = reverse ? selectionAnchorChar : selectionFocusChar;
+        if (mi == startIdx && mi == endIdx) {
+            if (sl > el || (sl == el && sc > ec)) {
+                int tmp = sl;
+                sl = el;
+                el = tmp;
+                tmp = sc;
+                sc = ec;
+                ec = tmp;
+            }
+            return new int[]{sl, sc, el, ec};
+        }
+        if (mi == startIdx) {
+            return new int[]{sl, sc, lineCount - 1, Integer.MAX_VALUE};
+        }
+        if (mi == endIdx) {
+            return new int[]{0, 0, el, ec};
+        }
+        return new int[]{0, 0, lineCount - 1, Integer.MAX_VALUE};
+    }
+
+    private static int indexOfIdentity(List<ChatMessage> list, ChatMessage target) {
+        if (target == null) {
+            return -1;
+        }
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i) == target) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private ClickableSpan findClickableSpan(float mx, float my) {
