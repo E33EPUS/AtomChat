@@ -278,6 +278,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final InputRouter inputRouter = new InputRouter()
             .add(new ClosingStateInput())
             .add(new ModalInput())
+            .add(new NumberEditInput())
             .add(new ScreenEscInput())
             .add(new RootPageInput())
             .add(new WorldChatInput());
@@ -3234,6 +3235,43 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
     }
 
+    /** Inline numeric editor for integer sliders (retention days). */
+    private final class NumberEditInput implements InputHandler {
+        @Override
+        public boolean onClick(double mouseX, double mouseY, int button) {
+            return settingsSectionPage.isEditingNumber();
+        }
+
+        @Override
+        public boolean onKey(int keyCode, int scanCode, int modifiers) {
+            if (!settingsSectionPage.isEditingNumber()) {
+                return false;
+            }
+            if (keyCode == 256) { // Esc: cancel
+                settingsSectionPage.cancelNumberEdit();
+            } else if (keyCode == 257 || keyCode == 335) { // Enter
+                settingsSectionPage.commitNumberEdit();
+            } else if (keyCode == 259) { // Backspace
+                settingsSectionPage.backspaceNumber();
+            }
+            return true;
+        }
+
+        @Override
+        public boolean onChar(char chr, int modifiers) {
+            if (!settingsSectionPage.isEditingNumber()) {
+                return false;
+            }
+            settingsSectionPage.appendNumberChar(chr);
+            return true;
+        }
+
+        @Override
+        public boolean onScroll(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+            return settingsSectionPage.isEditingNumber();
+        }
+    }
+
     /**
      * Esc closes the whole AtomChat screen with its animated close — from any
      * page, including pushed sub-pages. Closing everything at once is the
@@ -3303,6 +3341,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     if (slider != null) {
                         // Any click that is not the armed button disarms it.
                         settingsSectionPage.disarmAction();
+                        // The retention-days row is an inline numeric input, not a
+                        // linear 0..365 slider that cannot land on exact values.
+                        if ("history_retention".equals(slider.row().slider().id())) {
+                            settingsSectionPage.beginNumberEdit(slider.row().slider());
+                            return true;
+                        }
                         float normalized = slider.row().slider()
                                 .normalize(slider.row().slider().value());
                         if (slider.onKnob(mx, my, normalized)) {

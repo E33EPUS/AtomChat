@@ -277,6 +277,10 @@ public final class SettingsSectionPage {
     private String draggingSliderId;
     private int activeSliderIndex = -1;
     private float dragValue;
+    /** Inline numeric editor state (used by the retention days row). */
+    private String editingSliderId;
+    private SettingsSlider editingSlider;
+    private String editBuffer = "";
     /** Section of the frame currently being rendered; drag release needs it. */
     private SettingsSection currentSectionForSettle;
     /** Release glide: from the continuous drag position to the snapped value. */
@@ -990,21 +994,45 @@ public final class SettingsSectionPage {
     private void drawSlider(Canvas canvas, Row row, UiLayout.Rect rect, int accent) {
         SettingsSlider slider = row.slider();
         boolean dragging = slider.id().equals(draggingSliderId);
+        boolean editing = slider.id().equals(editingSliderId);
         Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
         Font valueFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
         float textX = rect.x() + UiTokens.SETTINGS_ROW_PAD;
+        String display = editing ? (editBuffer.isEmpty() ? "0" : editBuffer) : slider.displayValue();
         float titleMaxW = Math.max(0.0F, rect.w() - UiTokens.SETTINGS_ROW_PAD * 2.0F
-                - SkiaFontRenderer.getStringWidth(valueFont, slider.displayValue()) - s(12));
+                - SkiaFontRenderer.getStringWidth(valueFont, display) - s(12));
 
         SkiaFontRenderer.drawText(canvas, titleFont,
                 SkiaFontRenderer.truncate(titleFont, tr(slider.titleKey()), titleMaxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(18)),
                 textPrimary());
-        SkiaFontRenderer.drawTextRight(canvas, valueFont, slider.displayValue(),
+        SkiaFontRenderer.drawTextRight(canvas, valueFont, display,
                 rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
-                dragging ? accent : textPrimary());
+                editing ? accent : dragging ? accent : textPrimary());
 
         UiLayout.Rect track = sliderTrackRect(rect);
+        if (editing) {
+            // Inline numeric input: a rounded field replaces the track while
+            // typing. Enter commits, Esc cancels (handled by the screen).
+            float fieldH = track.h() + s(10);
+            float fieldY = track.y() - s(5);
+            float radius = fieldH / 2.0F;
+            SkiaDraw.drawRoundedRect(canvas, track.x(), fieldY, track.w(), fieldH, radius,
+                    Color.makeARGB(60, 255, 255, 255));
+            try (Paint border = new Paint().setMode(PaintMode.STROKE)
+                    .setAntiAlias(true).setStrokeWidth(s(1.5F)).setColor(accent)) {
+                canvas.drawRRect(io.github.humbleui.types.RRect.makeXYWH(
+                        track.x(), fieldY, track.w(), fieldH, radius), border);
+            }
+            Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
+            String shown = editBuffer.isEmpty() ? "0" : editBuffer;
+            SkiaFontRenderer.drawText(canvas, inputFont, shown,
+                    track.x() + s(10),
+                    SkiaFontRenderer.centerBaselineY(inputFont, fieldY + fieldH / 2.0F),
+                    accent);
+            return;
+        }
+
         float t = knobPosition(slider, dragging);
         float radius = UiTokens.SLIDER_TRACK_H / 2.0F;
         SkiaDraw.drawRoundedRect(canvas, track.x(), track.y(), track.w(), track.h(), radius,
@@ -1211,6 +1239,64 @@ public final class SettingsSectionPage {
         return draggingSliderId != null;
     }
 
+    // ------------------------------------------------------------ number edit
+
+    /** Whether the inline numeric editor is open (keyboard owns the row). */
+    public boolean isEditingNumber() {
+        return editingSliderId != null;
+    }
+
+    public String editingNumberText() {
+        return editBuffer;
+    }
+
+    /** Opens the inline editor with the slider's current rounded value. */
+    public void beginNumberEdit(SettingsSlider slider) {
+        if (slider == null) {
+            return;
+        }
+        editingSlider = slider;
+        editingSliderId = slider.id();
+        editBuffer = String.valueOf(Math.round(slider.value()));
+    }
+
+    public void appendNumberChar(char c) {
+        if (editingSliderId == null || c < '0' || c > '9' || editBuffer.length() >= 6) {
+            return;
+        }
+        editBuffer += c;
+    }
+
+    public void backspaceNumber() {
+        if (editingSliderId != null && !editBuffer.isEmpty()) {
+            editBuffer = editBuffer.substring(0, editBuffer.length() - 1);
+        }
+    }
+
+    /** Parses and applies the typed value; empty buffer is treated as 0. */
+    public void commitNumberEdit() {
+        if (editingSliderId == null) {
+            return;
+        }
+        try {
+            int value = editBuffer.isEmpty() ? 0 : Integer.parseInt(editBuffer);
+            if (editingSlider != null) {
+                editingSlider.apply(value);
+                editingSlider.persist();
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid input: keep the old value.
+        } finally {
+            cancelNumberEdit();
+        }
+    }
+
+    public void cancelNumberEdit() {
+        editingSliderId = null;
+        editingSlider = null;
+        editBuffer = "";
+    }
+
     /**
      * Knob position for rendering: the pointer while dragging, the snapped
      * value otherwise, with a short glide in between so releasing never reads
@@ -1365,5 +1451,6 @@ public final class SettingsSectionPage {
         rowHover.clear();
         draggingSliderId = null;
         hoveredIndex = -1;
+        cancelNumberEdit();
     }
 }
