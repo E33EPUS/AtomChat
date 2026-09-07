@@ -3253,6 +3253,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 settingsSectionPage.commitNumberEdit();
             } else if (keyCode == 259) { // Backspace
                 settingsSectionPage.backspaceNumber();
+            } else if (keyCode >= 48 && keyCode <= 57) { // top-row digits
+                settingsSectionPage.appendNumberChar((char) ('0' + keyCode - 48));
+            } else if (keyCode >= 320 && keyCode <= 329) { // numpad digits
+                settingsSectionPage.appendNumberChar((char) ('0' + keyCode - 320));
             }
             return true;
         }

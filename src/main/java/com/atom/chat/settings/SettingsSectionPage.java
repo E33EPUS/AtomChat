@@ -993,46 +993,26 @@ public final class SettingsSectionPage {
 
     private void drawSlider(Canvas canvas, Row row, UiLayout.Rect rect, int accent) {
         SettingsSlider slider = row.slider();
+        if (isInlineNumberSlider(slider.id())) {
+            drawInlineNumberSlider(canvas, row, rect, accent);
+            return;
+        }
         boolean dragging = slider.id().equals(draggingSliderId);
-        boolean editing = slider.id().equals(editingSliderId);
         Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
         Font valueFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
         float textX = rect.x() + UiTokens.SETTINGS_ROW_PAD;
-        String display = editing ? (editBuffer.isEmpty() ? "0" : editBuffer) : slider.displayValue();
         float titleMaxW = Math.max(0.0F, rect.w() - UiTokens.SETTINGS_ROW_PAD * 2.0F
-                - SkiaFontRenderer.getStringWidth(valueFont, display) - s(12));
+                - SkiaFontRenderer.getStringWidth(valueFont, slider.displayValue()) - s(12));
 
         SkiaFontRenderer.drawText(canvas, titleFont,
                 SkiaFontRenderer.truncate(titleFont, tr(slider.titleKey()), titleMaxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(18)),
                 textPrimary());
-        SkiaFontRenderer.drawTextRight(canvas, valueFont, display,
+        SkiaFontRenderer.drawTextRight(canvas, valueFont, slider.displayValue(),
                 rect.right() - UiTokens.SETTINGS_ROW_PAD, rect.y() + s(18),
-                editing ? accent : dragging ? accent : textPrimary());
+                dragging ? accent : textPrimary());
 
         UiLayout.Rect track = sliderTrackRect(rect);
-        if (editing) {
-            // Inline numeric input: a rounded field replaces the track while
-            // typing. Enter commits, Esc cancels (handled by the screen).
-            float fieldH = track.h() + s(10);
-            float fieldY = track.y() - s(5);
-            float radius = fieldH / 2.0F;
-            SkiaDraw.drawRoundedRect(canvas, track.x(), fieldY, track.w(), fieldH, radius,
-                    Color.makeARGB(60, 255, 255, 255));
-            try (Paint border = new Paint().setMode(PaintMode.STROKE)
-                    .setAntiAlias(true).setStrokeWidth(s(1.5F)).setColor(accent)) {
-                canvas.drawRRect(io.github.humbleui.types.RRect.makeXYWH(
-                        track.x(), fieldY, track.w(), fieldH, radius), border);
-            }
-            Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
-            String shown = editBuffer.isEmpty() ? "0" : editBuffer;
-            SkiaFontRenderer.drawText(canvas, inputFont, shown,
-                    track.x() + s(10),
-                    SkiaFontRenderer.centerBaselineY(inputFont, fieldY + fieldH / 2.0F),
-                    accent);
-            return;
-        }
-
         float t = knobPosition(slider, dragging);
         float radius = UiTokens.SLIDER_TRACK_H / 2.0F;
         SkiaDraw.drawRoundedRect(canvas, track.x(), track.y(), track.w(), track.h(), radius,
@@ -1044,6 +1024,52 @@ public final class SettingsSectionPage {
         float knobY = track.y() + track.h() / 2.0F - UiTokens.SLIDER_KNOB / 2.0F;
         SkiaDraw.drawRoundedRect(canvas, knobX, knobY, UiTokens.SLIDER_KNOB, UiTokens.SLIDER_KNOB,
                 UiTokens.SLIDER_KNOB / 2.0F, Color.makeARGB(255, 255, 255, 255)); // knob: mechanical white
+    }
+
+    /** Sliders rendered as a right-side input field instead of a drag track. */
+    private static boolean isInlineNumberSlider(String id) {
+        return "history_retention".equals(id);
+    }
+
+    /**
+     * Label + input-field row for integer values that need exact entry (the
+     * retention slider could not land on precise day counts). The field is
+     * always visible on the right; clicking it opens the inline editor.
+     */
+    private void drawInlineNumberSlider(Canvas canvas, Row row, UiLayout.Rect rect, int accent) {
+        SettingsSlider slider = row.slider();
+        boolean editing = slider.id().equals(editingSliderId);
+        float padX = UiTokens.SETTINGS_ROW_PAD;
+        float textX = rect.x() + padX;
+        float fieldW = Math.min(s(170), rect.w() * 0.45F);
+        float fieldX = rect.right() - padX - fieldW;
+        float fieldH = s(36);
+        float fieldY = rect.y() + (rect.h() - fieldH) / 2.0F;
+
+        Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
+        float titleMaxW = Math.max(0.0F, fieldX - textX - s(12));
+        SkiaFontRenderer.drawText(canvas, titleFont,
+                SkiaFontRenderer.truncate(titleFont, tr(slider.titleKey()), titleMaxW), textX,
+                SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + rect.h() / 2.0F),
+                textPrimary());
+
+        float radius = s(8);
+        SkiaDraw.drawRoundedRect(canvas, fieldX, fieldY, fieldW, fieldH, radius,
+                Color.makeARGB(60, 255, 255, 255));
+        try (Paint border = new Paint().setMode(PaintMode.STROKE)
+                .setAntiAlias(true).setStrokeWidth(s(1.5F))
+                .setColor(editing ? accent : Color.makeARGB(110, 255, 255, 255))) {
+            canvas.drawRRect(io.github.humbleui.types.RRect.makeXYWH(
+                    fieldX, fieldY, fieldW, fieldH, radius), border);
+        }
+
+        Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
+        String text = editing ? (editBuffer.isEmpty() ? "0" : editBuffer) : slider.displayValue();
+        SkiaFontRenderer.drawText(canvas, inputFont,
+                SkiaFontRenderer.truncate(inputFont, text, fieldW - s(20)),
+                fieldX + s(10),
+                SkiaFontRenderer.centerBaselineY(inputFont, fieldY + fieldH / 2.0F),
+                editing ? accent : textPrimary());
     }
 
     private void drawInfo(Canvas canvas, Row row, UiLayout.Rect rect) {
