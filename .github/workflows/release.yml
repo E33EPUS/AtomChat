@@ -87,11 +87,11 @@ jobs:
 
           token = os.environ["CURSEFORGE_TOKEN"]
           token = token.strip()
+          ua = {"User-Agent": "CurseForgeGradle/AtomChat-CI"}
           attempts = [
-              ("https://minecraft.curseforge.com/api/game/versions", {"Accept": "application/json"}),
-              ("https://minecraft.curseforge.com/api/game/versions", {"Accept": "application/json", "x-api-key": token}),
-              ("https://minecraft.curseforge.com/api/game/versions", {"Accept": "application/json", "Authorization": "Bearer " + token}),
-              ("https://api.curseforge.com/v1/games/432/versions", {"Accept": "application/json", "x-api-key": token}),
+              ("https://minecraft.curseforge.com/api/game/versions", {**ua, "Accept": "application/json"}),
+              ("https://minecraft.curseforge.com/api/game/versions", {**ua, "Accept": "application/json", "x-api-key": token}),
+              ("https://api.curseforge.com/v1/games/432/versions", {**ua, "Accept": "application/json", "x-api-key": token}),
           ]
           data = None
           for url, headers in attempts:
