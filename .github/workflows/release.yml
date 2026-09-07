@@ -85,15 +85,27 @@ jobs:
           python3 - <<'PY'
           import json, os, urllib.request
 
-          base = "https://api.curseforge.com"
-          headers = {"x-api-key": os.environ["CURSEFORGE_TOKEN"], "Accept": "application/json"}
-
-          def get(path):
-              req = urllib.request.Request(base + path, headers=headers)
-              with urllib.request.urlopen(req) as r:
-                  return json.load(r)
-
-          data = get("/v1/games/432/versions")["data"]
+          token = os.environ["CURSEFORGE_TOKEN"]
+          token = token.strip()
+          attempts = [
+              ("https://minecraft.curseforge.com/api/game/versions", {"Accept": "application/json"}),
+              ("https://minecraft.curseforge.com/api/game/versions", {"Accept": "application/json", "x-api-key": token}),
+              ("https://minecraft.curseforge.com/api/game/versions", {"Accept": "application/json", "Authorization": "Bearer " + token}),
+              ("https://api.curseforge.com/v1/games/432/versions", {"Accept": "application/json", "x-api-key": token}),
+          ]
+          data = None
+          for url, headers in attempts:
+              try:
+                  req = urllib.request.Request(url, headers=headers)
+                  with urllib.request.urlopen(req) as r:
+                      body = json.load(r)
+                  data = body["data"]
+                  print(f"Version list fetched from {url} (variant {headers})")
+                  break
+              except Exception as e:
+                  print(f"Variant failed: {url} {headers} -> {e}")
+          if data is None:
+              raise SystemExit("ERROR: could not fetch the CurseForge version list with any auth variant")
           names = {}
           for v in data:
               names.setdefault(v["name"], v["id"])
