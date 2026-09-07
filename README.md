@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/E33EPUS/AtomChat?sort=semver&label=%E6%9C%80%E6%96%B0%E7%89%88)](https://github.com/E33EPUS/AtomChat/releases/latest)
 [![CurseForge](https://img.shields.io/curseforge/dt/1681271?label=CurseForge&color=f16436)](https://www.curseforge.com/minecraft/mc-mods/atomchat)
-[![Build](https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg)](https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml)
+[![Build](https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Fabric-1.21.1)](https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml)
 
 为 Minecraft 带来手机 App 风格的聊天体验（Fabric 1.21.1，Skia 渲染）。以 [E33Chat](https://modrinth.com/mod/e33chat) 的设计思路为蓝本的独立重写。
 
