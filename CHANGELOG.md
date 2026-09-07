@@ -11,6 +11,10 @@
 - **历史保留天数滑条**：设置 → 聊天新增滑条（0 = 永久，1–365 天），到期历史文件在进世界时自动清理。
 - **数据目录治理**：自动下载的聊天图片缓存与 companion 他人头像数据从 `config/atomchat/` 迁到 `<游戏目录>/atomchat-data/`，config 目录不再被运行时数据撑大；图片缓存上限 500 个文件 / 100 MB，自动按时间清理最旧文件；「关于」页新增「清除图片缓存」卡片（带二次确认），显示当前缓存占用。
 
+### 修复
+
+- **打开聊天屏崩溃**：紧凑分组在计算最后一条消息的下一行间距时越界（`IndexOutOfBoundsException`）；边界探针现在在消息列表末尾直接返回 false。
+
 ### Added
 
 - **Skia notification banners and sounds**: when you are @mentioned, quoted or whispered while no screen is open, AtomChat draws a rounded dark Skia banner (no vanilla HUD) and plays a deduped sound. New Settings → Chat toggles for mention/whisper banners and sounds plus a notification-volume slider; system messages stay silent.
@@ -19,6 +23,10 @@
 - **Cross-message text selection**: drag-select text across multiple messages and copy it all with Ctrl+C.
 - **History retention slider**: Settings → Chat now controls `historyRetentionDays` (0 = forever, 1–365 days); expired files are pruned on world join.
 - **Data-dir cleanup**: auto-downloaded chat-image caches and companion avatar uploads moved from `config/atomchat/` to `<gameDir>/atomchat-data/`; image cache capped at 500 files / 100 MB with oldest-file trimming; About page has a confirm-guarded “Clear image cache” card showing current usage.
+
+### Fixed
+
+- **Crash when opening the chat screen**: compact-group lookahead indexed one past the last message; the edge probe now returns false at the end of the list.
 
 ## v0.2.3
 
