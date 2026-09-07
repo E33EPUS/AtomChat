@@ -198,13 +198,6 @@ jobs:
     name: Publish (${{ matrix.loader }})
     needs: release
     runs-on: ubuntu-latest
-    if: >-
-      ${{
-        github.event_name != 'workflow_dispatch' ||
-        github.event.inputs.target == 'all' ||
-        (matrix.loader == 'Fabric' && github.event.inputs.target == 'fabric') ||
-        (matrix.loader == 'NeoForge' && github.event.inputs.target == 'neoforge')
-      }}
     strategy:
       fail-fast: false
       matrix:
@@ -246,6 +239,13 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build and publish to Modrinth and CurseForge
+        if: >-
+          ${{
+            github.event_name != 'workflow_dispatch' ||
+            github.event.inputs.target == 'all' ||
+            (matrix.loader == 'Fabric' && github.event.inputs.target == 'fabric') ||
+            (matrix.loader == 'NeoForge' && github.event.inputs.target == 'neoforge')
+          }}
         run: ./gradlew build publishMods --no-daemon
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
