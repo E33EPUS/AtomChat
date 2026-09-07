@@ -1,5 +1,6 @@
 package com.atom.chat.render;
 
+import com.atom.chat.font.FontManager;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Font;
@@ -215,39 +216,53 @@ public final class SkiaFontRenderer {
         if (primary.getUTF32Glyph(codepoint) != 0) {
             return primary;
         }
-        String key = codepoint + "@" + (int) primary.getSize();
+        // Bundled CJK/Latin pairing is weight-specific, so the cache key must
+        // include the primary typeface family (Inter vs Inter SemiBold).
+        String primaryFamily = primary.getTypeface().getFamilyName();
+        String key = primaryFamily + "@" + (int) primary.getSize() + ":" + codepoint;
         Font cached = FALLBACK_FONT_CACHE.get(key);
         if (cached != null) {
             return cached;
         }
         Font resolved = null;
         try {
-            io.github.humbleui.skija.FontMgr mgr = io.github.humbleui.skija.FontMgr.getDefault();
-            if (mgr != null) {
-                io.github.humbleui.skija.Typeface match = null;
-                if (isEmojiCodepoint(codepoint)) {
-                    io.github.humbleui.skija.Typeface emoji =
-                            mgr.matchFamilyStyle("Segoe UI Emoji", io.github.humbleui.skija.FontStyle.NORMAL);
-                    if (emoji != null && emoji.getUTF32Glyph(codepoint) != 0) {
-                        match = emoji;
-                    }
-                }
-                if (match == null) {
-                    // The bundled font is a GB2312 subset, so kaomoji lean on
-                    // exotic ranges (kana, Thai, Hangul, phonetic, symbols). A
-                    // narrow list leaves tofu even though Windows has the glyphs:
-                    // DengXian/MS Gothic cover kana, Malgun Gothic covers Hangul,
-                    // Leelawadee UI covers Thai, Cambria/Calibri cover symbols.
-                    match = mgr.matchFamiliesStyleCharacter(
-                            FALLBACK_FAMILIES,
-                            io.github.humbleui.skija.FontStyle.NORMAL, null, codepoint);
-                }
-                if (match != null) {
-                    resolved = new Font(match, primary.getSize());
-                }
+            io.github.humbleui.skija.Typeface bundled = FontManager.fallbackTypeface(primary);
+            if (bundled != null && bundled.getUTF32Glyph(codepoint) != 0) {
+                resolved = new Font(bundled, primary.getSize());
             }
         } catch (Throwable t) {
-            // No fallback available: primary renders tofu, same as before.
+            // Fall through to system fallback.
+        }
+        if (resolved == null) {
+            try {
+                io.github.humbleui.skija.FontMgr mgr = io.github.humbleui.skija.FontMgr.getDefault();
+                if (mgr != null) {
+                    io.github.humbleui.skija.Typeface match = null;
+                    if (isEmojiCodepoint(codepoint)) {
+                        io.github.humbleui.skija.Typeface emoji =
+                                mgr.matchFamilyStyle("Segoe UI Emoji", io.github.humbleui.skija.FontStyle.NORMAL);
+                        if (emoji != null && emoji.getUTF32Glyph(codepoint) != 0) {
+                            match = emoji;
+                        }
+                    }
+                    if (match == null) {
+                        // The bundled CJK font is a GB2312 subset, so kaomoji
+                        // lean on exotic ranges (kana, Thai, Hangul, phonetic,
+                        // symbols). A narrow list leaves tofu even though Windows
+                        // has the glyphs: DengXian/MS Gothic cover kana, Malgun
+                        // Gothic covers Hangul, Leelawadee UI covers Thai,
+                        // Cambria/Calibri cover symbols.
+                        match = mgr.matchFamiliesStyleCharacter(
+                                FALLBACK_FAMILIES,
+                                io.github.humbleui.skija.FontStyle.NORMAL, null, codepoint);
+                    }
+                    if (match != null) {
+                        resolved = new Font(match, primary.getSize());
+                    }
+                }
+            } catch (Throwable t) {
+                // No fallback available: primary renders tofu, same as before.
+            }
         }
         if (resolved == null) {
             resolved = primary;
