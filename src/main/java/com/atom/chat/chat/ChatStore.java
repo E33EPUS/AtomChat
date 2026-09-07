@@ -15,7 +15,22 @@ public final class ChatStore {
         return INSTANCE;
     }
 
-    public synchronized void add(ChatMessage message) {
+    /**
+     * Adds a public/feed message. Returns true when the message was folded into
+     * the previous identical one by anti-spam (no new row, no new unread).
+     */
+    public synchronized boolean add(ChatMessage message) {
+        if (message == null) {
+            return false;
+        }
+        if (MessageMerge.antiSpamEnabled() && !messages.isEmpty()) {
+            ChatMessage last = messages.get(messages.size() - 1);
+            if (MessageMerge.canMerge(last, message)) {
+                messages.set(messages.size() - 1, MessageMerge.merge(last, message));
+                com.atom.chat.history.ChatHistory.markDirty();
+                return true;
+            }
+        }
         messages.add(message);
         com.atom.chat.history.ChatHistory.markDirty();
         if (!message.isOwn() && !publicActive) {
@@ -24,6 +39,7 @@ public final class ChatStore {
         if (messages.size() > 500) {
             messages.remove(0);
         }
+        return false;
     }
 
     /**

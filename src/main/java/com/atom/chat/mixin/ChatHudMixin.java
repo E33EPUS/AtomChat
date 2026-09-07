@@ -245,8 +245,8 @@ public class ChatHudMixin {
      */
     @Unique
     private static void atomchat$addPublic(ChatMessage message, String body, boolean system) {
-        ChatStore.get().add(message);
-        if (system) {
+        boolean merged = ChatStore.get().add(message);
+        if (system || merged) {
             return;
         }
         MinecraftClient client = MinecraftClient.getInstance();

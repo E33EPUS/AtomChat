@@ -11,6 +11,10 @@ public class AtomChat implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // Config seam for anti-spam: wire the pure logic to the real config
+        // only in a real launch (unit tests keep the safe no-merge default).
+        com.atom.chat.chat.MessageMerge.antiSpamEnabledSupplier =
+                () -> com.atom.chat.config.AtomChatConfig.get().antiSpamEnabled;
         // Avatar companion: codecs on both logical sides, receivers on the
         // game-server side (dedicated server or an integrated double-open).
         com.atom.chat.net.AvatarPayloads.register();

@@ -2,6 +2,7 @@ package com.atom.chat.page;
 
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.Cicodes;
+import com.atom.chat.chat.MessageGrouping;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.image.ImageLoader;
@@ -127,6 +128,7 @@ public final class MessageListView {
             float cursorY = y;
             for (int mi = 0; mi < messages.size(); mi++) {
                 ChatMessage msg = messages.get(mi);
+                boolean grouped = isCompactGrouped(messages, mi);
                 if (dividerBefore(messages, mi)) {
                     // Clock pill between messages. Drawn only when its own
                     // message is in the extended viewport, so occluded
@@ -138,7 +140,7 @@ public final class MessageListView {
                     }
                     cursorY += TIME_DIVIDER_H + UiTokens.LIST_GAP;
                 }
-                float h = messageHeight(msg, width);
+                float h = messageHeight(msg, width, grouped);
                 float offset = cursorY - y;
                 if (offset > scroll.getScrollY() + height + 80.0F) {
                     break;
@@ -176,7 +178,7 @@ public final class MessageListView {
                         }
                     }
                     int spanStart = clickableSpans.size();
-                    MessageHit hit = drawMessage(canvas, msg, x, cursorY, width, hits.size());
+                    MessageHit hit = drawMessage(canvas, msg, x, cursorY, width, hits.size(), grouped);
                     // Clickable spans are recorded in content space (like hits
                     // before conversion); convert them to screen space so later
                     // hit-testing can compare them directly against the mouse.
@@ -199,7 +201,11 @@ public final class MessageListView {
                     // bounded by pruneEntranceSettled's time guard.
                     messageEnterStart.remove(msg);
                 }
-                cursorY += h + UiTokens.LIST_GAP;
+                boolean nextGrouped = isCompactGrouped(messages, mi + 1);
+                float gap = nextGrouped
+                        ? MessageGrouping.groupedGap(UiTokens.LIST_GAP, UiTokens.s(2))
+                        : UiTokens.LIST_GAP;
+                cursorY += h + gap;
             }
         } finally {
             canvas.restore();
@@ -411,6 +417,14 @@ public final class MessageListView {
      * message of the list always carries one (e33chat behaviour); 0 disables
      * timestamps entirely.
      */
+    /** Whether the message at {@code index} continues a compact same-sender group. */
+    private static boolean isCompactGrouped(List<ChatMessage> messages, int index) {
+        if (!AtomChatConfig.get().compactMessagesEnabled || index <= 0 || dividerBefore(messages, index)) {
+            return false;
+        }
+        return MessageGrouping.isSameGroup(messages.get(index - 1), messages.get(index));
+    }
+
     private static boolean dividerBefore(List<ChatMessage> messages, int index) {
         int minutes = AtomChatConfig.get().timestampIntervalMinutes;
         if (minutes <= 0) {
@@ -480,7 +494,8 @@ public final class MessageListView {
         messageEnterSettled.removeIf(m -> m.getTimestamp() < cutoff);
     }
 
-    private MessageHit drawMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
+    private MessageHit drawMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index,
+                                   boolean grouped) {
         if (msg.isSystem()) {
             return drawSystemMessage(canvas, msg, x, y, maxWidth, index);
         }
@@ -490,9 +505,9 @@ public final class MessageListView {
         String imageUrl = Cicodes.extractImageUrl(raw);
         if (imageUrl != null) {
             if (!AtomChatConfig.get().imageMessagesEnabled) {
-                return drawImagePlaceholderMessage(canvas, msg, x, y, maxWidth, index);
+                return drawImagePlaceholderMessage(canvas, msg, x, y, maxWidth, index, grouped);
             }
-            return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index);
+            return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index, grouped);
         }
         RichText content = msg.getContentRich();
         float textMaxWidth = bubbleMaxWidth - UiTokens.BUBBLE_PAD * 2.0F;
@@ -519,29 +534,34 @@ public final class MessageListView {
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float textHeight = Math.max(lineHeight, lines.size() * lineHeight);
 
-        // Layout formula: name band -> quote pill -> bubble; bubble hugs the avatar side.
+        // Layout formula: name band (first of group only) -> quote pill -> bubble.
         boolean hasQuote = msg.getQuoteName() != null;
         float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
+        float band = grouped ? 0.0F : UiTokens.NAME_BAND;
+        float bubbleTop = y + band + quoteH;
         float bubbleHeight = textHeight + UiTokens.BUBBLE_PAD_Y;
         float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
         float bubbleX = msg.isOwn() ? x + maxWidth - bubbleWidth - nameOffset : x + nameOffset;
 
-        // Name hugs the bubble's outer edge: right-aligned for own, left for others.
-        drawMessageName(canvas, msg, y, bubbleX, bubbleX + bubbleWidth);
-
-        float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
-        float avatarY = y + s(4);
-
-        // Poke animation: QQ-style wobble — the avatar rocks around its centre
-        // (damped ±14° over two and a half oscillations in ~600ms) instead of
-        // sliding side to side. The wobble itself is decorative, so with motion
-        // off the poke is already suppressed at the click site and this block
-        // never arms.
-        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
-
+        float avatarX = 0.0F;
+        float avatarY = 0.0F;
+        float avatarSize = 0.0F;
+        if (!grouped) {
+            // Name hugs the bubble's outer edge: right-aligned for own, left for others.
+            drawMessageName(canvas, msg, y, bubbleX, bubbleX + bubbleWidth);
+            drawDuplicateBadge(canvas, msg, bubbleX, bubbleWidth, y);
+            avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
+            avatarY = y + s(4);
+            avatarSize = UiTokens.AVATAR_SIZE;
+            // Poke animation: QQ-style wobble — the avatar rocks around its centre
+            // (damped ±14° over two and a half oscillations in ~600ms) instead of
+            // sliding side to side. The wobble itself is decorative, so with motion
+            // off the poke is already suppressed at the click site and this block
+            // never arms.
+            drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
+        }
         if (hasQuote) {
-            drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
+            drawQuotePill(canvas, msg, x, maxWidth, y + band, msg.isOwn());
         }
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, bubbleWidth, bubbleHeight, UiTokens.BUBBLE_RADIUS, msg.isOwn() ? ownBubble() : otherBubble());
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
@@ -549,7 +569,7 @@ public final class MessageListView {
                 lineHeight, bubbleText(msg), clickableSpans, true);
 
         float bottom = bubbleTop + bubbleHeight;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, bubbleWidth, bottom);
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, bubbleTop, bubbleX, bubbleWidth, bottom);
     }
 
     /**
@@ -655,27 +675,52 @@ public final class MessageListView {
                 clickableSpans, true);
     }
 
-    private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl, float x, float y, float maxWidth, int index) {
+    /**
+     * Anti-spam counter badge in the name band, outside the bubble's outer edge
+     * (own bubbles: left of the bubble; other bubbles: right of the bubble).
+     */
+    private void drawDuplicateBadge(Canvas canvas, ChatMessage msg, float bubbleX, float bubbleWidth, float rowY) {
+        if (msg.getDuplicateCount() <= 1) {
+            return;
+        }
+        Font font = FontManager.font(UiTokens.FONT_NAME);
+        String label = "x" + msg.getDuplicateCount();
+        float labelW = SkiaFontRenderer.getStringWidth(font, label);
+        float x = msg.isOwn() ? bubbleX - labelW - s(4) : bubbleX + bubbleWidth + s(4);
+        if (x < s(4)) {
+            x = s(4);
+        }
+        float centerY = rowY + UiTokens.NAME_BAND / 2.0F;
+        SkiaFontRenderer.drawText(canvas, font, label, x,
+                SkiaFontRenderer.centerBaselineY(font, centerY), secondaryCapsuleText());
+    }
+
+    private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl,
+                                        float x, float y, float maxWidth, int index, boolean grouped) {
         float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
         boolean hasQuote = msg.getQuoteName() != null;
         float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
-        float bubbleTop = y + UiTokens.NAME_BAND + quoteH;
+        float band = grouped ? 0.0F : UiTokens.NAME_BAND;
+        float bubbleTop = y + band + quoteH;
         float[] size = Cicodes.imageBubbleSize(Cicodes.parseImageMeta(raw), maxWidth);
         float imageW = size[0];
         float imageH = size[1];
         float bubbleX = msg.isOwn() ? x + maxWidth - imageW - nameOffset : x + nameOffset;
 
-        // Name hugs the bubble's outer edge, exactly like a text bubble.
-        // Anchoring it to the row instead (the old behaviour) left the name
-        // drifting away from the bubble as soon as the bubble width changed —
-        // image bubbles are always wider than a short text bubble.
-        drawMessageName(canvas, msg, y, bubbleX, bubbleX + imageW);
-
-        float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
-        float avatarY = y + s(4);
-        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
+        float avatarX = 0.0F;
+        float avatarY = 0.0F;
+        float avatarSize = 0.0F;
+        if (!grouped) {
+            // Name hugs the bubble's outer edge, exactly like a text bubble.
+            drawMessageName(canvas, msg, y, bubbleX, bubbleX + imageW);
+            drawDuplicateBadge(canvas, msg, bubbleX, imageW, y);
+            avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
+            avatarY = y + s(4);
+            avatarSize = UiTokens.AVATAR_SIZE;
+            drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
+        }
         if (hasQuote) {
-            drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
+            drawQuotePill(canvas, msg, x, maxWidth, y + band, msg.isOwn());
         }
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS, otherBubble());
 
@@ -693,7 +738,7 @@ public final class MessageListView {
         }
 
         float bottom = bubbleTop + imageH;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, bubbleTop, bubbleX, imageW, bottom);
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, bubbleTop, bubbleX, imageW, bottom);
     }
 
     /**
@@ -702,9 +747,11 @@ public final class MessageListView {
      * is fetched or decoded. Identity (name + avatar) stays so the sender is
      * still readable.
      */
-    private MessageHit drawImagePlaceholderMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
+    private MessageHit drawImagePlaceholderMessage(Canvas canvas, ChatMessage msg, float x, float y,
+                                                   float maxWidth, int index, boolean grouped) {
         boolean hasQuote = msg.getQuoteName() != null;
         float quoteH = hasQuote ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
+        float band = grouped ? 0.0F : UiTokens.NAME_BAND;
         Font font = FontManager.font(UiTokens.FONT_QUOTE);
         String placeholder = tr("atomchat.hud.image");
         float textW = SkiaFontRenderer.getStringWidth(font, placeholder);
@@ -713,20 +760,28 @@ public final class MessageListView {
         float pillH = lineHeight + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         float nameOffset = UiTokens.AVATAR_SIZE + UiTokens.AVATAR_GAP;
         float pillX = msg.isOwn() ? x + maxWidth - pillW - nameOffset : x + nameOffset;
-        float pillTop = y + UiTokens.NAME_BAND + quoteH;
-        drawMessageName(canvas, msg, y, pillX, pillX + pillW);
-        float avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
-        float avatarY = y + s(4);
-        drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
+        float pillTop = y + band + quoteH;
+
+        float avatarX = 0.0F;
+        float avatarY = 0.0F;
+        float avatarSize = 0.0F;
+        if (!grouped) {
+            drawMessageName(canvas, msg, y, pillX, pillX + pillW);
+            drawDuplicateBadge(canvas, msg, pillX, pillW, y);
+            avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
+            avatarY = y + s(4);
+            avatarSize = UiTokens.AVATAR_SIZE;
+            drawAvatarWithPoke(canvas, msg, index, avatarX, avatarY);
+        }
         if (hasQuote) {
-            drawQuotePill(canvas, msg, x, maxWidth, y + UiTokens.NAME_BAND, msg.isOwn());
+            drawQuotePill(canvas, msg, x, maxWidth, y + band, msg.isOwn());
         }
         SkiaDraw.drawRoundedRect(canvas, pillX, pillTop, pillW, pillH, UiTokens.radius(10),
                 secondaryCapsuleBg());
         SkiaFontRenderer.drawTextCentered(canvas, font, placeholder,
                 pillX + pillW / 2.0F, pillTop + pillH / 2.0F, Color.makeARGB(255, 85, 255, 85));
         float bottom = pillTop + pillH;
-        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, UiTokens.AVATAR_SIZE, pillTop, pillX, pillW, bottom);
+        return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, pillTop, pillX, pillW, bottom);
     }
 
     private float measureContentHeight(List<ChatMessage> messages, float width) {
@@ -735,7 +790,12 @@ public final class MessageListView {
             if (dividerBefore(messages, i)) {
                 contentHeight += TIME_DIVIDER_H + UiTokens.LIST_GAP;
             }
-            contentHeight += messageHeight(messages.get(i), width) + UiTokens.LIST_GAP;
+            boolean grouped = isCompactGrouped(messages, i);
+            contentHeight += messageHeight(messages.get(i), width, grouped);
+            boolean nextGrouped = isCompactGrouped(messages, i + 1);
+            contentHeight += nextGrouped
+                    ? MessageGrouping.groupedGap(UiTokens.LIST_GAP, UiTokens.s(2))
+                    : UiTokens.LIST_GAP;
         }
         return contentHeight;
     }
@@ -743,8 +803,9 @@ public final class MessageListView {
     /**
      * Must match what drawMessage/drawImageMessage actually lay out:
      * name band + (quote pill + gap) + bubble; image bubbles are s(140) tall.
+     * A grouped continuation omits the name/avatar band.
      */
-    private float messageHeight(ChatMessage msg, float maxWidth) {
+    private float messageHeight(ChatMessage msg, float maxWidth, boolean grouped) {
         if (msg.isSystem()) {
             Font font = FontManager.font(UiTokens.FONT_QUOTE);
             float lineHeight = SkiaFontRenderer.getHeight(font);
@@ -753,20 +814,21 @@ public final class MessageListView {
             return s(2) + Math.max(lineHeight, lines * lineHeight) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         }
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
+        float band = grouped ? 0.0F : UiTokens.NAME_BAND;
         Cicodes.ImageMeta imageMeta = Cicodes.parseImageMeta(msg.getRawText());
         if (imageMeta != null) {
             if (!AtomChatConfig.get().imageMessagesEnabled) {
                 Font font = FontManager.font(UiTokens.FONT_QUOTE);
-                return UiTokens.NAME_BAND + quoteH
+                return band + quoteH
                         + SkiaFontRenderer.getHeight(font) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
             }
-            return UiTokens.NAME_BAND + quoteH + Cicodes.imageBubbleSize(imageMeta, maxWidth)[1];
+            return band + quoteH + Cicodes.imageBubbleSize(imageMeta, maxWidth)[1];
         }
         Font font = FontManager.font(UiTokens.FONT_BODY);
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float wrapW = Math.max(s(20), maxWidth - UiTokens.BUBBLE_RETRACT - UiTokens.BUBBLE_PAD * 2.0F);
         int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font, wrapW).size();
-        return UiTokens.NAME_BAND + quoteH + UiTokens.BUBBLE_PAD_Y + Math.max(lineHeight, lines * lineHeight);
+        return band + quoteH + UiTokens.BUBBLE_PAD_Y + Math.max(lineHeight, lines * lineHeight);
     }
 
     // ------------------------------------------------------------------ text selection

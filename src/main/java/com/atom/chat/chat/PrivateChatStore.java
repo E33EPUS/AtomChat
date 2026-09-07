@@ -55,11 +55,23 @@ public final class PrivateChatStore {
         c.unread = 0;
     }
 
-    public static synchronized void addIncoming(PlayerRef partner, ChatMessage message) {
+    /**
+     * Adds an incoming private message. Returns true when it was folded into an
+     * identical previous message by anti-spam (no new row, no new unread).
+     */
+    public static synchronized boolean addIncoming(PlayerRef partner, ChatMessage message) {
         if (partner == null || message == null) {
-            return;
+            return false;
         }
         Conversation c = conversation(partner);
+        if (MessageMerge.antiSpamEnabled() && !c.messages.isEmpty()) {
+            ChatMessage last = c.messages.get(c.messages.size() - 1);
+            if (MessageMerge.canMerge(last, message)) {
+                c.messages.set(c.messages.size() - 1, MessageMerge.merge(last, message));
+                com.atom.chat.history.ChatHistory.markDirty();
+                return true;
+            }
+        }
         c.messages.add(message);
         com.atom.chat.history.ChatHistory.markDirty();
         if (c.messages.size() > MAX_MESSAGES_PER_CONVERSATION) {
@@ -68,18 +80,32 @@ public final class PrivateChatStore {
         if (!partner.equals(activePartner)) {
             c.unread++;
         }
+        return false;
     }
 
-    public static synchronized void addOutgoing(PlayerRef partner, ChatMessage message) {
+    /**
+     * Adds an outgoing private message. Returns true when it was folded into an
+     * identical previous message by anti-spam.
+     */
+    public static synchronized boolean addOutgoing(PlayerRef partner, ChatMessage message) {
         if (partner == null || message == null) {
-            return;
+            return false;
         }
         Conversation c = conversation(partner);
+        if (MessageMerge.antiSpamEnabled() && !c.messages.isEmpty()) {
+            ChatMessage last = c.messages.get(c.messages.size() - 1);
+            if (MessageMerge.canMerge(last, message)) {
+                c.messages.set(c.messages.size() - 1, MessageMerge.merge(last, message));
+                com.atom.chat.history.ChatHistory.markDirty();
+                return true;
+            }
+        }
         c.messages.add(message);
         com.atom.chat.history.ChatHistory.markDirty();
         if (c.messages.size() > MAX_MESSAGES_PER_CONVERSATION) {
             c.messages.remove(0);
         }
+        return false;
     }
 
     /**

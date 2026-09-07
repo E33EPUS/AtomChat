@@ -3,6 +3,7 @@ package com.atom.chat;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageLoader;
 import com.atom.chat.render.PanelBlurRenderer;
+import com.atom.chat.util.CacheDirs;
 import com.atom.chat.wallpaper.WallpaperStore;
 import net.fabricmc.api.ClientModInitializer;
 import com.atom.chat.chat.ChatStore;
@@ -34,12 +35,11 @@ public class AtomChatClient implements ClientModInitializer {
         // class initialises, so it lives here at the very start of client init.
         System.setProperty("java.awt.headless", "false");
         AtomChatConfig.get();
+        CacheDirs.migrateFromOldConfigPaths();
         WallpaperStore.init(
                 net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
                         .resolve("atomchat/wallpaper"));
-        ImageLoader.get().init(
-                net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
-                        .resolve("atomchat/image-cache"));
+        ImageLoader.get().init(CacheDirs.imageCacheDir());
         com.atom.chat.net.AvatarCompanionClient.init();
         com.atom.chat.history.ChatHistory.init(
                 net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()

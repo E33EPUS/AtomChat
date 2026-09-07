@@ -1,8 +1,8 @@
 package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
+import com.atom.chat.util.CacheDirs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.network.ServerPlayerEntity;
 
 import java.io.IOException;
@@ -15,9 +15,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Server side of the avatar companion. Stateless beyond the avatar files
- * themselves: uploads land in {@code config/atomchat/avatars/<uuid>.png} and
- * requests are answered from disk. Loaded lazily in the common entrypoint so
- * a dedicated server and the integrated server of a double-open client both
+ * themselves: uploads land in {@code <gameDir>/atomchat-data/avatars/<uuid>.png}
+ * and requests are answered from disk. Loaded lazily in the common entrypoint
+ * so a dedicated server and the integrated server of a double-open client both
  * run it.
  *
  * <p>Hardening: uploads must carry the sender's own uuid (no spoofing), are
@@ -39,7 +39,8 @@ public final class AvatarCompanionServer {
 
     /** Registers the server receivers; safe to call on both logical sides. */
     public static void register() {
-        storageDir = FabricLoader.getInstance().getConfigDir().resolve("atomchat/avatars");
+        CacheDirs.migrateFromOldConfigPaths();
+        storageDir = CacheDirs.avatarDataDir();
         ServerPlayNetworking.registerGlobalReceiver(AvatarPayloads.AvatarUploadPayload.ID,
                 (payload, context) -> {
                     ServerPlayerEntity player = context.player();

@@ -71,6 +71,16 @@ public final class SettingsCatalog {
                             "atomchat.settings.chat.images.desc",
                             () -> AtomChatConfig.get().imageMessagesEnabled,
                             v -> AtomChatConfig.get().imageMessagesEnabled = v),
+                    new SettingsItem("anti_spam",
+                            "atomchat.settings.chat.anti_spam",
+                            "atomchat.settings.chat.anti_spam.desc",
+                            () -> AtomChatConfig.get().antiSpamEnabled,
+                            v -> AtomChatConfig.get().antiSpamEnabled = v),
+                    new SettingsItem("compact_messages",
+                            "atomchat.settings.chat.compact_messages",
+                            "atomchat.settings.chat.compact_messages.desc",
+                            () -> AtomChatConfig.get().compactMessagesEnabled,
+                            v -> AtomChatConfig.get().compactMessagesEnabled = v),
                     new SettingsItem("history",
                             "atomchat.settings.chat.history",
                             "atomchat.settings.chat.history.desc",
@@ -135,7 +145,18 @@ public final class SettingsCatalog {
                             v -> AtomChatConfig.get().timestampIntervalMinutes = Math.round(v),
                             v -> Math.round(v) == 0
                                     ? Text.translatable("atomchat.settings.chat.timestamp.off").getString()
-                                    : Math.round(v) + " min"));
+                                    : Math.round(v) + " min"),
+                    new SettingsSlider("history_retention",
+                            "atomchat.settings.chat.history.retention",
+                            0.00F, 365.0F, 1.0F,
+                            () -> AtomChatConfig.get().historyRetentionDays,
+                            v -> AtomChatConfig.get().historyRetentionDays = Math.round(v),
+                            v -> {
+                                int days = Math.round(v);
+                                return days == 0
+                                        ? Text.translatable("atomchat.settings.chat.history.retention.forever").getString()
+                                        : Text.translatable("atomchat.settings.chat.history.retention.days", days).getString();
+                            }));
             default -> List.of();
         };
     }

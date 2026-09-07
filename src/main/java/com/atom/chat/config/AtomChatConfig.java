@@ -141,6 +141,17 @@ public class AtomChatConfig {
      */
     public int timestampIntervalMinutes = 5;
     /**
+     * Merge consecutive identical messages from the same sender into one bubble
+     * with a repeat counter (e33chat anti-spam). System lines never merge.
+     */
+    public boolean antiSpamEnabled = true;
+    /**
+     * Render consecutive messages from the same sender within five minutes as a
+     * compact group: only the first keeps the avatar/name row, later bubbles get
+     * a tighter gap (Discord/Telegram style).
+     */
+    public boolean compactMessagesEnabled = true;
+    /**
      * User-defined quick phrases, shown in the chat composer's phrase panel.
      * Clicking one inserts it into the input box (never sends it straight
      * away), so it can still be edited before hitting enter. Managed in-game
@@ -161,7 +172,7 @@ public class AtomChatConfig {
     public boolean chatHistoryEnabled = false;
     /**
      * Deletes history files older than this many days when a world is joined.
-     * 0 keeps them forever (default). No settings UI in v0.2.3 — hand-edit.
+     * 0 keeps them forever (default). The Settings → Chat slider controls this.
      */
     public int historyRetentionDays = 0;
 
