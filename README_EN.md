@@ -102,7 +102,6 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 - ⏱️ **Time dividers** — the first message of a list always shows a timestamp capsule; later ones follow a configurable interval
 - ✏️ **Cross-message text selection** — drag across several messages and copy them all with Ctrl+C; dragging never misfires clicks
 - 🛡️ **Anti-spam & compact groups** — consecutive identical messages merge into one with a counter; same-sender five-minute runs keep the avatar/name only on the first row and tighten the gap
-- 🔔 **Skia notifications** — @mentions, quote replies and incoming whispers show a dark Skia banner while no screen is open and play a sound (each can be toggled in settings)
 - 💾 **Chat history** — Settings → Chat can keep history per server/world on disk, restore it on rejoin, clear it in one tap, and prune old files by retention days
 - 🖥️ **Profile detail page** — push into a player's profile from chat or the conversation list: stat overview, copy buttons, role tag, with a full-width push transition
 - 🌐 **Image receive toggle** — when off, nothing is downloaded or cached and a green `[Image]` placeholder is shown
@@ -165,11 +164,8 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 | `panelBgColor` / `panelOutlineColor` / `panelOutline` | `0xEE16191F` / `0xFFFFFFFF` / `true` | Panel background / outline color / outline toggle |
 | `timestampIntervalMinutes` | `5` | Time divider interval (0 = off) |
 | `imageMessagesEnabled` | `true` | Image message receive toggle |
-| `antiSpamEnabled` / `compactMessagesEnabled` | `true` / `true` | Anti-spam merging / compact message groups |
+| `antiSpamEnabled` / `compactMessagesEnabled` | `true` / `false` | Anti-spam merging / compact message groups (off by default) |
 | `chatHistoryEnabled` / `historyRetentionDays` | `false` / `0` | Keep chat history / retention days (0 = forever) |
-| `mentionBannerEnabled` / `mentionSoundEnabled` | `true` / `true` | Mention/reply banner / sound |
-| `whisperBannerEnabled` / `whisperSoundEnabled` | `true` / `true` | Whisper banner / sound |
-| `notifyVolume` | `0.8` | Notification volume (0–1) |
 | `teleportCommandMode` | `"auto"` | Teleport command mode (auto / tp / tpa) |
 | `debug` | `false` | Debug logging / avatar sampling PNGs (written to `config/atomchat/debug/`) |
 
@@ -193,7 +189,7 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 
 1. Fabric / NeoForge 1.21.1 supported so far; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet
 2. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet
-3. No E33Chat server templates, whisper sidebar, or search; notification banners and per-world chat-history persistence are built in (persistence is off by default)
+3. No E33Chat server templates, whisper sidebar, or search; per-world chat-history persistence is built in (off by default)
 4. Player identity is best effort: tell-click structured capture, offline seen cache, and multi-tier ownDisplayName fallbacks; extreme unknown formats fall back to gray system text
 5. Chat-history persistence is off by default; when enabled, history is stored per server/world on disk and restored on rejoin, without leaking across worlds/servers
 

@@ -102,7 +102,6 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 - ⏱️ **时间戳分隔** — 消息列表首条消息始终显示时间戳胶囊，之后按可配置的时间间隔显示
 - ✏️ **跨消息文字选择** — 在消息列表上跨多条消息拖选文字，Ctrl+C 一次复制多段；拖动不会误触点击
 - 🛡️ **防刷屏与紧凑分组** — 连续相同消息合并为一条并显示次数；同一发送者 5 分钟内的连续消息只保留第一条头像与名字，后续间距收紧
-- 🔔 **Skia 通知** — 被 @ 提及 / 引用回复 / 收到私聊时，屏幕关闭状态弹出 Skia 深色横幅并播放提示音（可在设置中分别关闭）
 - 💾 **聊天记录** — 设置 → 聊天可开启「保留聊天记录」；按服务器 / 世界保存到磁盘并在重进时恢复，可一键清空当前记录，历史保留天数可调
 - 🖥️ **档案详情页** — 从聊天或会话列表推入玩家档案：数据总览、复制按钮、角色标识；聊天与档案之间整页推入转场
 - 🌐 **图片接收开关** — 关闭后不下载不缓存，显示绿色 `[图片]` 占位
@@ -165,11 +164,8 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | `panelBgColor` / `panelOutlineColor` / `panelOutline` | `0xEE16191F` / `0xFFFFFFFF` / `true` | 面板背景 / 描边颜色 / 描边开关 |
 | `timestampIntervalMinutes` | `5` | 时间戳分隔间隔（0 = 关闭） |
 | `imageMessagesEnabled` | `true` | 图片消息接收开关 |
-| `antiSpamEnabled` / `compactMessagesEnabled` | `true` / `true` | 防刷屏合并 / 紧凑消息分组 |
+| `antiSpamEnabled` / `compactMessagesEnabled` | `true` / `false` | 防刷屏合并 / 紧凑消息分组（默认关） |
 | `chatHistoryEnabled` / `historyRetentionDays` | `false` / `0` | 保留聊天记录 / 历史保留天数（0 = 永久） |
-| `mentionBannerEnabled` / `mentionSoundEnabled` | `true` / `true` | @提及与回复的横幅 / 音效 |
-| `whisperBannerEnabled` / `whisperSoundEnabled` | `true` / `true` | 私聊横幅 / 音效 |
-| `notifyVolume` | `0.8` | 通知音量（0–1） |
 | `teleportCommandMode` | `"auto"` | 传送命令模式（auto / tp / tpa） |
 | `debug` | `false` | 调试输出 / 头像采样 PNG（写入 `config/atomchat/debug/`） |
 
@@ -193,7 +189,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 1. 目前支持 Fabric / NeoForge 1.21.1；Skija Windows x64 原生库已内置，Linux / macOS 尚未打包
 2. 图片默认上传第三方图床 uguu.se，约 3 小时过期；暂无服务端媒体托管
-3. 无 E33Chat 的服务端模板、私聊侧边栏、搜索等能力；通知横幅与按世界聊天记录持久化已内置（记录持久化默认关闭）
+3. 无 E33Chat 的服务端模板、私聊侧边栏、搜索等能力；按世界聊天记录持久化已内置（默认关闭）
 4. 玩家身份解析为尽力而为：tell-click 结构捕获、离线 seen 缓存、ownDisplayName 多级降级；极端未知格式回退灰字
 5. 聊天记录持久化默认关闭；开启后按服务器 / 世界保存在磁盘，重进同一服务器恢复，跨世界 / 服务器不会串台
 
