@@ -3052,11 +3052,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (colorPicker.isActive()) {
                 if (colorPicker.isInputFocused()) {
                     // Focused hex input: Esc leaves the input (auto-applying a
-                    // legal buffer), Backspace deletes, everything else swallowed.
+                    // legal buffer), Backspace deletes, Ctrl+C/V copy and paste
+                    // the hex; every other key stays swallowed by the modal.
                     if (keyCode == 256) {
                         colorPicker.blurInput();
                     } else if (keyCode == 259) {
                         colorPicker.onBackspace();
+                    } else if (keyCode == 67 && (modifiers & 2) != 0) {
+                        copyToClipboard(colorPicker.copyHex());
+                    } else if (keyCode == GLFW_KEY_V && (modifiers & 2) != 0) {
+                        colorPicker.pasteHex(AtomChatScreen.this.client.keyboard.getClipboard());
                     }
                 } else if (keyCode == 256) {
                     colorPicker.cancel();

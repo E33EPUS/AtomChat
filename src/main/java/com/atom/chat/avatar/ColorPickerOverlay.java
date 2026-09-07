@@ -213,6 +213,32 @@ public final class ColorPickerOverlay {
         }
     }
 
+    /**
+     * Replaces the buffer with the hex digits of the pasted text: a clipboard
+     * entry like "#4A90E2" lands as a complete colour; non-hex characters are
+     * stripped and only the first 6 digits are kept.
+     */
+    public void pasteHex(String text) {
+        if (!inputFocused || text == null) {
+            return;
+        }
+        String digits = text.replaceAll("[^0-9a-fA-F]", "");
+        if (digits.isEmpty()) {
+            return;
+        }
+        inputBuffer.setLength(0);
+        inputBuffer.append(digits.toLowerCase(), 0, Math.min(6, digits.length()));
+        applyBufferIfLegal();
+    }
+
+    /** The hex text Ctrl+C should copy: the buffer while editing, else the live value. */
+    public String copyHex() {
+        if (inputFocused && inputBuffer.length() > 0) {
+            return inputBuffer.toString();
+        }
+        return ColorUtil.formatHex(ColorUtil.hsvToRgb(hue, sat, bri));
+    }
+
     private void applyBufferIfLegal() {
         Integer rgb = parseBuffer();
         if (rgb == null) {
