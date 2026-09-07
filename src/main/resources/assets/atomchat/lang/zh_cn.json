@@ -142,6 +142,7 @@
   "atomchat.settings.chat.history.clear.desc.saved": "清当前会话显示与本机保存的记录",
   "atomchat.settings.chat.history.clear.desc.memory": "只清当前会话显示（未开启保存）",
   "atomchat.settings.chat.history.retention": "历史保留天数",
+  "atomchat.settings.chat.history.retention.desc": "0 = 永久，1–365 天自动清理",
   "atomchat.settings.chat.history.retention.forever": "永久",
   "atomchat.settings.chat.history.retention.days": "%s 天",
   "atomchat.quick.empty": "无常用语",

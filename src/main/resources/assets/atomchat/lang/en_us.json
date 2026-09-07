@@ -142,6 +142,7 @@
   "atomchat.settings.chat.history.clear.desc.saved": "Clears the current view and the saved file",
   "atomchat.settings.chat.history.clear.desc.memory": "Clears the current view only (saving is off)",
   "atomchat.settings.chat.history.retention": "History retention days",
+  "atomchat.settings.chat.history.retention.desc": "0 = forever, 1–365 days auto-prunes old history",
   "atomchat.settings.chat.history.retention.forever": "Forever",
   "atomchat.settings.chat.history.retention.days": "%s days",
   "atomchat.quick.empty": "No quick phrases",

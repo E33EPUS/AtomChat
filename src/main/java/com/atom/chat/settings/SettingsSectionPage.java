@@ -281,6 +281,8 @@ public final class SettingsSectionPage {
     private String editingSliderId;
     private SettingsSlider editingSlider;
     private String editBuffer = "";
+    /** Last drawn geometry of the inline number row, for click-to-blur hit tests. */
+    private UiLayout.Rect inlineNumberRowRect;
     /** Section of the frame currently being rendered; drag release needs it. */
     private SettingsSection currentSectionForSettle;
     /** Release glide: from the continuous drag position to the snapped value. */
@@ -1039,19 +1041,29 @@ public final class SettingsSectionPage {
     private void drawInlineNumberSlider(Canvas canvas, Row row, UiLayout.Rect rect, int accent) {
         SettingsSlider slider = row.slider();
         boolean editing = slider.id().equals(editingSliderId);
+        inlineNumberRowRect = rect;
         float padX = UiTokens.SETTINGS_ROW_PAD;
         float textX = rect.x() + padX;
         float fieldW = Math.min(s(170), rect.w() * 0.45F);
         float fieldX = rect.right() - padX - fieldW;
         float fieldH = s(36);
         float fieldY = rect.y() + (rect.h() - fieldH) / 2.0F;
+        float fieldCY = fieldY + fieldH / 2.0F;
+        float descMaxW = Math.max(0.0F, fieldX - textX - s(12));
 
+        // Title plus a one-line description on the left, matching switch/action
+        // cards; the input field stays vertically centred on the right.
         Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
-        float titleMaxW = Math.max(0.0F, fieldX - textX - s(12));
         SkiaFontRenderer.drawText(canvas, titleFont,
-                SkiaFontRenderer.truncate(titleFont, tr(slider.titleKey()), titleMaxW), textX,
-                SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + rect.h() / 2.0F),
+                SkiaFontRenderer.truncate(titleFont, tr(slider.titleKey()), descMaxW), textX,
+                SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
                 textPrimary());
+        Font subFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
+        SkiaFontRenderer.drawText(canvas, subFont,
+                SkiaFontRenderer.truncate(subFont,
+                        tr("atomchat.settings.chat.history.retention.desc"), descMaxW), textX,
+                SkiaFontRenderer.centerBaselineY(subFont, rect.y() + s(37)),
+                sec(200));
 
         float radius = s(8);
         SkiaDraw.drawRoundedRect(canvas, fieldX, fieldY, fieldW, fieldH, radius,
@@ -1065,11 +1077,19 @@ public final class SettingsSectionPage {
 
         Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
         String text = editing ? (editBuffer.isEmpty() ? "0" : editBuffer) : slider.displayValue();
-        SkiaFontRenderer.drawText(canvas, inputFont,
-                SkiaFontRenderer.truncate(inputFont, text, fieldW - s(20)),
+        String shown = SkiaFontRenderer.truncate(inputFont, text, fieldW - s(20));
+        SkiaFontRenderer.drawText(canvas, inputFont, shown,
                 fieldX + s(10),
-                SkiaFontRenderer.centerBaselineY(inputFont, fieldY + fieldH / 2.0F),
+                SkiaFontRenderer.centerBaselineY(inputFont, fieldCY),
                 editing ? accent : textPrimary());
+        // Blinking caret while the inline editor owns the keyboard.
+        if (editing && (System.currentTimeMillis() / 500L) % 2L == 0L) {
+            float caretX = fieldX + s(10) + SkiaFontRenderer.getStringWidth(inputFont, shown) + s(2);
+            try (Paint caret = new Paint().setColor(Color.makeARGB(255, 255, 255, 255))
+                    .setStrokeWidth(s(1.5F)).setAntiAlias(true)) {
+                canvas.drawLine(caretX, fieldCY - s(8), caretX, fieldCY + s(8), caret);
+            }
+        }
     }
 
     private void drawInfo(Canvas canvas, Row row, UiLayout.Rect rect) {
@@ -1321,6 +1341,13 @@ public final class SettingsSectionPage {
         editingSliderId = null;
         editingSlider = null;
         editBuffer = "";
+    }
+
+    /** Whether a virtual point lies inside the inline number row (focus stays). */
+    public boolean isInsideNumberEditRow(float vx, float vy) {
+        return inlineNumberRowRect != null && vx >= inlineNumberRowRect.x()
+                && vx <= inlineNumberRowRect.right()
+                && vy >= inlineNumberRowRect.y() && vy <= inlineNumberRowRect.bottom();
     }
 
     /**
