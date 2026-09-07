@@ -3,76 +3,75 @@ package com.atom.chat.font;
 import com.atom.chat.AtomChat;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.FontVariation;
 import io.github.humbleui.skija.FontStyle;
 import io.github.humbleui.skija.Typeface;
 
 import java.io.InputStream;
-import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Loads and caches Skia fonts. Prefers a bundled open-source CJK font when present,
- * otherwise falls back to a system font so development can proceed without assets.
+ * Loads and caches Skia fonts.
+ *
+ * <p>Font pairing: Inter renders Latin/digits/time first; MiSans is the
+ * bundled CJK fallback for Chinese text. Each weight keeps its own primary
+ * and fallback typeface so {@link SkiaFontRenderer} can resolve glyphs by
+ * script instead of letting MiSans' Latin glyphs override Inter.
  */
 public final class FontManager {
-    /** Drop a licensed font file here (e.g. Noto Sans SC) to bundle it. */
-    private static final String BUNDLED_FONT = "/assets/atomchat/font/bundled.otf";
-    /** Faux-bold for thin system fallback fonts; a real bundled font makes this redundant. */
-    private static boolean usingFallbackTypeface;
+    private static final String BUNDLED_LATIN = "/assets/atomchat/font/Inter-Regular.ttf";
+    private static final String BUNDLED_LATIN_BOLD = "/assets/atomchat/font/Inter-SemiBold.ttf";
+    private static final String BUNDLED_CJK = "/assets/atomchat/font/MiSans-Regular.ttf";
+    private static final String BUNDLED_CJK_BOLD = "/assets/atomchat/font/MiSans-Semibold.ttf";
+
     private static Typeface defaultTypeface;
-    private static final java.util.Map<String, Font> CACHE = new java.util.HashMap<>();
-    private static final java.util.Map<String, Font> BOLD_CACHE = new java.util.HashMap<>();
+    private static Typeface cjkFallbackTypeface;
+    private static Typeface boldTypeface;
+    private static Typeface boldCjkFallbackTypeface;
+
+    private static final Map<String, Font> CACHE = new HashMap<>();
+    private static final Map<String, Font> BOLD_CACHE = new HashMap<>();
+    /** Per cached Font, the bundled typeface to try before system fallbacks. */
+    private static final Map<Font, Typeface> FALLBACKS = new HashMap<>();
 
     private FontManager() {
     }
 
+    /** Primary Latin typeface for normal text. */
     public static Typeface getDefaultTypeface() {
-        if (defaultTypeface != null) {
-            return defaultTypeface;
+        if (defaultTypeface == null) {
+            defaultTypeface = loadTypeface(BUNDLED_LATIN, "Inter", "Segoe UI", "Arial");
         }
-
-        // Bundled font first.
-        try (InputStream in = FontManager.class.getResourceAsStream(BUNDLED_FONT)) {
-            if (in != null) {
-                defaultTypeface = mediumWeight(Typeface.makeFromData(Data.makeFromBytes(in.readAllBytes())));
-                usingFallbackTypeface = false;
-                AtomChat.LOGGER.info("Loaded bundled font {}", BUNDLED_FONT);
-                return defaultTypeface;
-            }
-        } catch (Exception e) {
-            AtomChat.LOGGER.warn("Failed to load bundled font, falling back to system font", e);
-        }
-
-        // System fallbacks (Windows/other).
-        usingFallbackTypeface = true;
-        String[] candidates = {"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Arial"};
-        for (String name : candidates) {
-            Typeface tf = Typeface.makeFromName(name, FontStyle.NORMAL);
-            if (tf != null && !tf.getFamilyName().toLowerCase(Locale.ROOT).contains("arial") || tf != null && tf.getFamilyName().toLowerCase(Locale.ROOT).contains("yahei")) {
-                defaultTypeface = tf;
-                AtomChat.LOGGER.info("Using system font {}", tf.getFamilyName());
-                return defaultTypeface;
-            }
-            if (tf != null) {
-                defaultTypeface = tf;
-                AtomChat.LOGGER.info("Using system font {}", tf.getFamilyName());
-                return defaultTypeface;
-            }
-        }
-        defaultTypeface = Typeface.makeDefault();
         return defaultTypeface;
     }
 
-    /** Variable fonts are cloned at Medium (wght 500) so text is not too thin. */
-    private static Typeface mediumWeight(Typeface face) {
-        try {
-            if (face.getVariations().length > 0) {
-                return face.makeClone(new FontVariation("wght", 500));
-            }
-        } catch (Throwable t) {
-            AtomChat.LOGGER.warn("Variable font weight clone failed, using default instance", t);
+    /** Bundled MiSans typeface used when Inter lacks a CJK glyph. */
+    public static Typeface cjkFallbackTypeface() {
+        if (cjkFallbackTypeface == null) {
+            cjkFallbackTypeface = loadTypeface(BUNDLED_CJK, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC");
         }
-        return face;
+        return cjkFallbackTypeface;
+    }
+
+    /** Primary Latin typeface for bold/heading text. */
+    public static Typeface boldTypeface() {
+        if (boldTypeface == null) {
+            boldTypeface = loadTypeface(BUNDLED_LATIN_BOLD, "Inter", "Segoe UI", "Arial");
+        }
+        return boldTypeface;
+    }
+
+    /** Bundled MiSans typeface for bold CJK fallback. */
+    public static Typeface boldCjkFallbackTypeface() {
+        if (boldCjkFallbackTypeface == null) {
+            boldCjkFallbackTypeface = loadTypeface(BUNDLED_CJK_BOLD, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC");
+        }
+        return boldCjkFallbackTypeface;
+    }
+
+    /** Bundled fallback for a cached Font, or null when it has none. */
+    public static Typeface fallbackTypeface(Font font) {
+        return FALLBACKS.get(font);
     }
 
     public static Font font(float size) {
@@ -82,17 +81,15 @@ public final class FontManager {
             return cached;
         }
         Font font = new Font(getDefaultTypeface(), size);
-        if (usingFallbackTypeface) {
-            font.setEmboldened(true);
-        }
         CACHE.put(key, font);
+        FALLBACKS.put(font, cjkFallbackTypeface());
         return font;
     }
 
     /**
-     * A separate cached faux-bold face for headings and labels that need more
-     * weight than the regular medium body. Uses a distinct cache entry so the
-     * shared regular font is never mutated.
+     * A separate cached bold face for headings and labels. Uses Inter SemiBold
+     * as the Latin primary and MiSans Semibold for CJK, so bold text never
+     * depends on faux-emboldening a regular weight.
      */
     public static Font boldFont(float size) {
         String key = size + "px-bold";
@@ -100,9 +97,31 @@ public final class FontManager {
         if (cached != null) {
             return cached;
         }
-        Font font = new Font(getDefaultTypeface(), size);
-        font.setEmboldened(true);
+        Font font = new Font(boldTypeface(), size);
         BOLD_CACHE.put(key, font);
+        FALLBACKS.put(font, boldCjkFallbackTypeface());
         return font;
+    }
+
+    private static Typeface loadTypeface(String resource, String... systemFallbacks) {
+        try (InputStream in = FontManager.class.getResourceAsStream(resource)) {
+            if (in != null) {
+                Typeface typeface = Typeface.makeFromData(Data.makeFromBytes(in.readAllBytes()));
+                if (typeface != null) {
+                    AtomChat.LOGGER.info("Loaded bundled font {}", resource);
+                    return typeface;
+                }
+            }
+        } catch (Exception e) {
+            AtomChat.LOGGER.warn("Failed to load bundled font {}, falling back to system font", resource, e);
+        }
+        for (String name : systemFallbacks) {
+            Typeface tf = Typeface.makeFromName(name, FontStyle.NORMAL);
+            if (tf != null && !tf.getFamilyName().isEmpty()) {
+                AtomChat.LOGGER.info("Using system font {} instead of {}", tf.getFamilyName(), resource);
+                return tf;
+            }
+        }
+        return Typeface.makeDefault();
     }
 }
