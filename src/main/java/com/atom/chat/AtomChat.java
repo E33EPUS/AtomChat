@@ -16,6 +16,10 @@ public class AtomChat {
     private static volatile String version = "unknown";
 
     public AtomChat(IEventBus modEventBus, ModContainer modContainer) {
+        // Config seam for anti-spam: wire the pure logic to the real config
+        // only in a real launch (unit tests keep the safe no-merge default).
+        com.atom.chat.chat.MessageMerge.antiSpamEnabledSupplier =
+                () -> com.atom.chat.config.AtomChatConfig.get().antiSpamEnabled;
         // Payload codecs and avatar-companion receivers are registered on the
         // NeoForge payload bus; this event fires for both logical sides.
         modEventBus.addListener(AtomChat::onRegisterPayloads);

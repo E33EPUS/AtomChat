@@ -19,6 +19,8 @@ public class ChatMessage {
     private final String contentText;
     private final RichText senderRich;
     private final RichText contentRich;
+    /** 1 = ordinary message; >1 = anti-spam merged consecutive identical messages. */
+    private final int duplicateCount;
 
     public ChatMessage(Component component, boolean own) {
         this(component, own, false);
@@ -57,6 +59,14 @@ public class ChatMessage {
     public ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText,
                        RichText senderRich, RichText contentRich, long timestamp) {
+        this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
+                senderRich, contentRich, timestamp, 1);
+    }
+
+    /** Full constructor with anti-spam merge count ({@code duplicateCount} 1 = normal). */
+    public ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
+                       UUID senderUuid, String senderName, String profileName, String contentText,
+                       RichText senderRich, RichText contentRich, long timestamp, int duplicateCount) {
         this.component = component;
         this.rawText = component.getString();
         this.timestamp = timestamp > 0 ? timestamp : System.currentTimeMillis();
@@ -72,6 +82,7 @@ public class ChatMessage {
                 : legacySenderRich(system, this.senderName, this.profileName);
         this.contentRich = contentRich != null ? contentRich
                 : RichText.literal(legacyDisplayText(rawText, quoteName, this.contentText)).linkifyUrls();
+        this.duplicateCount = Math.max(1, duplicateCount);
     }
 
     private static String clean(String s) {
@@ -183,6 +194,25 @@ public class ChatMessage {
     /** Rich content part backing display text and future styled rendering. */
     public RichText getContentRich() {
         return contentRich;
+    }
+
+    /** Anti-spam merge count: 1 for a normal message, N for N identical sends. */
+    public int getDuplicateCount() {
+        return duplicateCount;
+    }
+
+    /** Copy with a different anti-spam merge count (used when a duplicate lands). */
+    public ChatMessage withDuplicateCount(int count) {
+        return new ChatMessage(component, own, system, quoteName, quoteText,
+                senderUuid, senderName, profileName, contentText,
+                senderRich, contentRich, timestamp, count);
+    }
+
+    /** Copy with a different anti-spam merge count and an updated timestamp. */
+    public ChatMessage withDuplicateCount(int count, long newTimestamp) {
+        return new ChatMessage(component, own, system, quoteName, quoteText,
+                senderUuid, senderName, profileName, contentText,
+                senderRich, contentRich, newTimestamp, count);
     }
 
     public long getTimestamp() {

@@ -8,6 +8,7 @@ import com.atom.chat.chat.TeleportCommands;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.emote.EmoteStore;
+import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.chat.PlayerRef;
@@ -211,6 +212,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // persistence is on). Generation bumped inside: a pending auto-save
             // cannot resurrect what was just deleted.
             com.atom.chat.history.ChatHistory.clearCurrent();
+        } else if ("cache_clear".equals(actionId)) {
+            // Image downloads are safe to drop; they are re-fetched on demand.
+            ImageLoader.get().clearDiskCache();
         }
     }
 
@@ -263,7 +267,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private boolean suppressHeader;
 
     private final String originalChatText;
-    private final SkiaGraphics graphics = new SkiaGraphics();
     private final ImageUploader imageUploader = new ImageUploader();
     /**
      * Ordered input routing. Priority (first registered wins): closing guard,
@@ -944,7 +947,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // Shaders are registered through RegisterShadersEvent.
         }
 
-        graphics.checkFrameBufferId();
+        SkiaGraphics.INSTANCE.checkFrameBufferId();
         Runnable preUi = null;
         if (blurWanted && PanelBlurRenderer.isAvailable()) {
             preUi = () -> {
@@ -975,7 +978,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         // No super.render: ChatScreen/Screen would draw the vanilla input box and
         // widget chrome; our UI is fully Skia-drawn, the suggestor renders explicitly.
-        graphics.draw(preUi, uiDensity(),
+        SkiaGraphics.INSTANCE.draw(preUi, uiDensity(),
                 (canvas, worldSnapshot) -> drawPhone(canvas, worldSnapshot, mouseX, mouseY, delta));
         // The hidden EditBox stays positioned so the IME floating window anchors
         // correctly; its text/cursor are drawn by Skia above. The suggestion popup
@@ -1349,7 +1352,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         AtomChatState.save(navigation.snapshot());
         uninstallDropCallback();
         // Give back the GPU texture the panel blur was sampling.
-        graphics.releaseWorldSnapshot();
+        SkiaGraphics.INSTANCE.releaseWorldSnapshot();
         messageListView.dispose();
         super.removed();
     }

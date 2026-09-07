@@ -5,6 +5,7 @@ import com.atom.chat.chat.BlockList;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.font.FontManager;
+import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.PlayerAvatar;
 import com.atom.chat.render.Easing;
 import com.atom.chat.render.SkiaDraw;
@@ -126,6 +127,7 @@ public final class SettingsSectionPage {
     private static final String ACTION_TELEPORT_MODE = "teleport_mode";
     private static final String ACTION_THEME = "theme_cycle";
     private static final String ACTION_HISTORY_CLEAR = "history_clear";
+    private static final String ACTION_CACHE_CLEAR = "cache_clear";
 
     /** Per-section heading for the leading switch/action group. */
     private static String groupKey(SettingsSection section) {
@@ -176,6 +178,15 @@ public final class SettingsSectionPage {
         });
     }
 
+    /** "Clear image cache" card on the About page. */
+    private SettingsItem cacheClearItem() {
+        return new SettingsItem("cache_clear",
+                "atomchat.settings.about.cache.clear",
+                "atomchat.settings.about.cache.clear.desc",
+                () -> true, v -> {
+        });
+    }
+
     /** Two-step confirm for destructive actions: first tap arms a red
      *  "确定清除？", second tap within the window really fires. Guards against
      *  accidental wipes; any click that is not the armed button disarms. */
@@ -198,7 +209,9 @@ public final class SettingsSectionPage {
 
     /** Destructive actions that must pass through the two-step confirm. */
     private static boolean needsConfirm(String actionId) {
-        return ACTION_WALLPAPER_CLEAR.equals(actionId) || ACTION_HISTORY_CLEAR.equals(actionId);
+        return ACTION_WALLPAPER_CLEAR.equals(actionId)
+                || ACTION_HISTORY_CLEAR.equals(actionId)
+                || ACTION_CACHE_CLEAR.equals(actionId);
     }
 
     /** The colour group folded/unfolded by a label row, or null for plain labels. */
@@ -257,6 +270,17 @@ public final class SettingsSectionPage {
 
     private static String tr(String key) {
         return Component.translatable(key).getString();
+    }
+
+    private static String humanBytes(long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        double kb = bytes / 1024.0;
+        if (kb < 1024.0) {
+            return String.format(java.util.Locale.ROOT, "%.1f KB", kb);
+        }
+        return String.format(java.util.Locale.ROOT, "%.1f MB", kb / 1024.0);
     }
 
     public static float rowHeight(RowKind kind) {
@@ -336,6 +360,7 @@ public final class SettingsSectionPage {
                 about.add(Row.ofInfo(info));
             }
             about.add(Row.ofLabel(LABEL_ADVANCED));
+            about.add(Row.ofAction(ACTION_CACHE_CLEAR, cacheClearItem()));
             for (SettingsItem item : SettingsCatalog.items(section)) {
                 about.add(Row.ofSwitch(item));
             }
@@ -651,6 +676,10 @@ public final class SettingsSectionPage {
             subtitle = tr(AtomChatConfig.get().chatHistoryEnabled
                     ? "atomchat.settings.chat.history.clear.desc.saved"
                     : "atomchat.settings.chat.history.clear.desc.memory");
+            verb = tr("atomchat.settings.action.clear");
+        } else if (ACTION_CACHE_CLEAR.equals(row.actionId())) {
+            long bytes = ImageLoader.get().diskCacheBytes();
+            subtitle = humanBytes(bytes) + " · " + tr(row.item().subtitleKey());
             verb = tr("atomchat.settings.action.clear");
         } else {
             subtitle = tr(row.item().subtitleKey());

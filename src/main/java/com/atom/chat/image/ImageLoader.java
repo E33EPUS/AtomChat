@@ -8,6 +8,7 @@ import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Surface;
 import io.github.humbleui.types.Rect;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,7 +18,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -43,8 +47,10 @@ import java.util.function.LongSupplier;
  *       images; evicted entries rely on Skija's managed finalisation rather
  *       than an eager {@code close()} so a bitmap drawn in the current frame
  *       can never be pulled from under the renderer.</li>
- *   <li><b>Disk cache</b> — raw bytes under {@code config/atomchat/image-cache/}
- *       (SHA-256 of the URL), so re-entering a world does not re-download.</li>
+ *   <li><b>Disk cache</b> — raw bytes under {@code <gameDir>/atomchat-data/image-cache/}
+ *       (SHA-256 of the URL), so re-entering a world does not re-download.
+ *       The disk layer is capped at {@value #MAX_DISK_FILES} files /
+ *       {@value #MAX_DISK_MB} MB and trims oldest entries by mtime.</li>
  * </ol>
  *
  * <p>Failed fetches enter a short negative cache so a dead URL is not
@@ -57,6 +63,11 @@ public final class ImageLoader {
     public static final int MAX_DIM = 768;
     /** How long a failed URL stays blacklisted. */
     public static final long FAILURE_TTL_MS = 60_000L;
+    /** Disk cache: maximum number of raw files kept. */
+    public static final int MAX_DISK_FILES = 500;
+    /** Disk cache: maximum total raw bytes kept (100 MB). */
+    public static final long MAX_DISK_BYTES = 100L * 1024L * 1024L;
+    private static final long MAX_DISK_MB = MAX_DISK_BYTES / (1024L * 1024L);
 
     /** Byte source for a URL; HTTP by default, injected in tests. */
     interface Fetcher {
@@ -170,6 +181,7 @@ public final class ImageLoader {
                     try {
                         Files.createDirectories(disk.getParent());
                         Files.write(disk, bytes);
+                        trimDiskCache();
                     } catch (Exception e) {
                         AtomChat.LOGGER.warn("Failed to write image cache for {}", url, e);
                     }
@@ -194,6 +206,104 @@ public final class ImageLoader {
 
     private void fail(String url) {
         failedUntil.put(url, clock.getAsLong() + FAILURE_TTL_MS);
+    }
+
+    /**
+     * Keeps the disk cache inside the file-count / byte caps. Oldest files by
+     * last-modified time are deleted first. Cache loss is always acceptable —
+     * a deleted entry is simply downloaded again on the next visible request.
+     */
+    private void trimDiskCache() {
+        Path dir = diskDir;
+        if (dir == null || !Files.isDirectory(dir)) {
+            return;
+        }
+        try (var stream = Files.list(dir)) {
+            List<Path> files = new ArrayList<>();
+            long total = 0L;
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                if (!p.getFileName().toString().endsWith(".bin")) {
+                    continue;
+                }
+                long size = sizeOrZero(p);
+                total += size;
+                files.add(p);
+            }
+            files.sort(Comparator.comparingLong(ImageLoader::modifiedOrZero));
+            int removeFrom = 0;
+            while (files.size() - removeFrom > MAX_DISK_FILES || total > MAX_DISK_BYTES) {
+                if (removeFrom >= files.size()) {
+                    break;
+                }
+                Path oldest = files.get(removeFrom++);
+                long size = sizeOrZero(oldest);
+                try {
+                    Files.deleteIfExists(oldest);
+                    total -= size;
+                } catch (IOException e) {
+                    AtomChat.LOGGER.warn("Failed to trim image cache file {}", oldest, e);
+                }
+            }
+        } catch (IOException e) {
+            AtomChat.LOGGER.warn("Failed to scan image cache directory {}", dir, e);
+        }
+    }
+
+    /** Total bytes currently stored in the disk cache (0 when not initialised). */
+    public long diskCacheBytes() {
+        Path dir = diskDir;
+        if (dir == null || !Files.isDirectory(dir)) {
+            return 0L;
+        }
+        long total = 0L;
+        try (var stream = Files.list(dir)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                if (p.getFileName().toString().endsWith(".bin")) {
+                    total += sizeOrZero(p);
+                }
+            }
+        } catch (IOException e) {
+            AtomChat.LOGGER.warn("Failed to size image cache directory {}", dir, e);
+        }
+        return total;
+    }
+
+    /** Deletes every cached image file. In-memory images are untouched. */
+    public void clearDiskCache() {
+        Path dir = diskDir;
+        if (dir == null || !Files.isDirectory(dir)) {
+            return;
+        }
+        try (var stream = Files.list(dir)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                if (!p.getFileName().toString().endsWith(".bin")) {
+                    continue;
+                }
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    AtomChat.LOGGER.warn("Failed to delete image cache file {}", p, e);
+                }
+            }
+        } catch (IOException e) {
+            AtomChat.LOGGER.warn("Failed to clear image cache directory {}", dir, e);
+        }
+    }
+
+    private static long sizeOrZero(Path p) {
+        try {
+            return Files.size(p);
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
+    private static long modifiedOrZero(Path p) {
+        try {
+            return Files.getLastModifiedTime(p).toMillis();
+        } catch (IOException e) {
+            return 0L;
+        }
     }
 
     /** Test seam: injectable byte source, clock and executor (direct = sync). */

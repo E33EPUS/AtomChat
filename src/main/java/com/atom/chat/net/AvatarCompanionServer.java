@@ -1,6 +1,7 @@
 package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
+import com.atom.chat.util.CacheDirs;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -16,9 +17,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Server side of the avatar companion. Stateless beyond the avatar files
- * themselves: uploads land in {@code config/atomchat/avatars/<uuid>.png} and
- * requests are answered from disk. Registered through the payload event so a
- * dedicated server and the integrated server of a double-open client both run
+ * themselves: uploads land in {@code <gameDir>/atomchat-data/avatars/<uuid>.png}
+ * and requests are answered from disk. Registered through the payload event so
+ * a dedicated server and the integrated server of a double-open client both run
  * it.
  *
  * <p>Hardening: uploads must carry the sender's own uuid (no spoofing), are
@@ -114,7 +115,8 @@ public final class AvatarCompanionServer {
     private static Path storageDir() {
         Path dir = storageDir;
         if (dir == null) {
-            dir = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/avatars");
+            CacheDirs.migrateFromOldConfigPaths();
+            dir = CacheDirs.avatarDataDir();
             storageDir = dir;
         }
         return dir;

@@ -71,6 +71,36 @@ public final class SettingsCatalog {
                             "atomchat.settings.chat.images.desc",
                             () -> AtomChatConfig.get().imageMessagesEnabled,
                             v -> AtomChatConfig.get().imageMessagesEnabled = v),
+                    new SettingsItem("anti_spam",
+                            "atomchat.settings.chat.anti_spam",
+                            "atomchat.settings.chat.anti_spam.desc",
+                            () -> AtomChatConfig.get().antiSpamEnabled,
+                            v -> AtomChatConfig.get().antiSpamEnabled = v),
+                    new SettingsItem("compact_messages",
+                            "atomchat.settings.chat.compact_messages",
+                            "atomchat.settings.chat.compact_messages.desc",
+                            () -> AtomChatConfig.get().compactMessagesEnabled,
+                            v -> AtomChatConfig.get().compactMessagesEnabled = v),
+                    new SettingsItem("mention_banner",
+                            "atomchat.settings.chat.mention_banner",
+                            "atomchat.settings.chat.mention_banner.desc",
+                            () -> AtomChatConfig.get().mentionBannerEnabled,
+                            v -> AtomChatConfig.get().mentionBannerEnabled = v),
+                    new SettingsItem("mention_sound",
+                            "atomchat.settings.chat.mention_sound",
+                            "atomchat.settings.chat.mention_sound.desc",
+                            () -> AtomChatConfig.get().mentionSoundEnabled,
+                            v -> AtomChatConfig.get().mentionSoundEnabled = v),
+                    new SettingsItem("whisper_banner",
+                            "atomchat.settings.chat.whisper_banner",
+                            "atomchat.settings.chat.whisper_banner.desc",
+                            () -> AtomChatConfig.get().whisperBannerEnabled,
+                            v -> AtomChatConfig.get().whisperBannerEnabled = v),
+                    new SettingsItem("whisper_sound",
+                            "atomchat.settings.chat.whisper_sound",
+                            "atomchat.settings.chat.whisper_sound.desc",
+                            () -> AtomChatConfig.get().whisperSoundEnabled,
+                            v -> AtomChatConfig.get().whisperSoundEnabled = v),
                     new SettingsItem("history",
                             "atomchat.settings.chat.history",
                             "atomchat.settings.chat.history.desc",
@@ -135,7 +165,24 @@ public final class SettingsCatalog {
                             v -> AtomChatConfig.get().timestampIntervalMinutes = Math.round(v),
                             v -> Math.round(v) == 0
                                     ? Component.translatable("atomchat.settings.chat.timestamp.off").getString()
-                                    : Math.round(v) + " min"));
+                                    : Math.round(v) + " min"),
+                    new SettingsSlider("history_retention",
+                            "atomchat.settings.chat.history.retention",
+                            0.00F, 365.0F, 1.0F,
+                            () -> AtomChatConfig.get().historyRetentionDays,
+                            v -> AtomChatConfig.get().historyRetentionDays = Math.round(v),
+                            v -> {
+                                int days = Math.round(v);
+                                return days == 0
+                                        ? Component.translatable("atomchat.settings.chat.history.retention.forever").getString()
+                                        : Component.translatable("atomchat.settings.chat.history.retention.days", days).getString();
+                            }),
+                    new SettingsSlider("notify_volume",
+                            "atomchat.settings.chat.notify_volume",
+                            0.00F, 1.00F, 0.05F,
+                            () -> AtomChatConfig.get().notifyVolume,
+                            v -> AtomChatConfig.get().notifyVolume = v,
+                            v -> Math.round(v * 100.0F) + "%"));
             default -> List.of();
         };
     }
