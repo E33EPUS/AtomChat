@@ -608,7 +608,6 @@ public final class MessageListView {
         if (!grouped) {
             // Name hugs the bubble's outer edge: right-aligned for own, left for others.
             drawMessageName(canvas, msg, y, bubbleX, bubbleX + bubbleWidth);
-            drawDuplicateBadge(canvas, msg, bubbleX, bubbleWidth, y);
             avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
             avatarY = y + s(4);
             avatarSize = UiTokens.AVATAR_SIZE;
@@ -626,6 +625,7 @@ public final class MessageListView {
         drawMessageSelection(canvas, msg, lines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F, lineHeight, font);
         RichTextRenderer.drawLines(canvas, font, richLines, bubbleX + UiTokens.BUBBLE_PAD, bubbleTop + bubbleHeight / 2.0F,
                 lineHeight, bubbleText(msg), clickableSpans, true);
+        drawDuplicateBadge(canvas, msg, bubbleX, bubbleWidth, bubbleTop, bubbleHeight);
 
         float bottom = bubbleTop + bubbleHeight;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, bubbleTop, bubbleX, bubbleWidth, bottom);
@@ -735,23 +735,25 @@ public final class MessageListView {
     }
 
     /**
-     * Anti-spam counter badge in the name band, outside the bubble's outer edge
-     * (own bubbles: left of the bubble; other bubbles: right of the bubble).
+     * Anti-spam counter badge next to the bubble's vertical centre, outside the
+     * bubble's outer edge (own bubbles: left; other bubbles: right). It uses
+     * the accent colour so the repeat count never reads as part of the name.
      */
-    private void drawDuplicateBadge(Canvas canvas, ChatMessage msg, float bubbleX, float bubbleWidth, float rowY) {
+    private void drawDuplicateBadge(Canvas canvas, ChatMessage msg, float bubbleX, float bubbleWidth,
+                                    float bubbleTop, float bubbleHeight) {
         if (msg.getDuplicateCount() <= 1) {
             return;
         }
         Font font = FontManager.font(UiTokens.FONT_NAME);
         String label = "x" + msg.getDuplicateCount();
         float labelW = SkiaFontRenderer.getStringWidth(font, label);
-        float x = msg.isOwn() ? bubbleX - labelW - s(4) : bubbleX + bubbleWidth + s(4);
+        float x = msg.isOwn() ? bubbleX - labelW - s(6) : bubbleX + bubbleWidth + s(6);
         if (x < s(4)) {
             x = s(4);
         }
-        float centerY = rowY + UiTokens.NAME_BAND / 2.0F;
+        float centerY = bubbleTop + bubbleHeight / 2.0F;
         SkiaFontRenderer.drawText(canvas, font, label, x,
-                SkiaFontRenderer.centerBaselineY(font, centerY), secondaryCapsuleText());
+                SkiaFontRenderer.centerBaselineY(font, centerY), accent());
     }
 
     private MessageHit drawImageMessage(Canvas canvas, ChatMessage msg, String raw, String imageUrl,
@@ -772,7 +774,6 @@ public final class MessageListView {
         if (!grouped) {
             // Name hugs the bubble's outer edge, exactly like a text bubble.
             drawMessageName(canvas, msg, y, bubbleX, bubbleX + imageW);
-            drawDuplicateBadge(canvas, msg, bubbleX, imageW, y);
             avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
             avatarY = y + s(4);
             avatarSize = UiTokens.AVATAR_SIZE;
@@ -782,6 +783,7 @@ public final class MessageListView {
             drawQuotePill(canvas, msg, x, maxWidth, y + band, msg.isOwn());
         }
         SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS, otherBubble());
+        drawDuplicateBadge(canvas, msg, bubbleX, imageW, bubbleTop, imageH);
 
         Image image = ImageLoader.get().get(imageUrl, true);
         if (image != null) {
@@ -826,7 +828,6 @@ public final class MessageListView {
         float avatarSize = 0.0F;
         if (!grouped) {
             drawMessageName(canvas, msg, y, pillX, pillX + pillW);
-            drawDuplicateBadge(canvas, msg, pillX, pillW, y);
             avatarX = msg.isOwn() ? x + maxWidth - UiTokens.AVATAR_SIZE : x;
             avatarY = y + s(4);
             avatarSize = UiTokens.AVATAR_SIZE;
@@ -839,6 +840,7 @@ public final class MessageListView {
                 secondaryCapsuleBg());
         SkiaFontRenderer.drawTextCentered(canvas, font, placeholder,
                 pillX + pillW / 2.0F, pillTop + pillH / 2.0F, Color.makeARGB(255, 85, 255, 85));
+        drawDuplicateBadge(canvas, msg, pillX, pillW, pillTop, pillH);
         float bottom = pillTop + pillH;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, pillTop, pillX, pillW, bottom);
     }
