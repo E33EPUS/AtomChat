@@ -90,7 +90,12 @@ public final class ColorPickerOverlay {
             return;
         }
         if (target != null) {
-            target.apply(ColorUtil.hsvToRgb(hue, sat, bri));
+            // The picker edits RGB only. Rows whose current colour carries an
+            // alpha (e.g. translucent capsule backgrounds) keep that alpha, so a
+            // custom colour does not silently turn a translucent surface opaque.
+            int alpha = target.value() & 0xFF000000;
+            int rgb = ColorUtil.hsvToRgb(hue, sat, bri) & 0x00FFFFFF;
+            target.apply(alpha | rgb);
         }
         closing = true;
     }

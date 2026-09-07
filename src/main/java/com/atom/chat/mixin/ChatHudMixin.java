@@ -22,7 +22,6 @@ import com.atom.chat.chat.TeleportCommands;
 import com.atom.chat.chat.TellClickDetector;
 import com.atom.chat.chat.WhisperTextParser;
 import com.atom.chat.config.AtomChatConfig;
-import com.atom.chat.notification.NotificationController;
 import com.atom.chat.text.ChatTextRewriter;
 import com.atom.chat.text.RichText;
 import com.atom.chat.screen.AtomChatScreen;
@@ -256,24 +255,7 @@ public class ChatHudMixin {
                 AtomChatConfig.get().mentionRequireAt, null)) {
             ChatStore.noteMention();
             MentionObserver.fire(message);
-            NotificationController.onMention(message);
-            return;
         }
-        if (own != null && quoteTargetsLocalPlayer(message, own)) {
-            NotificationController.onQuote(message);
-        }
-    }
-
-    /** Whether a quote pill names the local player (someone replied to us). */
-    @Unique
-    private static boolean quoteTargetsLocalPlayer(ChatMessage message, String ownName) {
-        String quote = message.getQuoteName();
-        if (quote == null || ownName == null) {
-            return false;
-        }
-        String cleaned = quote.startsWith("@") ? quote.substring(1) : quote;
-        cleaned = cleaned.replaceAll("§.", "").trim();
-        return cleaned.equals(ownName);
     }
 
     /**
@@ -408,11 +390,8 @@ public class ChatHudMixin {
         if (own) {
             PrivateChatStore.addOutgoing(partner, privateMessage);
         } else if (!BlockList.isBlocked(partner)) {
-            boolean merged = PrivateChatStore.addIncoming(partner, privateMessage);
+            PrivateChatStore.addIncoming(partner, privateMessage);
             SeenPlayers.remember(partnerUuid, meta.profileName(), displayName);
-            if (!merged) {
-                NotificationController.onWhisper(privateMessage);
-            }
         }
     }
 

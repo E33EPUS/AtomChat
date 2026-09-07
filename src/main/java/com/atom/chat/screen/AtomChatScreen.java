@@ -18,7 +18,6 @@ import com.atom.chat.nav.AppPage;
 import com.atom.chat.nav.AtomChatState;
 import com.atom.chat.nav.NavPage;
 import com.atom.chat.nav.NavigationStack;
-import com.atom.chat.notification.NotificationBanner;
 import com.atom.chat.avatar.AvatarImage;
 import com.atom.chat.avatar.AvatarStore;
 import com.atom.chat.avatar.ColorPickerOverlay;
@@ -267,6 +266,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** When true, ShellHeader is skipped while moving page layers in a transition. */
     private boolean suppressHeader;
 
+    private final SkiaGraphics graphics = new SkiaGraphics();
     private final String originalChatText;
     private final ImageUploader imageUploader = new ImageUploader();
     /**
@@ -851,7 +851,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         try {
             SkiaDraw.clip(canvas, list.x(), list.y(), list.w(), list.h(), 0.0F);
             canvas.translate(dx, 0.0F);
-            messageListView.draw(canvas, list.x() - dx, list.y(), list.w(), list.h(),
+            messageListView.draw(canvas, list.x(), list.y(), list.w(), list.h(),
                     messagesForNav(page), scrollForNav(page));
         } finally {
             canvas.restore();
@@ -951,7 +951,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // Shaders are registered through RegisterShadersEvent.
         }
 
-        SkiaGraphics.INSTANCE.checkFrameBufferId();
+        graphics.checkFrameBufferId();
         Runnable preUi = null;
         if (blurWanted && PanelBlurRenderer.isAvailable()) {
             preUi = () -> {
@@ -982,7 +982,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         // No super.render: ChatScreen/Screen would draw the vanilla input box and
         // widget chrome; our UI is fully Skia-drawn, the suggestor renders explicitly.
-        SkiaGraphics.INSTANCE.draw(preUi, uiDensity(),
+        graphics.draw(preUi, uiDensity(),
                 (canvas, worldSnapshot) -> drawPhone(canvas, worldSnapshot, mouseX, mouseY, delta));
         // The hidden EditBox stays positioned so the IME floating window anchors
         // correctly; its text/cursor are drawn by Skia above. The suggestion popup
@@ -1280,7 +1280,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // The world snapshot sits inside the saveLayer/translate stack so it
             // fades in with the panel and slides with it — no special handling.
             drawPanel(canvas, x, y, worldSnapshot, mouseX, mouseY, delta);
-            NotificationBanner.INSTANCE.renderInPanel(canvas, x, y, panelWidth(), panelHeight());
             canvas.restore();
         }
         canvas.restore();
@@ -1357,7 +1356,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         AtomChatState.save(navigation.snapshot());
         uninstallDropCallback();
         // Give back the GPU texture the panel blur was sampling.
-        SkiaGraphics.INSTANCE.releaseWorldSnapshot();
+        graphics.releaseWorldSnapshot();
         messageListView.dispose();
         super.removed();
     }

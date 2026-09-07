@@ -5,16 +5,13 @@ import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.PrivateEchoTracker;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageLoader;
-import com.atom.chat.notification.NotificationBanner;
 import com.atom.chat.render.PanelBlurRenderer;
-import com.atom.chat.render.SkiaGraphics;
 import com.atom.chat.screen.AtomChatScreen;
 import com.atom.chat.util.CacheDirs;
 import com.atom.chat.wallpaper.WallpaperStore;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -24,7 +21,6 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
-import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
 
@@ -50,7 +46,6 @@ public class AtomChatClient {
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerDisconnect);
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onClientTick);
-        NeoForge.EVENT_BUS.addListener(AtomChatClient::onRenderGui);
     }
 
 
@@ -97,32 +92,10 @@ public class AtomChatClient {
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
         com.atom.chat.history.ChatHistory.tick(client);
-        NotificationBanner.INSTANCE.tick();
         while (OPEN_ATOMCHAT_KEY.consumeClick()) {
             if (client.screen == null) {
                 client.setScreen(new AtomChatScreen("", AtomChatScreen.AtomChatOpenMode.RESTORE));
             }
         }
-    }
-
-    /**
-     * Skia notification banners. They render only when no screen is open;
-     * while AtomChat is open the panel already shows the conversation.
-     */
-    private static void onRenderGui(RenderGuiEvent.Post event) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.level == null || client.player == null || client.screen != null) {
-            return;
-        }
-        if (!NotificationBanner.INSTANCE.hasActive()) {
-            return;
-        }
-        SkiaGraphics.INSTANCE.draw(null, (canvas, worldSnapshot) -> {
-            float fbH = client.getMainRenderTarget().height;
-            float density = Math.max(1.0F, fbH / 1080.0F);
-            float screenW = client.getMainRenderTarget().width / density;
-            float screenH = fbH / density;
-            NotificationBanner.INSTANCE.render(canvas, screenW, screenH);
-        });
     }
 }
