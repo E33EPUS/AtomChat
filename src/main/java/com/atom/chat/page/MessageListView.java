@@ -475,7 +475,10 @@ public final class MessageListView {
      */
     /** Whether the message at {@code index} continues a compact same-sender group. */
     private static boolean isCompactGrouped(List<ChatMessage> messages, int index) {
-        if (!AtomChatConfig.get().compactMessagesEnabled || index <= 0 || dividerBefore(messages, index)) {
+        if (!AtomChatConfig.get().compactMessagesEnabled || index <= 0 || index >= messages.size()) {
+            return false;
+        }
+        if (dividerBefore(messages, index)) {
             return false;
         }
         return MessageGrouping.isSameGroup(messages.get(index - 1), messages.get(index));
@@ -486,8 +489,8 @@ public final class MessageListView {
         if (minutes <= 0) {
             return false;
         }
-        if (index <= 0) {
-            return true;
+        if (index <= 0 || index >= messages.size()) {
+            return index == 0;
         }
         return messages.get(index).getTimestamp() - messages.get(index - 1).getTimestamp()
                 >= minutes * 60_000L;
