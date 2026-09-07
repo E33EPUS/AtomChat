@@ -257,7 +257,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private boolean suppressHeader;
 
     private final String originalChatText;
-    private final SkiaGraphics graphics = new SkiaGraphics();
     private final ImageUploader imageUploader = new ImageUploader();
     /**
      * Ordered input routing. Priority (first registered wins): closing guard,
@@ -938,7 +937,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             PanelBlurRenderer.ensureLoaded();
         }
 
-        graphics.checkFrameBufferId();
+        SkiaGraphics.INSTANCE.checkFrameBufferId();
         Runnable preUi = null;
         if (blurWanted && PanelBlurRenderer.isAvailable()) {
             preUi = () -> {
@@ -969,7 +968,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         // No super.render: ChatScreen/Screen would draw the vanilla input box and
         // widget chrome; our UI is fully Skia-drawn, the suggestor renders explicitly.
-        graphics.draw(preUi, uiDensity(),
+        SkiaGraphics.INSTANCE.draw(preUi, uiDensity(),
                 (canvas, worldSnapshot) -> drawPhone(canvas, worldSnapshot, mouseX, mouseY, delta));
         // The hidden EditBox stays positioned so the IME floating window anchors
         // correctly; its text/cursor are drawn by Skia above. The suggestion popup
@@ -1335,7 +1334,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         AtomChatState.save(navigation.snapshot());
         uninstallDropCallback();
         // Give back the GPU texture the panel blur was sampling.
-        graphics.releaseWorldSnapshot();
+        SkiaGraphics.INSTANCE.releaseWorldSnapshot();
         messageListView.dispose();
         super.removed();
     }

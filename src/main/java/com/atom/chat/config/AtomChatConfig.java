@@ -151,6 +151,16 @@ public class AtomChatConfig {
      * a tighter gap (Discord/Telegram style).
      */
     public boolean compactMessagesEnabled = true;
+    /** Skia banner when someone @mentions or quotes you. */
+    public boolean mentionBannerEnabled = true;
+    /** Sound when someone @mentions or quotes you. */
+    public boolean mentionSoundEnabled = true;
+    /** Skia banner when someone sends you a private / whisper message. */
+    public boolean whisperBannerEnabled = true;
+    /** Sound when someone sends you a private / whisper message. */
+    public boolean whisperSoundEnabled = true;
+    /** Master volume multiplier for all AtomChat notification sounds (0..1). */
+    public float notifyVolume = 0.8F;
     /**
      * User-defined quick phrases, shown in the chat composer's phrase panel.
      * Clicking one inserts it into the input box (never sends it straight
