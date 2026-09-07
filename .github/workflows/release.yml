@@ -85,7 +85,7 @@ jobs:
           python3 - <<'PY'
           import json, os, urllib.request
 
-          base = "https://minecraft.curseforge.com"
+          base = "https://api.curseforge.com"
           headers = {"x-api-key": os.environ["CURSEFORGE_TOKEN"], "Accept": "application/json"}
 
           def get(path):
@@ -93,7 +93,7 @@ jobs:
               with urllib.request.urlopen(req) as r:
                   return json.load(r)
 
-          data = get("/api/game/versions")["data"]
+          data = get("/v1/games/432/versions")["data"]
           names = {}
           for v in data:
               names.setdefault(v["name"], v["id"])
