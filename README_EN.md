@@ -29,7 +29,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija)
 
 The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **v0.2.3 released (Fabric / NeoForge 1.21.1)**. Download it from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.2.4 implemented (Fabric / NeoForge 1.21.1)**; v0.2.3 is released. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -86,6 +86,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 - 🔗 **Rich-text messages** — player names/bodies support colors, underlines, clicks and hover tooltips: `/tell`, coordinates, FTB accept/deny and external links are clickable; bare URLs become links automatically
 - 🧹 **Compact vanilla HUD placeholders** — outside the panel, the vanilla chat shows image codes as green `[Image]` and quotes as blue `[Quote]` instead of raw long codes
 - 😀 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist in `<config>/atomchat/emotes/` (png/jpg/jpeg, max 10), added through the `+` cell and deleted by hovering `×`
+- ⚡ **Quick phrases** — a lightning button opens a phrase list above the composer; tapping inserts into the input (never sends on its own), with add / inline-edit / delete, capped at 256 characters and 20 entries
 - 📋 **Copy / Quote / Save** — right-click to copy or quote; image messages can be saved; the context menu uses 20×20 SVG line icons
 - 🧭 **Phone-style navigation** — three bottom tabs (Chats / You / Settings) with page-level push/pop transitions; the same animation carries public ↔ private switches
 - 👥 **Online players & private chat** — the conversation list orders Public → online players → recent offline, with real IDs, skin avatars, online/offline dots and unread badges; private chat uses `/msg`, keeps per-conversation drafts and scroll state, and is read-only for offline or blocked players
@@ -99,7 +100,10 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 - 🧠 **Message capture** — captures real player UUID / profile / decorated names from MessageHandler's three channels, with nick-server support and conservative system-gray fallback
 - 🎨 **Themes & full colour control** — one-tap theme presets (Frosted / Modern); the settings page exposes every interface colour (bubbles / secondary capsules / text / cards / outline / accent), with foldable colour groups and a live preview square on each row
 - ⏱️ **Time dividers** — the first message of a list always shows a timestamp capsule; later ones follow a configurable interval
-- ✏️ **Message text selection** — drag-select text inside bubbles (multi-line supported) and copy with Ctrl+C; dragging never misfires clicks
+- ✏️ **Cross-message text selection** — drag across several messages and copy them all with Ctrl+C; dragging never misfires clicks
+- 🛡️ **Anti-spam & compact groups** — consecutive identical messages merge into one with a counter; same-sender five-minute runs keep the avatar/name only on the first row and tighten the gap
+- 🔔 **Skia notifications** — @mentions, quote replies and incoming whispers show a dark Skia banner while no screen is open and play a sound (each can be toggled in settings)
+- 💾 **Chat history** — Settings → Chat can keep history per server/world on disk, restore it on rejoin, clear it in one tap, and prune old files by retention days
 - 🖥️ **Profile detail page** — push into a player's profile from chat or the conversation list: stat overview, copy buttons, role tag, with a full-width push transition
 - 🌐 **Image receive toggle** — when off, nothing is downloaded or cached and a green `[Image]` placeholder is shown
 - 🔄 **Teleport mode cycle** — one tap cycles `/tp` / `/tpa` / `auto`
@@ -161,6 +165,11 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 | `panelBgColor` / `panelOutlineColor` / `panelOutline` | `0xEE16191F` / `0xFFFFFFFF` / `true` | Panel background / outline color / outline toggle |
 | `timestampIntervalMinutes` | `5` | Time divider interval (0 = off) |
 | `imageMessagesEnabled` | `true` | Image message receive toggle |
+| `antiSpamEnabled` / `compactMessagesEnabled` | `true` / `true` | Anti-spam merging / compact message groups |
+| `chatHistoryEnabled` / `historyRetentionDays` | `false` / `0` | Keep chat history / retention days (0 = forever) |
+| `mentionBannerEnabled` / `mentionSoundEnabled` | `true` / `true` | Mention/reply banner / sound |
+| `whisperBannerEnabled` / `whisperSoundEnabled` | `true` / `true` | Whisper banner / sound |
+| `notifyVolume` | `0.8` | Notification volume (0–1) |
 | `teleportCommandMode` | `"auto"` | Teleport command mode (auto / tp / tpa) |
 | `debug` | `false` | Debug logging / avatar sampling PNGs (written to `config/atomchat/debug/`) |
 
@@ -184,9 +193,9 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 
 1. Fabric / NeoForge 1.21.1 supported so far; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet
 2. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet
-3. No E33Chat server templates, whisper sidebar, search, notification banners, or persistent chat history
+3. No E33Chat server templates, whisper sidebar, or search; notification banners and per-world chat-history persistence are built in (persistence is off by default)
 4. Player identity is best effort: tell-click structured capture, offline seen cache, and multi-tier ownDisplayName fallbacks; extreme unknown formats fall back to gray system text
-5. Chat history is in-memory only (cap 500) and is not persisted across restarts; it is not cleared automatically when changing worlds / servers
+5. Chat-history persistence is off by default; when enabled, history is stored per server/world on disk and restored on rejoin, without leaking across worlds/servers
 
 ---
 
