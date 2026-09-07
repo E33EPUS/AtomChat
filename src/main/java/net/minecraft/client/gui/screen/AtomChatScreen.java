@@ -3225,7 +3225,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final class NumberEditInput implements InputHandler {
         @Override
         public boolean onClick(double mouseX, double mouseY, int button) {
-            return settingsSectionPage.isEditingNumber();
+            if (!settingsSectionPage.isEditingNumber()) {
+                return false;
+            }
+            float mx = toVirtualX(mouseX);
+            float my = toVirtualY(mouseY);
+            if (settingsSectionPage.isInsideNumberEditRow(mx, my)) {
+                return true;
+            }
+            // Click outside the editor commits the typed value and lets the
+            // click continue to whatever the user actually aimed at.
+            settingsSectionPage.commitNumberEdit();
+            return false;
         }
 
         @Override
@@ -3249,11 +3260,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         @Override
         public boolean onChar(char chr, int modifiers) {
-            if (!settingsSectionPage.isEditingNumber()) {
-                return false;
-            }
-            settingsSectionPage.appendNumberChar(chr);
-            return true;
+            // Digits are appended from onKey. Minecraft also delivers a char
+            // callback for the same press; appending here would double every
+            // digit (1 became 11). Swallow the char so it never reaches chat.
+            return settingsSectionPage.isEditingNumber();
         }
 
         @Override
