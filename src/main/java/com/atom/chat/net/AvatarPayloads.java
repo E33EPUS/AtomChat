@@ -24,8 +24,9 @@ import java.util.UUID;
  *       array when the uuid has no custom avatar (negative answer).</li>
  * </ul>
  *
- * <p>Servers without this companion simply ignore the unknown channels and
- * the client silently degrades to skins (e33chat philosophy).
+ * <p>The client only sends on channels the server actually negotiated; servers
+ * without this companion therefore never receive an unknown payload and the
+ * client silently degrades to skins (e33chat philosophy).
  */
 public final class AvatarPayloads {
     private AvatarPayloads() {
