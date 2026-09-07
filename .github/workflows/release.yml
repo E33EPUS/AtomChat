@@ -3,13 +3,24 @@ name: Release
 # Tag push (v*) runs the full pipeline: build Fabric + NeoForge -> one GitHub
 # Release carrying both jars -> publish both to Modrinth and CurseForge.
 # workflow_dispatch allows re-running publishing alone (e.g. after fixing a
-# token or a store-side issue) without re-tagging.
+# token or a store-side issue) without re-tagging; the target input lets you
+# republish just one loader instead of both.
 
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      target:
+        description: Loaders to publish (manual dispatch only)
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - fabric
+          - neoforge
 
 permissions:
   contents: write
@@ -187,6 +198,13 @@ jobs:
     name: Publish (${{ matrix.loader }})
     needs: release
     runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event_name != 'workflow_dispatch' ||
+        github.event.inputs.target == 'all' ||
+        (matrix.loader == 'Fabric' && github.event.inputs.target == 'fabric') ||
+        (matrix.loader == 'NeoForge' && github.event.inputs.target == 'neoforge')
+      }}
     strategy:
       fail-fast: false
       matrix:
