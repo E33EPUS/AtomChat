@@ -114,9 +114,3 @@ modrinth {
 tasks.named('modrinth') {
     onlyIf { System.getenv("MODRINTH_TOKEN") }
 }
-
-tasks.register('publishMods') {
-    group = 'publishing'
-    description = 'Publish the mod to Modrinth and CurseForge.'
-    dependsOn 'modrinth', 'curseforge'
-}
