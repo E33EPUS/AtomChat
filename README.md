@@ -1,5 +1,7 @@
 [简体中文](README.md) | [English](README_EN.md)
 
+<h1 align="center"><img width="256" height="256" alt="logo" src="https://github.com/user-attachments/assets/e449c62e-644b-4c19-9fbc-431d7a899781" /></h1>
+
 <h1 align="center">AtomChat</h1>
 
 <p align="center">
