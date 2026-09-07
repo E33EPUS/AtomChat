@@ -105,6 +105,12 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Flatten release jars
+        run: |
+          mkdir -p release-out
+          find artifacts -name "*.jar" ! -name "*sources*" -exec cp {} release-out/ \;
+          ls -la release-out
+
       - name: Extract version from tag
         id: version
         run: echo "MOD_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -135,7 +141,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.jar
+          files: release-out/*.jar
           body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
