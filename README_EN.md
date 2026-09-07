@@ -11,10 +11,16 @@
 <p align="center">
   <img alt="MC" src="https://img.shields.io/badge/MC-1.21.1-green">
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
+  <img alt="Loader" src="https://img.shields.io/badge/Loader-NeoForge-blue">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
   <img alt="Version" src="https://img.shields.io/github/v/release/E33EPUS/AtomChat?sort=semver">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
+</p>
+
+<p align="center">
+  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Fabric Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Fabric-1.21.1"></a>
+  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="NeoForge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=NeoForge-1.21.1"></a>
 </p>
 
 AtomChat is a brand-new chat beautification mod developed in the spirit of [E33Chat](https://github.com/E33EPUS/E33Chat). It turns the vanilla chat screen into a standalone "phone app" style chat panel: rounded bubbles, avatars, real player names, emoji / kaomoji / sticker packs, image messages, copy and quote, multi-line input, and QQ-style motion.
@@ -23,7 +29,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija)
 
 The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **v0.2.2 released**. Download it from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.2.3 released (Fabric / NeoForge 1.21.1)**. Download it from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -50,8 +56,9 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 | Dependency | Type | Notes |
 |---|---|---|
 | Minecraft | Required | 1.21.1 |
-| Fabric Loader | Required | 0.16.0+ |
-| Fabric API | Required | any 1.21.1 compatible version |
+| Fabric Loader | Required (Fabric build) | 0.16.0+ |
+| Fabric API | Required (Fabric build) | any 1.21.1 compatible version |
+| NeoForge | Required (NeoForge build) | 21.1.235 |
 | Java | Required | 21+ |
 
 1. Download the latest JAR from [Releases](https://github.com/E33EPUS/AtomChat/releases), or build it yourself under [Development & Building](#development--building)
@@ -164,17 +171,18 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 | Item | Status |
 |---|---|
 | Fabric 1.21.1 | ✅ Supported |
+| NeoForge 1.21.1 | ✅ Supported |
 | Java 21+ | ✅ Required |
 | `[[CICode]]` image protocol | ✅ Interoperable with E33Chat / ChatImage family |
 | Nickname / display-name plugins | 🟡 Best effort (tell-click / Tab names / decorated-name structure); unknown formats fall back to gray system text |
 | Server | ✅ Not required (client-only) |
-| Other loaders / versions | ❌ Fabric 1.21.1 only for now |
+| Other loaders / versions | ❌ Fabric / NeoForge 1.21.1 only for now |
 
 ---
 
 ## Known Limitations
 
-1. Fabric 1.21.1 only; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet
+1. Fabric / NeoForge 1.21.1 supported so far; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet
 2. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet
 3. No E33Chat server templates, whisper sidebar, search, notification banners, or persistent chat history
 4. Player identity is best effort: tell-click structured capture, offline seen cache, and multi-tier ownDisplayName fallbacks; extreme unknown formats fall back to gray system text

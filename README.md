@@ -11,10 +11,16 @@
 <p align="center">
   <img alt="MC" src="https://img.shields.io/badge/MC-1.21.1-green">
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
+  <img alt="Loader" src="https://img.shields.io/badge/Loader-NeoForge-blue">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
   <img alt="Version" src="https://img.shields.io/github/v/release/E33EPUS/AtomChat?sort=semver">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
+</p>
+
+<p align="center">
+  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Fabric Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Fabric-1.21.1"></a>
+  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="NeoForge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=NeoForge-1.21.1"></a>
 </p>
 
 AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发的全新聊天美化mod，旨在把原版聊天屏改造成「手机 App」风格的独立聊天面板，元素包括：圆角气泡、头像、真实玩家名、表情 / 颜文字 / 表情包、图片消息、复制引用、多行输入与 QQ 式动效。
@@ -23,7 +29,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：**v0.2.2 已发布**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**v0.2.3 已发布（Fabric / NeoForge 1.21.1）**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 
@@ -50,8 +56,9 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | 依赖 | 类型 | 说明 |
 |---|---|---|
 | Minecraft | 必需 | 1.21.1 |
-| Fabric Loader | 必需 | 0.16.0+ |
-| Fabric API | 必需 | 任意兼容 1.21.1 的版本 |
+| Fabric Loader | 必需（Fabric 版） | 0.16.0+ |
+| Fabric API | 必需（Fabric 版） | 任意兼容 1.21.1 的版本 |
+| NeoForge | 必需（NeoForge 版） | 21.1.235 |
 | Java | 必需 | 21+ |
 
 1. 从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载最新 JAR，或按 [开发与构建](#开发与构建) 自行构建
@@ -164,17 +171,18 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | 项 | 状态 |
 |---|---|
 | Fabric 1.21.1 | ✅ 支持 |
+| NeoForge 1.21.1 | ✅ 支持 |
 | Java 21+ | ✅ 必需 |
 | `[[CICode]]` 图片协议 | ✅ 与 E33Chat / ChatImage 系互通 |
 | 花名 / 昵称插件 | 🟡 尽力识别（点击私聊 / Tab 名 / 装饰名结构）；极端未知格式回退灰字 |
 | 服务端 | ✅ 无需安装（纯客户端） |
-| 其他加载器 / 版本 | ❌ 当前仅 Fabric 1.21.1 |
+| 其他加载器 / 版本 | ❌ 目前仅支持 Fabric / NeoForge 的 1.21.1 |
 
 ---
 
 ## 已知限制
 
-1. 仅 Fabric 1.21.1，Skija Windows x64 原生库已内置；Linux / macOS 尚未打包
+1. 目前支持 Fabric / NeoForge 1.21.1；Skija Windows x64 原生库已内置，Linux / macOS 尚未打包
 2. 图片默认上传第三方图床 uguu.se，约 3 小时过期；暂无服务端媒体托管
 3. 无 E33Chat 的服务端模板、私聊侧边栏、搜索、通知横幅、聊天历史持久化等能力
 4. 玩家身份解析为尽力而为：tell-click 结构捕获、离线 seen 缓存、ownDisplayName 多级降级；极端未知格式回退灰字
