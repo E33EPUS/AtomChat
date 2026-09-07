@@ -52,7 +52,7 @@
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-CI 自动完成：构建测试 → GitHub Release（附 jar）→ Modrinth / CurseForge 上传。发布说明取自 CHANGELOG.md 对应 `## vX.Y.Z` 节，热修标签（如 `v0.2.2-hotfix`）复用主版本节。平台上传可在 Actions 页对 Release 工作流 Run workflow 手动重跑，不会重建 GitHub Release。
+CI 自动完成：构建 Fabric + NeoForge 两个分支 → 同一个 GitHub Release（附两个 jar）→ Modrinth / CurseForge 上传。发版前请确认 `Fabric-1.21.1` 与 `NeoForge-1.21.1` 的 `gradle.properties` 版本号一致。发布说明取自 CHANGELOG.md 对应 `## vX.Y.Z` 节，热修标签（如 `v0.2.2-hotfix`）复用主版本节。平台上传可在 Actions 页对 Release 工作流 Run workflow 手动重跑，不会重建 GitHub Release。
 
 ## 下载
 
