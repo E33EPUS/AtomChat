@@ -11,7 +11,7 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.7-informational">
+  <img alt="Version" src="https://img.shields.io/github/v/release/E33EPUS/AtomChat?sort=semver">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
@@ -21,7 +21,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija)
 
 The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **v0.1.7 released**. Download it from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.2.2 released**. Download it from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -52,7 +52,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 | Fabric API | Required | any 1.21.1 compatible version |
 | Java | Required | 21+ |
 
-1. Download the v0.1.7 JAR from [Releases](https://github.com/E33EPUS/AtomChat/releases), or build it yourself under [Development & Building](#development--building)
+1. Download the latest JAR from [Releases](https://github.com/E33EPUS/AtomChat/releases), or build it yourself under [Development & Building](#development--building)
 2. Put the JAR in `.minecraft/mods/`
 3. Launch the game and press the chat key (default `T` / `/`) to open AtomChat
 
@@ -64,7 +64,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 2. Type text and press Enter to send; the composer grows when the text wraps and supports Up/Down caret movement
 3. Click the **image icon** to pick a local image, or **drag an image into the window / Ctrl+V** to paste it; the upload is inserted into the draft automatically
 4. Click the **emoji icon** to open the panel with `Emoji` / `Kaomoji` / `Stickers` tabs
-5. Right-click any message to **Copy** or **Quote**; click an avatar to `@`, double-click it for a QQ-style poke shake
+5. Right-click any message to **Copy** or **Quote**; single-click an avatar to open the player's profile page, double-click it for a QQ-style poke shake
 
 ---
 
@@ -88,6 +88,13 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 - 🎨 **SVG icons & unified motion** — image / emoji / send buttons use inline SVG line icons
 - 🌍 **Localization** — supports Simplified Chinese and English; switch the game language to apply
 - 🧠 **Message capture** — captures real player UUID / profile / decorated names from MessageHandler's three channels, with nick-server support and conservative system-gray fallback
+- 🎨 **Themes & full colour control** — one-tap theme presets (Frosted / Modern); the settings page exposes every interface colour (bubbles / secondary capsules / text / cards / outline / accent), with foldable colour groups and a live preview square on each row
+- ⏱️ **Time dividers** — the first message of a list always shows a timestamp capsule; later ones follow a configurable interval
+- ✏️ **Message text selection** — drag-select text inside bubbles (multi-line supported) and copy with Ctrl+C; dragging never misfires clicks
+- 🖥️ **Profile detail page** — push into a player's profile from chat or the conversation list: stat overview, copy buttons, role tag, with a full-width push transition
+- 🌐 **Image receive toggle** — when off, nothing is downloaded or cached and a green `[Image]` placeholder is shown
+- 🔄 **Teleport mode cycle** — one tap cycles `/tp` / `/tpa` / `auto`
+- ⌨️ **IME & multiplayer touches** — IMBlocker command-mode bridge, WATUT "partner is typing" indicator
 - 🛠️ **Pure Skia rendering** — rounded corners, shadows, scrolling, and text are vector-drawn; pure animation / layout / token classes ship with JUnit tests
 
 ---
@@ -97,7 +104,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 ### Chat & Messages
 
 - Own bubbles sit right, other bubbles left; names hug the bubble edge and avatars align to the bubble top
-- Click an avatar: insert `@name `
+- Single-click an avatar: open the player's profile detail page (a second click within 300 ms becomes a poke)
 - Double-click an avatar: trigger the QQ-style poke shake
 - Right-click a bubble: `Copy` / `Quote`; image bubbles also show `Save` to download the original file
 - Messages containing `[[CICode,url=...,name=...,w=...,h=...]]` render as image bubbles; older size-less codes are also supported
@@ -125,21 +132,28 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 
 ## Configuration
 
-Config file: `.minecraft/config/atomchat/atomchat-client.json` (auto-generated on first launch; restart the game after editing)
+**Recommended**: the in-game `Settings` page (a Windows 11 style tile grid: Appearance / Chat / Privacy & blocking / About). Every option **applies and persists instantly, no restart**; colour rows ship with preset palettes, a `+` custom picker and live previews.
+
+Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated on first launch; restart the game after manual edits). Common keys:
 
 | Key | Default | Description |
 |---|---|---|
-| `panelWidth` | `420.0` | Panel width in design pixels (further scaled by the UI scale) |
-| `panelHeight` | `780.0` | Panel height |
-| `blurEnabled` | `true` | Rounded background blur (raw GL + core shader) |
-| `animationEnabled` | `true` | Master animation switch |
+| `panelWidth` / `panelHeight` | `440.0` / `780.0` | Panel size in design pixels (further scaled by the UI scale) |
+| `panelOpacity` | `0.93` | Panel background opacity |
+| `uiScale` | `1.0` | Interface scale (x0.75–x1.50) |
+| `blurEnabled` | `true` | Background blur (mutually exclusive with wallpaper) |
+| `animationEnabled` / `messageEntryAnimation` / `avatarPokeEnabled` | `true` | Master animation switch / message entrances / avatar poke |
+| `themeName` | — | Theme preset (frosted / modern) |
+| `accentColor` | `0xFF4A90E2` | Accent color (send button, quote bar, scrollbar, etc.) |
+| `ownBubbleColor` / `bubbleTextColor` | `0xFF1E90FF` / `0xFFFFFFFF` | Own bubble background / text |
+| `otherBubbleColor` / `otherBubbleTextColor` | `0xFF2C3E50` / `0xFFFFFFFF` | Other bubble background / text |
+| `secondaryCapsuleBg` / `secondaryCapsuleText` | `0x962C3E50` / `0xDCAAAABA` | Secondary capsule background / text (system messages, time dividers, quote pills) |
+| `textPrimaryColor` / `textSecondaryColor` | `0xFFFFFFFF` / `0xDCAAAABA` | Primary / secondary interface text |
+| `panelBgColor` / `panelOutlineColor` / `panelOutline` | `0xEE16191F` / `0xFFFFFFFF` / `true` | Panel background / outline color / outline toggle |
+| `timestampIntervalMinutes` | `5` | Time divider interval (0 = off) |
+| `imageMessagesEnabled` | `true` | Image message receive toggle |
+| `teleportCommandMode` | `"auto"` | Teleport command mode (auto / tp / tpa) |
 | `debug` | `false` | Debug logging / avatar sampling PNGs (written to `config/atomchat/debug/`) |
-| `accentColor` | `0xFF4A90E2` | Accent color (send button, quote bar, etc.) |
-| `ownBubbleColor` | `0xFF4A90E2` | Own bubble color |
-| `otherBubbleColor` | `0xFF343A44` | Other bubble color |
-| `panelBgColor` | `0xEE16191F` | Panel background color |
-| `textPrimaryColor` | `0xFFFFFFFF` | Primary text color |
-| `textSecondaryColor` | `0xDCAAAABA` | Secondary text color |
 
 ---
 
@@ -159,11 +173,10 @@ Config file: `.minecraft/config/atomchat/atomchat-client.json` (auto-generated o
 ## Known Limitations
 
 1. Fabric 1.21.1 only; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet
-2. No GUI config screen yet; edit `config/atomchat/atomchat-client.json` manually
-3. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet
-4. No E33Chat server templates, whisper sidebar, search, notification banners, or persistent chat history
-5. Player identity is best effort: tell-click structured capture, offline seen cache, multi-tier ownDisplayName, and whisper classification are not implemented yet
-6. Chat history is in-memory only (cap 500) and is not persisted across restarts; it is not cleared automatically when changing worlds / servers
+2. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet
+3. No E33Chat server templates, whisper sidebar, search, notification banners, or persistent chat history
+4. Player identity is best effort: tell-click structured capture, offline seen cache, and multi-tier ownDisplayName fallbacks; extreme unknown formats fall back to gray system text
+5. Chat history is in-memory only (cap 500) and is not persisted across restarts; it is not cleared automatically when changing worlds / servers
 
 ---
 
@@ -189,7 +202,7 @@ Config file: `.minecraft/config/atomchat/atomchat-client.json` (auto-generated o
 
 **Where are sticker packs stored?** `.minecraft/config/atomchat/emotes/`, up to 10 images, png / jpg / jpeg.
 
-**How do I change colors / sizes?** Edit `.minecraft/config/atomchat/atomchat-client.json` and restart the game.
+**How do I change colors / sizes?** Adjust them live in `Settings → Appearance` (colour rows include presets and a custom picker); alternatively edit `config/atomchat/atomchat-client.json` and restart the game.
 
 **Can I include this in a modpack?** Yes. AtomChat's code is MIT and needs no extra permission; if your modpack redistributes the JAR, keep the third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

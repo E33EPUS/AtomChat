@@ -11,7 +11,7 @@
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
-  <img alt="Version" src="https://img.shields.io/badge/Version-0.1.7-informational">
+  <img alt="Version" src="https://img.shields.io/github/v/release/E33EPUS/AtomChat?sort=semver">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
 
@@ -21,7 +21,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：**v0.1.7 已发布**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**v0.2.2 已发布**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 
@@ -52,7 +52,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | Fabric API | 必需 | 任意兼容 1.21.1 的版本 |
 | Java | 必需 | 21+ |
 
-1. 从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载 v0.1.7 JAR，或按 [开发与构建](#开发与构建) 自行构建
+1. 从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载最新 JAR，或按 [开发与构建](#开发与构建) 自行构建
 2. 将 JAR 放入 `.minecraft/mods/`
 3. 启动游戏，按聊天键（默认 `T` / `/`）打开 AtomChat
 
@@ -64,7 +64,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 2. 输入文字回车发送；文字超过一行时输入栏会自动长高，仍可上下移动光标
 3. 点 **图片图标** 选择本地图片，或直接 **拖图片进窗口 / Ctrl+V 粘贴**，上传后自动插入草稿
 4. 点 **表情图标** 打开面板：`表情` / `颜文字` / `表情包` 三个标签页
-5. 右键任意消息可 **复制** 或 **引用回复**；点头像 `@`，双击头像触发 QQ 式戳一戳动画
+5. 右键任意消息可 **复制** 或 **引用回复**；单击头像打开玩家档案页，双击头像触发 QQ 式戳一戳动画
 
 ---
 
@@ -88,6 +88,13 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 - 🎨 **SVG 图标与统一动效** — 图片 / 表情 / 发送按钮为内嵌 SVG 线性图标
 - 🌍 **本地化** — 支持中英双语，切换MC系统语言即可生效
 - 🧠 **消息捕获** — 从 MessageHandler 三层通道捕获真实玩家 UUID / 名字 / 装饰名，支持花名服与系统灰字兜底
+- 🎨 **主题与全量配色** — 主题预设（毛玻璃 / 现代）一键切换；设置页提供全部界面配色（气泡 / 次要胶囊 / 文字 / 卡片 / 描边 / 强调色），颜色分组可折叠，每项带实时预览色块
+- ⏱️ **时间戳分隔** — 消息列表首条消息始终显示时间戳胶囊，之后按可配置的时间间隔显示
+- ✏️ **消息文字选择** — 在消息气泡上拖选文字（跨行支持），Ctrl+C 直接复制，拖动不会误触点击
+- 🖥️ **档案详情页** — 从聊天或会话列表推入玩家档案：数据总览、复制按钮、角色标识；聊天与档案之间整页推入转场
+- 🌐 **图片接收开关** — 关闭后不下载不缓存，显示绿色 `[图片]` 占位
+- 🔄 **传送模式循环** — `/tp` / `/tpa` / `auto` 三档一键循环
+- ⌨️ **输入法与联机体验** — IMBlocker 命令态桥接、WATUT 输入中指示（对方正在输入）
 - 🛠️ **纯 Skia 渲染** — 圆角、阴影、滚动、文字全部矢量绘制；提供动画 / 布局 / Token 纯类与 JUnit 测试
 
 ---
@@ -97,7 +104,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 ### 聊天与消息
 
 - 自己的气泡靠右、他人靠左；名称贴在气泡边缘，头像与气泡顶对齐
-- 点击头像：向输入框插入 `@玩家名 `
+- 单击头像：打开玩家档案详情页（300ms 内再次点击则为戳一戳）
 - 双击头像：触发头像抖动（QQ 式 poke）
 - 右键气泡：`复制` / `引用`；图片气泡额外显示 `保存`，可下载原图到本地
 - 收到含 `[[CICode,url=...,name=...,w=...,h=...]]` 的消息会渲染为图片气泡；兼容旧版无尺寸代码
@@ -125,21 +132,28 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 ## 配置
 
-配置文件：`.minecraft/config/atomchat/atomchat-client.json`（首次启动自动生成，修改后需重启游戏）
+**推荐方式**：游戏内 `设置` 页（Win11 风格磁贴主页：外观 / 聊天 / 隐私与屏蔽 / 关于）。所有选项**即时生效并立即写盘，无需重启**，颜色项带预设色板、`+` 号自定义拾色器与实时预览。
+
+高级方式：直接编辑 `.minecraft/config/atomchat/atomchat-client.json`（首次启动自动生成，手动修改后需重启游戏）。常用键：
 
 | 键 | 默认值 | 说明 |
 |---|---|---|
-| `panelWidth` | `420.0` | 面板宽度（设计像素，内部再乘 UI 缩放） |
-| `panelHeight` | `780.0` | 面板高度 |
-| `blurEnabled` | `true` | 面板背景高斯模糊（raw GL + core shader） |
-| `animationEnabled` | `true` | 动画总开关 |
+| `panelWidth` / `panelHeight` | `440.0` / `780.0` | 面板尺寸（设计像素，内部再乘 UI 缩放） |
+| `panelOpacity` | `0.93` | 面板背景不透明度 |
+| `uiScale` | `1.0` | 界面缩放（x0.75–x1.50） |
+| `blurEnabled` | `true` | 面板背景高斯模糊（与壁纸互斥） |
+| `animationEnabled` / `messageEntryAnimation` / `avatarPokeEnabled` | `true` | 动画总开关 / 消息入场 / 头像戳一戳 |
+| `themeName` | — | 主题预设（frosted / modern） |
+| `accentColor` | `0xFF4A90E2` | 强调色（发送按钮 / 引用条 / 滚动条等） |
+| `ownBubbleColor` / `bubbleTextColor` | `0xFF1E90FF` / `0xFFFFFFFF` | 自己气泡底色 / 文字色 |
+| `otherBubbleColor` / `otherBubbleTextColor` | `0xFF2C3E50` / `0xFFFFFFFF` | 他人气泡底色 / 文字色 |
+| `secondaryCapsuleBg` / `secondaryCapsuleText` | `0x962C3E50` / `0xDCAAAABA` | 次要胶囊底色 / 文字色（系统消息、时间戳、引用胶囊共用） |
+| `textPrimaryColor` / `textSecondaryColor` | `0xFFFFFFFF` / `0xDCAAAABA` | 界面主文字 / 次要文字 |
+| `panelBgColor` / `panelOutlineColor` / `panelOutline` | `0xEE16191F` / `0xFFFFFFFF` / `true` | 面板背景 / 描边颜色 / 描边开关 |
+| `timestampIntervalMinutes` | `5` | 时间戳分隔间隔（0 = 关闭） |
+| `imageMessagesEnabled` | `true` | 图片消息接收开关 |
+| `teleportCommandMode` | `"auto"` | 传送命令模式（auto / tp / tpa） |
 | `debug` | `false` | 调试输出 / 头像采样 PNG（写入 `config/atomchat/debug/`） |
-| `accentColor` | `0xFF4A90E2` | 强调色（发送按钮 / 引用条等） |
-| `ownBubbleColor` | `0xFF4A90E2` | 自己气泡颜色 |
-| `otherBubbleColor` | `0xFF343A44` | 他人气泡颜色 |
-| `panelBgColor` | `0xEE16191F` | 面板背景色 |
-| `textPrimaryColor` | `0xFFFFFFFF` | 主文字颜色 |
-| `textSecondaryColor` | `0xDCAAAABA` | 次要文字颜色 |
 
 ---
 
@@ -159,11 +173,10 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 ## 已知限制
 
 1. 仅 Fabric 1.21.1，Skija Windows x64 原生库已内置；Linux / macOS 尚未打包
-2. 无 GUI 配置界面，设置需手动编辑 `config/atomchat/atomchat-client.json`
-3. 图片默认上传第三方图床 uguu.se，约 3 小时过期；暂无服务端媒体托管
-4. 无 E33Chat 的服务端模板、私聊侧边栏、搜索、通知横幅、聊天历史持久化等能力
-5. 玩家身份解析为尽力而为：tell-click 结构捕获、离线 seen 缓存、ownDisplayName 多级降级、私聊 / whisper 分类尚未实现
-6. 聊天历史仅保存在内存（上限 500 条），重启不保留；跨世界 / 服务器不会自动清空
+2. 图片默认上传第三方图床 uguu.se，约 3 小时过期；暂无服务端媒体托管
+3. 无 E33Chat 的服务端模板、私聊侧边栏、搜索、通知横幅、聊天历史持久化等能力
+4. 玩家身份解析为尽力而为：tell-click 结构捕获、离线 seen 缓存、ownDisplayName 多级降级；极端未知格式回退灰字
+5. 聊天历史仅保存在内存（上限 500 条），重启不保留；跨世界 / 服务器不会自动清空
 
 ---
 
@@ -189,7 +202,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 **表情包存在哪里？** `.minecraft/config/atomchat/emotes/`，最多 10 个，支持 png / jpg / jpeg。
 
-**怎么改颜色 / 大小？** 编辑 `.minecraft/config/atomchat/atomchat-client.json` 后重启游戏。
+**怎么改颜色 / 大小？** 游戏内 `设置 → 外观` 即时调整（颜色项带预设与自定义拾色器）；也可以编辑 `config/atomchat/atomchat-client.json` 后重启游戏。
 
 **可以放进整合包吗？** 可以。AtomChat 代码为 MIT，无需额外授权；若整合包分发 JAR，请保留 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 中的第三方声明。
 
