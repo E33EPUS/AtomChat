@@ -122,6 +122,10 @@ public final class SettingsSectionPage {
     private static final String LABEL_ADJUST = "atomchat.settings.group.adjust";
     private static final String LABEL_BUBBLE_COLORS = "atomchat.settings.group.bubblecolors";
     private static final String LABEL_UI_COLORS = "atomchat.settings.group.uicolors";
+    private static final String LABEL_CHAT_MESSAGES = "atomchat.settings.group.chat.messages";
+    private static final String LABEL_CHAT_NOTIFY = "atomchat.settings.group.chat.notify";
+    private static final String LABEL_CHAT_HISTORY = "atomchat.settings.group.chat.history";
+    private static final String LABEL_CHAT_TELEPORT = "atomchat.settings.group.chat.teleport";
     private static final String ACTION_WALLPAPER_PICK = "wallpaper_pick";
     private static final String ACTION_WALLPAPER_CLEAR = "wallpaper_clear";
     private static final String ACTION_TELEPORT_MODE = "teleport_mode";
@@ -214,13 +218,47 @@ public final class SettingsSectionPage {
                 || ACTION_CACHE_CLEAR.equals(actionId);
     }
 
-    /** The colour group folded/unfolded by a label row, or null for plain labels. */
-    private static String foldableColorGroup(String labelKey) {
+    /**
+     * Foldable group id for a label row, or null for a plain non-collapsible
+     * label. Any label returning a non-null id gets a chevron and hides its
+     * child rows when collapsed.
+     */
+    private static String foldableGroup(String labelKey) {
         if (LABEL_BUBBLE_COLORS.equals(labelKey)) {
             return "bubble";
         }
         if (LABEL_UI_COLORS.equals(labelKey)) {
             return "ui";
+        }
+        if (LABEL_ADJUST.equals(labelKey)) {
+            return "adjust";
+        }
+        if (LABEL_ADVANCED.equals(labelKey)) {
+            return "advanced";
+        }
+        if (LABEL_BLOCKED.equals(labelKey)) {
+            return "blocked";
+        }
+        if (LABEL_MOD_INFO.equals(labelKey)) {
+            return "modinfo";
+        }
+        if (LABEL_THIRD_PARTY.equals(labelKey)) {
+            return "thirdparty";
+        }
+        if ("atomchat.settings.group.display".equals(labelKey)) {
+            return "display";
+        }
+        if (LABEL_CHAT_MESSAGES.equals(labelKey)) {
+            return "chat_messages";
+        }
+        if (LABEL_CHAT_NOTIFY.equals(labelKey)) {
+            return "chat_notify";
+        }
+        if (LABEL_CHAT_HISTORY.equals(labelKey)) {
+            return "chat_history";
+        }
+        if (LABEL_CHAT_TELEPORT.equals(labelKey)) {
+            return "chat_teleport";
         }
         return null;
     }
@@ -294,78 +332,128 @@ public final class SettingsSectionPage {
 
     /** Rows in display order for the given section. */
     public List<Row> rows(SettingsSection section) {
-        List<Row> rows = new ArrayList<>();
-        rows.add(Row.ofLabel(groupKey(section)));
-        for (SettingsItem item : SettingsCatalog.items(section)) {
-            rows.add(Row.ofSwitch(item));
+        return switch (section) {
+            case CHAT -> chatRows();
+            case APPEARANCE -> appearanceRows();
+            case PRIVACY -> privacyRows();
+            case ABOUT -> aboutRows();
+        };
+    }
+
+    /**
+     * Adds a collapsible group: the label is always present; the children are
+     * only added while the group is expanded. Non-foldable labels (null id)
+     * always show their children.
+     */
+    private void addGroup(List<Row> rows, String labelKey, Runnable children) {
+        rows.add(Row.ofLabel(labelKey));
+        String id = foldableGroup(labelKey);
+        if (id == null || !collapsedColorGroups.contains(id)) {
+            children.run();
         }
-        if (section == SettingsSection.APPEARANCE) {
-            // The theme card leads the look group: it writes whole appearance
-            // values at once, and every knob below it stays editable after.
+    }
+
+    private void addSwitches(List<Row> rows, SettingsSection section, String... ids) {
+        List<SettingsItem> all = SettingsCatalog.items(section);
+        java.util.Set<String> wanted = java.util.Set.of(ids);
+        for (SettingsItem item : all) {
+            if (wanted.contains(item.id())) {
+                rows.add(Row.ofSwitch(item));
+            }
+        }
+    }
+
+    private void addSliders(List<Row> rows, SettingsSection section, String... ids) {
+        List<SettingsSlider> all = SettingsCatalog.sliders(section);
+        java.util.Set<String> wanted = java.util.Set.of(ids);
+        for (SettingsSlider slider : all) {
+            if (wanted.contains(slider.id())) {
+                rows.add(Row.ofSlider(slider));
+            }
+        }
+    }
+
+    private List<Row> chatRows() {
+        List<Row> rows = new ArrayList<>();
+        addGroup(rows, LABEL_CHAT_MESSAGES, () -> {
+            addSwitches(rows, SettingsSection.CHAT,
+                    "entry", "poke", "images", "anti_spam", "compact_messages");
+            addSliders(rows, SettingsSection.CHAT, "timestamp");
+        });
+        addGroup(rows, LABEL_CHAT_NOTIFY, () -> {
+            addSwitches(rows, SettingsSection.CHAT,
+                    "mention_banner", "mention_sound", "whisper_banner", "whisper_sound");
+            addSliders(rows, SettingsSection.CHAT, "notify_volume");
+        });
+        addGroup(rows, LABEL_CHAT_HISTORY, () -> {
+            addSwitches(rows, SettingsSection.CHAT, "history");
+            addSliders(rows, SettingsSection.CHAT, "history_retention");
+            rows.add(Row.ofAction(ACTION_HISTORY_CLEAR, historyClearItem()));
+        });
+        addGroup(rows, LABEL_CHAT_TELEPORT, () ->
+                rows.add(Row.ofAction(ACTION_TELEPORT_MODE, teleportModeItem())));
+        return rows;
+    }
+
+    private List<Row> appearanceRows() {
+        List<Row> rows = new ArrayList<>();
+        addGroup(rows, groupKey(SettingsSection.APPEARANCE), () -> {
+            addSwitches(rows, SettingsSection.APPEARANCE, "blur", "outline", "motion");
             rows.add(Row.ofAction(ACTION_THEME, themeItem()));
-            // The wallpaper cards live with the background controls they
-            // compete with, not in a group of their own.
             rows.add(Row.ofAction(ACTION_WALLPAPER_PICK, wallpaperPickItem()));
             if (WallpaperStore.isSet()) {
                 rows.add(Row.ofAction(ACTION_WALLPAPER_CLEAR, wallpaperClearItem()));
             }
-            // Corner-style card deliberately deferred (author call, 2026-09-06):
-            // cornerStyle stays config-only until the knob ships.
-        }
-        if (section == SettingsSection.CHAT) {
-            rows.add(Row.ofAction(ACTION_TELEPORT_MODE, teleportModeItem()));
-            rows.add(Row.ofAction(ACTION_HISTORY_CLEAR, historyClearItem()));
-        }
-        if (section == SettingsSection.APPEARANCE) {
-            rows.add(Row.ofLabel(LABEL_ADJUST));
-        }
-        for (SettingsSlider slider : SettingsCatalog.sliders(section)) {
-            rows.add(Row.ofSlider(slider));
-        }
-        if (section == SettingsSection.APPEARANCE) {
-            // Colours split into two labelled groups: message bubbles vs the
-            // surrounding interface. Same rows, easier to scan.
-            rows.add(Row.ofLabel(LABEL_BUBBLE_COLORS));
-            if (!collapsedColorGroups.contains("bubble")) {
-                for (SettingsColor color : SettingsCatalog.colors(section)) {
-                    if ("bubble".equals(color.group())) {
-                        rows.add(Row.ofColor(color));
-                    }
+        });
+        addGroup(rows, LABEL_ADJUST, () ->
+                addSliders(rows, SettingsSection.APPEARANCE,
+                        "opacity", "width", "scale", "cardtint"));
+        addGroup(rows, LABEL_BUBBLE_COLORS, () -> {
+            for (SettingsColor color : SettingsCatalog.colors(SettingsSection.APPEARANCE)) {
+                if ("bubble".equals(color.group())) {
+                    rows.add(Row.ofColor(color));
                 }
             }
-            rows.add(Row.ofLabel(LABEL_UI_COLORS));
-            if (!collapsedColorGroups.contains("ui")) {
-                for (SettingsColor color : SettingsCatalog.colors(section)) {
-                    if ("ui".equals(color.group())) {
-                        rows.add(Row.ofColor(color));
-                    }
+        });
+        addGroup(rows, LABEL_UI_COLORS, () -> {
+            for (SettingsColor color : SettingsCatalog.colors(SettingsSection.APPEARANCE)) {
+                if ("ui".equals(color.group())) {
+                    rows.add(Row.ofColor(color));
                 }
             }
-        }
-        if (section == SettingsSection.PRIVACY) {
-            rows.add(Row.ofLabel(LABEL_BLOCKED));
+        });
+        return rows;
+    }
+
+    private List<Row> privacyRows() {
+        List<Row> rows = new ArrayList<>();
+        addGroup(rows, groupKey(SettingsSection.PRIVACY), () ->
+                addSwitches(rows, SettingsSection.PRIVACY, "hideBlocked"));
+        addGroup(rows, LABEL_BLOCKED, () -> {
             for (PlayerRef player : blockedPlayers()) {
                 rows.add(Row.ofBlocked(player));
             }
-        }
-        if (section == SettingsSection.ABOUT) {
-            List<Row> about = new ArrayList<>();
-            about.add(Row.ofHero());
-            about.add(Row.ofLabel(LABEL_MOD_INFO));
+        });
+        return rows;
+    }
+
+    private List<Row> aboutRows() {
+        List<Row> rows = new ArrayList<>();
+        rows.add(Row.ofHero());
+        addGroup(rows, LABEL_MOD_INFO, () -> {
             for (SettingsCatalog.InfoRow info : SettingsCatalog.aboutCoreRows()) {
-                about.add(Row.ofInfo(info));
+                rows.add(Row.ofInfo(info));
             }
-            about.add(Row.ofLabel(LABEL_THIRD_PARTY));
+        });
+        addGroup(rows, LABEL_THIRD_PARTY, () -> {
             for (SettingsCatalog.InfoRow info : SettingsCatalog.thirdPartyRows()) {
-                about.add(Row.ofInfo(info));
+                rows.add(Row.ofInfo(info));
             }
-            about.add(Row.ofLabel(LABEL_ADVANCED));
-            about.add(Row.ofAction(ACTION_CACHE_CLEAR, cacheClearItem()));
-            for (SettingsItem item : SettingsCatalog.items(section)) {
-                about.add(Row.ofSwitch(item));
-            }
-            return about;
-        }
+        });
+        addGroup(rows, LABEL_ADVANCED, () -> {
+            rows.add(Row.ofAction(ACTION_CACHE_CLEAR, cacheClearItem()));
+            addSwitches(rows, SettingsSection.ABOUT, "debug");
+        });
         return rows;
     }
 
@@ -718,7 +806,7 @@ public final class SettingsSectionPage {
     private void drawLabel(Canvas canvas, Row row, UiLayout.Rect rect) {
         Font font = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
         int lineColor = sec(190);
-        String group = foldableColorGroup(row.labelKey());
+        String group = foldableGroup(row.labelKey());
         if (group == null) {
             String text = tr(row.labelKey());
             float textW = SkiaFontRenderer.getStringWidth(font, text);
@@ -1129,7 +1217,7 @@ public final class SettingsSectionPage {
                 }
             }
             case LABEL -> {
-                String group = foldableColorGroup(hit.row().labelKey());
+                String group = foldableGroup(hit.row().labelKey());
                 if (group == null) {
                     return;
                 }

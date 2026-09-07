@@ -73,16 +73,43 @@ public final class NotificationBanner {
         // Oldest first so the newest banner paints on top.
         for (int i = banners.size() - 1; i >= 0; i--) {
             Active b = banners.get(i);
-            float age = now - b.born();
-            float appear = Math.min(1.0F, age / 200.0F);
-            float disappear = Math.max(0.0F, Math.min(1.0F, (VISIBLE_MS - age) / 150.0F));
-            float alphaMul = Math.min(appear, disappear);
-            if (alphaMul <= 0.01F) {
+            float alpha = alphaFor(b, now);
+            if (alpha <= 0.01F) {
                 continue;
             }
             float y = topY + i * (bannerH + gap);
-            drawBanner(canvas, b, x, y, bannerW, bannerH, alphaMul);
+            drawBanner(canvas, b, x, y, bannerW, bannerH, alpha);
         }
+    }
+
+    /** Renders the notification stack inside the AtomChat panel (below its header). */
+    public void renderInPanel(Canvas canvas, float panelX, float panelY, float panelW, float panelH) {
+        if (banners.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        float bannerW = Math.min(UiTokens.s(320), Math.max(UiTokens.s(180), panelW - UiTokens.s(24)));
+        float bannerH = UiTokens.s(58);
+        float gap = UiTokens.s(6);
+        float x = panelX + (panelW - bannerW) / 2.0F;
+        float y = panelY + UiTokens.HEADER_HEIGHT + UiTokens.s(6);
+
+        for (int i = banners.size() - 1; i >= 0; i--) {
+            Active b = banners.get(i);
+            float alpha = alphaFor(b, now);
+            if (alpha <= 0.01F || y + bannerH > panelY + panelH - UiTokens.s(4)) {
+                continue;
+            }
+            drawBanner(canvas, b, x, y, bannerW, bannerH, alpha);
+            y += bannerH + gap;
+        }
+    }
+
+    private float alphaFor(Active b, long now) {
+        float age = now - b.born();
+        float appear = Math.min(1.0F, age / 200.0F);
+        float disappear = Math.max(0.0F, Math.min(1.0F, (VISIBLE_MS - age) / 150.0F));
+        return Math.min(appear, disappear);
     }
 
     private void drawBanner(Canvas canvas, Active b, float x, float y, float w, float h, float alpha) {

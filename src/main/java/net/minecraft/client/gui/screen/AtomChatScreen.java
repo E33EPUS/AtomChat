@@ -18,6 +18,7 @@ import com.atom.chat.nav.AppPage;
 import com.atom.chat.nav.AtomChatState;
 import com.atom.chat.nav.NavPage;
 import com.atom.chat.nav.NavigationStack;
+import com.atom.chat.notification.NotificationBanner;
 import com.atom.chat.avatar.AvatarImage;
 import com.atom.chat.avatar.AvatarStore;
 import com.atom.chat.avatar.ColorPickerOverlay;
@@ -727,8 +728,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private float pageNavDx(float travel) {
         float progress = pageNavAnim.getValue();
-        boolean pushing = pageNavTo != null && !pageNavTo.isRoot();
-        return pushing ? travel * (1.0F - progress) : travel * progress;
+        // Push: the incoming page enters from the right (travel -> 0).
+        // Pop: the outgoing page leaves to the right (0 -> travel).
+        // The old code decided by pageNavTo.isRoot(), which broke detail<->detail
+        // pops (the destination WORLD_CHAT is also non-root).
+        return pageNavPopPending ? travel * progress : travel * (1.0F - progress);
     }
 
     /** Opens another player's profile as a pushed detail page. */
@@ -1262,6 +1266,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // The world snapshot sits inside the saveLayer/translate stack so it
             // fades in with the panel and slides with it — no special handling.
             drawPanel(canvas, x, y, worldSnapshot, mouseX, mouseY, delta);
+            NotificationBanner.INSTANCE.renderInPanel(canvas, x, y, panelWidth(), panelHeight());
             canvas.restore();
         }
         canvas.restore();
