@@ -314,27 +314,20 @@ public final class ConversationListPage {
         }
     }
 
-    /** Centred section heading with a rule on each side, matching the settings page. */
+    /** Left-aligned bold section heading with a rule underneath (Plan A). */
     private void drawDivider(Canvas canvas, float x, float y, float w, float h) {
-        Font font = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
-        int lineColor = textSecondary(190);
+        Font font = FontManager.boldFont(UiTokens.SETTINGS_TILE_TITLE);
+        int lineColor = textSecondary(120);
         String text = tr("atomchat.conversation.private_group");
-        float textW = SkiaFontRenderer.getStringWidth(font, text);
+        float padX = UiTokens.s(4);
+        float textX = x + padX;
+        float rightX = x + w - padX;
         float cy = y + h / 2.0F;
-        float gap = s(12);
-        float inset = s(4);
-        float leftEnd = x + inset + (w - inset * 2.0F - textW - gap * 2.0F) / 2.0F;
-        float rightStart = leftEnd + textW + gap * 2.0F;
-        float lineH = s(1.5F);
-        if (leftEnd > x + inset) {
-            SkiaDraw.drawRoundedRect(canvas, x + inset, cy - lineH / 2.0F,
-                    leftEnd - (x + inset), lineH, lineH / 2.0F, lineColor);
-        }
-        if (rightStart < x + w - inset) {
-            SkiaDraw.drawRoundedRect(canvas, rightStart, cy - lineH / 2.0F,
-                    x + w - inset - rightStart, lineH, lineH / 2.0F, lineColor);
-        }
-        SkiaFontRenderer.drawTextCentered(canvas, font, text, x + w / 2.0F, cy, lineColor);
+        SkiaFontRenderer.drawText(canvas, font, text, textX,
+                SkiaFontRenderer.centerBaselineY(font, cy), textPrimary());
+        float lineY = y + h - UiTokens.s(5);
+        SkiaDraw.drawRoundedRect(canvas, textX, lineY,
+                Math.max(0.0F, rightX - textX), UiTokens.s(1), UiTokens.s(0.5F), lineColor);
     }
 
     /** Hit-tests rows using the same geometry as render. */

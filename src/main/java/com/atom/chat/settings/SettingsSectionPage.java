@@ -804,54 +804,31 @@ public final class SettingsSectionPage {
      * colour, so it reads as a section divider rather than a stray caption.
      */
     private void drawLabel(Canvas canvas, Row row, UiLayout.Rect rect) {
-        Font font = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
-        int lineColor = sec(190);
+        // Plan A: left-aligned bold group title with a faint full-width rule
+        // underneath. The chevron lives at the right edge for foldable groups.
+        Font font = FontManager.boldFont(UiTokens.SETTINGS_TILE_TITLE);
+        int textColor = textPrimary();
+        int lineColor = sec(120);
         String group = foldableGroup(row.labelKey());
-        if (group == null) {
-            String text = tr(row.labelKey());
-            float textW = SkiaFontRenderer.getStringWidth(font, text);
-            float cy = rect.y() + rect.h() / 2.0F;
-            float gap = s(12);
-            float inset = s(4);
-            float leftEnd = rect.x() + inset + (rect.w() - inset * 2.0F - textW - gap * 2.0F) / 2.0F;
-            float rightStart = leftEnd + textW + gap * 2.0F;
-            float lineH = s(1.5F);
-            if (leftEnd > rect.x() + inset) {
-                SkiaDraw.drawRoundedRect(canvas, rect.x() + inset, cy - lineH / 2.0F,
-                        leftEnd - (rect.x() + inset), lineH, lineH / 2.0F, lineColor);
-            }
-            if (rightStart < rect.right() - inset) {
-                SkiaDraw.drawRoundedRect(canvas, rightStart, cy - lineH / 2.0F,
-                        rect.right() - inset - rightStart, lineH, lineH / 2.0F, lineColor);
-            }
-            SkiaFontRenderer.drawTextCentered(canvas, font, text, rect.x() + rect.w() / 2.0F, cy, lineColor);
-            return;
-        }
-        // Foldable colour group: chevron + centred caption between the same
-        // divider rules as plain group headings.
-        boolean collapsed = collapsedColorGroups.contains(group);
         String text = tr(row.labelKey());
-        float textW = SkiaFontRenderer.getStringWidth(font, text);
-        float chevron = s(7);
-        float gap = s(10);
+        float padX = UiTokens.SETTINGS_ROW_PAD;
+        float textX = rect.x() + padX;
+        float rightX = rect.right() - padX;
         float cy = rect.y() + rect.h() / 2.0F;
-        float contentW = chevron + gap + textW;
-        float inset = s(4);
-        float leftEnd = rect.x() + inset + (rect.w() - inset * 2.0F - contentW - gap * 2.0F) / 2.0F;
-        float rightStart = leftEnd + contentW + gap * 2.0F;
-        float lineH = s(1.5F);
-        if (leftEnd > rect.x() + inset) {
-            SkiaDraw.drawRoundedRect(canvas, rect.x() + inset, cy - lineH / 2.0F,
-                    leftEnd - (rect.x() + inset), lineH, lineH / 2.0F, lineColor);
+
+        SkiaFontRenderer.drawText(canvas, font,
+                SkiaFontRenderer.truncate(font, text, Math.max(0.0F, rightX - textX - s(24))),
+                textX, SkiaFontRenderer.centerBaselineY(font, cy), textColor);
+
+        if (group != null) {
+            boolean collapsed = collapsedColorGroups.contains(group);
+            float chevron = s(7);
+            drawChevron(canvas, rightX - chevron / 2.0F, cy, chevron, collapsed, textColor);
         }
-        if (rightStart < rect.right() - inset) {
-            SkiaDraw.drawRoundedRect(canvas, rightStart, cy - lineH / 2.0F,
-                    rect.right() - inset - rightStart, lineH, lineH / 2.0F, lineColor);
-        }
-        float startX = leftEnd + gap;
-        drawChevron(canvas, startX, cy, chevron, collapsed, lineColor);
-        SkiaFontRenderer.drawTextCentered(canvas, font, text,
-                startX + chevron + gap + textW / 2.0F, cy, lineColor);
+
+        float lineY = rect.bottom() - s(5);
+        SkiaDraw.drawRoundedRect(canvas, textX, lineY,
+                Math.max(0.0F, rightX - textX), s(1), s(0.5F), lineColor);
     }
 
     /** Small fold indicator: right-pointing when collapsed, down when open.

@@ -114,7 +114,7 @@ public final class SettingsHomePage {
         // One vertically centred group: glyph above, single label below. Both
         // are horizontally centred, so nothing in the tile depends on text
         // length and every tile reads as the same shape.
-        Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
+        Font titleFont = FontManager.boldFont(UiTokens.SETTINGS_TILE_TITLE);
         float textH = SkiaFontRenderer.textHeight(titleFont);
         float groupH = UiTokens.SETTINGS_TILE_ICON + UiTokens.SETTINGS_TILE_TEXT_GAP + textH;
         float groupTop = tile.y() + (tile.h() - groupH) / 2.0F;
