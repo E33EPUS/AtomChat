@@ -4,43 +4,51 @@
 
 ### 新增
 
-- **Skia 通知横幅与音效**：被 @ 提及、被引用回复或收到私聊/密语时，屏幕关闭状态下会弹出 Skia 深色圆角横幅（不是原版 HUD），并播放提示音（2 秒去重）。设置 → 聊天新增「提及横幅 / 提及音效 / 私聊横幅 / 私聊音效」开关与「通知音量」滑条；系统消息不弹横幅。
 - **防刷屏**：同一发送者连续发送完全相同的内容时合并为一条消息，名字旁显示 `xN` 次数；开关在设置 → 聊天。
-- **紧凑消息分组**：同一发送者 5 分钟内的连续消息只保留第一条的头像与名字，后续气泡间距收紧（Discord/Telegram 式）；开关在设置 → 聊天。
+- **紧凑消息分组**：同一发送者 5 分钟内的连续消息只保留第一条的头像与名字，后续气泡间距收紧（Discord/Telegram 式）；开关在设置 → 聊天，默认关闭。
 - **跨消息文字拖选**：文字选择不再限制在单条消息内，可跨多条消息拖选，Ctrl+C 一次复制多段。
-- **历史保留天数滑条**：设置 → 聊天新增滑条（0 = 永久，1–365 天），到期历史文件在进世界时自动清理。
-- **数据目录治理**：自动下载的聊天图片缓存与 companion 他人头像数据从 `config/atomchat/` 迁到 `<游戏目录>/atomchat-data/`，config 目录不再被运行时数据撑大；图片缓存上限 500 个文件 / 100 MB，自动按时间清理最旧文件；「关于」页新增「清除图片缓存」卡片（带二次确认），显示当前缓存占用。
+- **历史保留天数**：设置 → 聊天可精确输入保留天数（0 = 永久，1–365 天），到期历史文件在进世界时自动清理；输入框支持 Enter 提交、Esc 取消、点击其他区域自动提交。
+- **数据目录治理与图片缓存压缩**：自动下载的聊天图片缓存与 companion 他人头像数据从 `config/atomchat/` 迁到 `<游戏目录>/atomchat-data/`；聊天图片磁盘缓存改为 768px WebP/PNG 压缩缓存，启动和写入时自动清理旧文件（上限 500 文件 / 100 MB），旧版迁移遗留目录自动删除；「关于」页新增「清除图片缓存」卡片（带二次确认），显示当前缓存占用。
+- **设置页可折叠分组与左对齐粗体组标题**：所有设置子页的现有分区标题可折叠；组标题改为左对齐粗体并带细分隔线。
 
 ### 更改
 
-- **设置页可折叠分组**：所有设置子页的现有分区标题升级为可折叠；「聊天与通知」页按「消息 / 通知 / 聊天记录 / 传送」分组，默认展开。
-- **面板内通知横幅**：AtomChat 面板打开时，@/引用/私聊横幅也显示为面板内顶部浮层（不再只在无界面时显示）。
+- **历史保留天数由滑条改为右侧输入框**：避免滑条无法精确停在 1、3 等小数值；输入框常驻显示，点击即编辑。
+- **紧凑消息分组默认关闭**。
+- **恢复原版 bundled 字体**：撤回 MiSans/Inter 实验，避免部分中文文本粗细不一。
 
 ### 修复
 
 - **打开聊天屏崩溃**：紧凑分组在计算最后一条消息的下一行间距时越界（`IndexOutOfBoundsException`）；边界探针现在在消息列表末尾直接返回 false。
-- **通知音效听不到**：`SimpleSoundInstance.forUI` 参数是 `(音效, 音量, 音高)`，旧代码把音量传到了音高位，实际音量固定 0.25；现已按配置音量播放。
 - **档案退出动画错乱**：详情页互推返回时，`pageNavDx` 把“返回中”的档案页误判成“新页进入”，方向反/叠层；现按 push/pop 标志决定滑动方向。
+- **重复消息计数角标位置与强调色**：计数移到气泡外侧垂直居中并跟随界面强调色，不再压住气泡。
+- **头像 companion 协议加固**：客户端发送前检查通道是否协商，避免向无 companion 的服务器发未知包。
+- **历史保留天数输入框问题**：修复点击后无光标、点其他区域不失焦、单次按键数字翻倍（1 变 11）等问题。
+- **中文文本粗细不一**：回退到原 bundled 字体，消除部分字符由 MiSans/Inter 混排造成的字重差异。
 
 ### Added
 
-- **Skia notification banners and sounds**: when you are @mentioned, quoted or whispered while no screen is open, AtomChat draws a rounded dark Skia banner (no vanilla HUD) and plays a deduped sound. New Settings → Chat toggles for mention/whisper banners and sounds plus a notification-volume slider; system messages stay silent.
 - **Anti-spam**: consecutive identical messages from the same sender merge into one bubble with an `xN` counter. Toggle in Settings → Chat.
-- **Compact message groups**: within a same-sender five-minute run, only the first message keeps the avatar/name row and later bubbles use a tighter gap. Toggle in Settings → Chat.
+- **Compact message groups**: within a same-sender five-minute run, only the first message keeps the avatar/name row and later bubbles use a tighter gap. Toggle in Settings → Chat, off by default.
 - **Cross-message text selection**: drag-select text across multiple messages and copy it all with Ctrl+C.
-- **History retention slider**: Settings → Chat now controls `historyRetentionDays` (0 = forever, 1–365 days); expired files are pruned on world join.
-- **Data-dir cleanup**: auto-downloaded chat-image caches and companion avatar uploads moved from `config/atomchat/` to `<gameDir>/atomchat-data/`; image cache capped at 500 files / 100 MB with oldest-file trimming; About page has a confirm-guarded “Clear image cache” card showing current usage.
+- **History retention days**: Settings → Chat now lets you type the exact retention count (0 = forever, 1–365 days); expired files are pruned on world join. The field commits on Enter, cancels on Esc, and commits on outside click.
+- **Data-dir cleanup and compressed image cache**: auto-downloaded chat-image caches and companion avatar uploads moved from `config/atomchat/` to `<gameDir>/atomchat-data/`; chat images are cached on disk as 768px WebP/PNG, trimmed at startup and after writes (500 files / 100 MB cap), and old marked migration directories are deleted automatically. About page has a confirm-guarded “Clear image cache” card showing current usage.
+- **Collapsible settings groups with left-aligned bold headings**: every settings sub-page now treats section headings as foldable groups; headings are bold and left-aligned with a divider.
 
 ### Changed
 
-- **Collapsible settings groups**: every settings sub-page now treats its section headings as foldable groups; Settings → Chat is grouped into Messages / Notifications / Chat history / Teleport, all expanded by default.
-- **In-panel notification banners**: mention/quote/whisper banners also appear as a top floating overlay inside the AtomChat panel.
+- **Retention control is an exact input field instead of a slider**: it sits on the right side of the row and always shows the current value.
+- **Compact message groups default off**.
+- **Restored the bundled font**: the MiSans/Inter experiment was reverted to fix uneven CJK stroke weights.
 
 ### Fixed
 
 - **Crash when opening the chat screen**: compact-group lookahead indexed one past the last message; the edge probe now returns false at the end of the list.
-- **Notification sound was nearly inaudible**: `SimpleSoundInstance.forUI` takes `(sound, volume, pitch)`; the old call passed the volume into the pitch slot. It now plays at the configured volume.
 - **Profile exit animation was reversed/overlapped**: detail-to-detail pops used destination-rootness instead of the push/pop flag, so the profile page slid the wrong way.
+- **Duplicate counter placement/accent**: moved beside the bubble, vertically centred, using the accent colour.
+- **Avatar companion protocol hardening**: the client checks negotiated channels before sending requests/uploads.
+- **Retention input issues**: no caret, no blur on outside click, and doubled digits (1 became 11) are fixed.
+- **Mixed CJK font weights**: reverted to the original bundled font.
 
 ## v0.2.3
 
