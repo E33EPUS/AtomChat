@@ -3,6 +3,8 @@ plugins {
     id 'maven-publish'
     id 'net.neoforged.moddev' version '2.0.141'
     id 'idea'
+    id 'com.modrinth.minotaur' version '2.8.7'
+    id 'net.darkhax.curseforgegradle' version '1.1.28'
 }
 
 tasks.named('wrapper', Wrapper).configure {
@@ -166,7 +168,68 @@ idea {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Release publishing (Modrinth + CurseForge)
+//
+// Tokens come from the environment only — never commit them. The publishing
+// tasks are skipped when the matching token is absent, so everyday builds and
+// tests run without any store credentials. Project IDs live in
+// gradle.properties (modrinth_project_id / curseforge_project_id).
+// ---------------------------------------------------------------------------
+
+// Store-facing version label, following the jar naming habit:
+// NeoForge-<mc_version>-<mod_version>, e.g. NeoForge-1.21.1-0.2.3
+def storeVersion = "NeoForge-${project.minecraft_version}-${project.mod_version}"
+
+def changelogFor(version) {
+    def text = rootProject.file('CHANGELOG.md').getText('UTF-8')
+    def start = text.indexOf("## v${version}")
+    if (start < 0) {
+        return "AtomChat ${version}"
+    }
+    def end = text.indexOf('\n## ', start + 1)
+    def section = end > start ? text.substring(start, end) : text.substring(start)
+    return section.trim()
+}
+
+modrinth {
+    token = System.getenv("MODRINTH_TOKEN") ?: ""
+    projectId = project.modrinth_project_id
+    versionNumber = storeVersion
+    versionType = "release"
+    uploadFile = jar
+    gameVersions = [project.minecraft_version]
+    loaders = ["neoforge"]
+    changelog = changelogFor(project.version)
+}
+
+tasks.named('modrinth') {
+    onlyIf { System.getenv("MODRINTH_TOKEN") }
+}
+
+def cfProjectId = (project.findProperty('curseforge_project_id') ?: '').toString()
+def cfConfigured = cfProjectId ==~ /\d+/
+
+tasks.register('curseforge', net.darkhax.curseforgegradle.TaskPublishCurseForge) {
+    apiToken = System.getenv("CURSEFORGE_TOKEN") ?: ""
+    onlyIf { cfConfigured && System.getenv("CURSEFORGE_TOKEN") }
+
+    if (cfConfigured) {
+        def main = upload(cfProjectId as int, jar)
+        main.changelogType = 'markdown'
+        main.changelog = changelogFor(project.version)
+        main.releaseType = 'release'
+        main.displayName = storeVersion
+        main.addGameVersion project.minecraft_version
+        main.addModLoader 'NeoForge'
+        main.addJavaVersion 'Java 21'
+        // CurseForge rejects uploads without an environment tag (error 1021).
+        main.addEnvironment 'Client', 'Server'
+    }
+}
+
 tasks.register('publishMods') {
     group = 'publishing'
-    description = 'No-op placeholder until NeoForge store publishing is configured.'
+    description = 'Publish the mod to Modrinth and CurseForge.'
+    dependsOn 'modrinth', 'curseforge'
 }
