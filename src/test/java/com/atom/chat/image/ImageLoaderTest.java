@@ -110,6 +110,36 @@ class ImageLoaderTest {
     }
 
     @Test
+    void diskCacheStoresProcessedImageNotTheOriginalDownload() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        byte[] raw = png(1200, 800);
+        ImageLoader l = loader(System::currentTimeMillis, url -> {
+            calls.incrementAndGet();
+            return raw;
+        });
+        String url = "http://test/big";
+        assertNotNull(l.get(url, true));
+        assertEquals(1, calls.get());
+        Path cached = Files.list(tempDir)
+                .filter(p -> p.getFileName().toString().endsWith(".bin"))
+                .findFirst().orElseThrow();
+        // The cache stores the display-size re-encode, not the downloaded raw.
+        byte[] cachedBytes = Files.readAllBytes(cached);
+        assertTrue(cachedBytes.length > 0);
+        assertTrue(!java.util.Arrays.equals(cachedBytes, raw));
+        Image decoded = Image.makeFromEncoded(cachedBytes);
+        try {
+            assertNotNull(decoded);
+            assertTrue(decoded.getWidth() <= ImageLoader.MAX_DIM);
+            assertTrue(decoded.getHeight() <= ImageLoader.MAX_DIM);
+        } finally {
+            if (decoded != null) {
+                decoded.close();
+            }
+        }
+    }
+
+    @Test
     void largeImagesAreDownsampledToMaxDim() {
         // downscale() closes the source when it actually rescales, so each
         // case constructs its own image and closes only what it still owns.
