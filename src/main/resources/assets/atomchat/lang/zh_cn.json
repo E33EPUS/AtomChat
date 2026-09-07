@@ -186,6 +186,8 @@
   "atomchat.settings.about.thirdparty.skia": "Skia",
   "atomchat.settings.about.thirdparty.flatlaf": "FlatLaf",
   "atomchat.settings.about.open": "点击跳转",
+  "atomchat.settings.about.cache.clear": "清除图片缓存",
+  "atomchat.settings.about.cache.clear.desc": "删除聊天图片下载缓存，不影响表情/壁纸/头像",
   "atomchat.settings.about.debug": "调试模式",
   "atomchat.settings.about.debug.desc": "输出额外诊断信息以便排查问题",
 

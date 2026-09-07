@@ -8,6 +8,7 @@ import com.atom.chat.chat.TeleportCommands;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.emote.EmoteStore;
+import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.chat.PlayerRef;
@@ -205,6 +206,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // persistence is on). Generation bumped inside: a pending auto-save
             // cannot resurrect what was just deleted.
             com.atom.chat.history.ChatHistory.clearCurrent();
+        } else if ("cache_clear".equals(actionId)) {
+            // Image downloads are safe to drop; they are re-fetched on demand.
+            ImageLoader.get().clearDiskCache();
         }
     }
 

@@ -186,6 +186,8 @@
   "atomchat.settings.about.thirdparty.skia": "Skia",
   "atomchat.settings.about.thirdparty.flatlaf": "FlatLaf",
   "atomchat.settings.about.open": "Open",
+  "atomchat.settings.about.cache.clear": "Clear image cache",
+  "atomchat.settings.about.cache.clear.desc": "Delete downloaded chat images; emotes, wallpaper and avatars are kept",
   "atomchat.settings.about.debug": "Debug mode",
   "atomchat.settings.about.debug.desc": "Enable extra diagnostic output",
 

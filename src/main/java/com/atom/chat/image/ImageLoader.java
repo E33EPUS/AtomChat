@@ -249,6 +249,47 @@ public final class ImageLoader {
         }
     }
 
+    /** Total bytes currently stored in the disk cache (0 when not initialised). */
+    public long diskCacheBytes() {
+        Path dir = diskDir;
+        if (dir == null || !Files.isDirectory(dir)) {
+            return 0L;
+        }
+        long total = 0L;
+        try (var stream = Files.list(dir)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                if (p.getFileName().toString().endsWith(".bin")) {
+                    total += sizeOrZero(p);
+                }
+            }
+        } catch (IOException e) {
+            AtomChat.LOGGER.warn("Failed to size image cache directory {}", dir, e);
+        }
+        return total;
+    }
+
+    /** Deletes every cached image file. In-memory images are untouched. */
+    public void clearDiskCache() {
+        Path dir = diskDir;
+        if (dir == null || !Files.isDirectory(dir)) {
+            return;
+        }
+        try (var stream = Files.list(dir)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                if (!p.getFileName().toString().endsWith(".bin")) {
+                    continue;
+                }
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    AtomChat.LOGGER.warn("Failed to delete image cache file {}", p, e);
+                }
+            }
+        } catch (IOException e) {
+            AtomChat.LOGGER.warn("Failed to clear image cache directory {}", dir, e);
+        }
+    }
+
     private static long sizeOrZero(Path p) {
         try {
             return Files.size(p);
