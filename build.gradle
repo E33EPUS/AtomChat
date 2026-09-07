@@ -2,7 +2,6 @@ plugins {
     id 'fabric-loom' version "${loom_version}"
     id 'maven-publish'
     id 'com.modrinth.minotaur' version '2.8.7'
-    id 'net.darkhax.curseforgegradle' version '1.1.28'
 }
 
 version = project.mod_version
@@ -68,17 +67,22 @@ loom {
 }
 
 // ---------------------------------------------------------------------------
-// Release publishing (Modrinth + CurseForge)
+// Release publishing
 //
-// Tokens come from the environment only — never commit them. Publishing tasks
-// are skipped when the matching token is absent, so everyday builds and tests
-// run without any store credentials.
-// Project IDs live in gradle.properties (modrinth_project_id /
-// curseforge_project_id); fill them in once, in the repo.
+// Modrinth goes through minotaur; CurseForge is uploaded by the release
+// workflow straight through the CurseForge REST API (the CurseForgeGradle
+// plugin could not satisfy CurseForge's "environment group" requirement and
+// its newer releases need a Java 25 Gradle daemon).
+//
+// Tokens come from the environment only — never commit them. The publishing
+// task is skipped when the token is absent, so everyday builds and tests run
+// without any store credentials. The Modrinth project ID lives in
+// gradle.properties (modrinth_project_id); the CurseForge project id is
+// pinned in the release workflow.
 // ---------------------------------------------------------------------------
 
 // Store-facing version label, following the jar naming habit:
-// Fabric-<mc_version>-<mod_version>, e.g. Fabric-1.21.1-0.2.1
+// Fabric-<mc_version>-<mod_version>, e.g. Fabric-1.21.1-0.2.2
 def storeVersion = "Fabric-${project.minecraft_version}-${project.mod_version}"
 
 def changelogFor(version) {
@@ -109,26 +113,6 @@ modrinth {
 
 tasks.named('modrinth') {
     onlyIf { System.getenv("MODRINTH_TOKEN") }
-}
-
-def cfProjectId = (project.findProperty('curseforge_project_id') ?: '').toString()
-def cfConfigured = cfProjectId ==~ /\d+/
-
-tasks.register('curseforge', net.darkhax.curseforgegradle.TaskPublishCurseForge) {
-    apiToken = System.getenv("CURSEFORGE_TOKEN") ?: ""
-    onlyIf { cfConfigured && System.getenv("CURSEFORGE_TOKEN") }
-
-    if (cfConfigured) {
-        def main = upload(cfProjectId as int, remapJar)
-        main.changelogType = 'markdown'
-        main.changelog = changelogFor(project.version)
-        main.releaseType = 'release'
-        main.displayName = storeVersion
-        main.addGameVersion project.minecraft_version
-        main.addModLoader 'Fabric'
-        main.addRequirement 'fabric-api'
-        main.addJavaVersion 'Java 21'
-    }
 }
 
 tasks.register('publishMods') {

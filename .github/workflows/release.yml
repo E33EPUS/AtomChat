@@ -67,11 +67,78 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
 
-      - name: Publish to Modrinth and CurseForge
-        run: ./gradlew publishMods --info --no-daemon
+      - name: Publish to Modrinth
+        run: ./gradlew modrinth --no-daemon
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+
+      - name: Publish to CurseForge
+        env:
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          MOD_VERSION=$(grep -P '^mod_version=' gradle.properties | cut -d= -f2)
+          MC_VERSION=$(grep -P '^minecraft_version=' gradle.properties | cut -d= -f2)
+          export CF_DISPLAY_NAME="Fabric-${MC_VERSION}-${MOD_VERSION}"
+          export CF_MC_VERSION="$MC_VERSION"
+          export CF_PROJECT_ID="1681271"
+          export CF_FILE="$(find release-out -name '*.jar' | head -n 1)"
+          python3 - <<'PY'
+          import json, os, urllib.request
+
+          base = "https://minecraft.curseforge.com"
+          headers = {"x-api-key": os.environ["CURSEFORGE_TOKEN"], "Accept": "application/json"}
+
+          def get(path):
+              req = urllib.request.Request(base + path, headers=headers)
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          data = get("/api/game/versions")["data"]
+          names = {}
+          for v in data:
+              names.setdefault(v["name"], v["id"])
+          print("Sample of available version names:", sorted(names)[:5], "... total", len(names))
+
+          def resolve(name):
+              if name in names:
+                  return names[name]
+              matches = [vid for n, vid in names.items() if n.lower().startswith(name.lower())]
+              if not matches:
+                  raise SystemExit(f"ERROR: no CurseForge version entry matches '{name}'")
+              print(f"Resolved '{name}' via prefix match -> id {matches[0]}")
+              return matches[0]
+
+          game_versions = [
+              resolve(os.environ["CF_MC_VERSION"]),
+              resolve("Fabric"),
+              resolve("Java 21"),
+          ]
+          print("gameVersions ids:", game_versions)
+
+          version = os.environ["CF_DISPLAY_NAME"]
+          with open("CHANGELOG.md", encoding="utf-8") as f:
+              changelog = f.read()
+          start = changelog.find("## v" + version.rsplit("-", 1)[-1])
+          if start >= 0:
+              end = changelog.find("\n## ", start + 1)
+              changelog = (changelog[start:end] if end > start else changelog[start:]).strip()
+          metadata = {
+              "displayName": version,
+              "gameVersions": game_versions,
+              "releaseType": "release",
+              "changelogType": "markdown",
+              "changelog": changelog,
+          }
+          with open("cf-metadata.json", "w", encoding="utf-8") as f:
+              json.dump(metadata, f, ensure_ascii=False)
+          PY
+          curl -sf -X POST "$(printf 'https://minecraft.curseforge.com/api/mods/%s/upload-file' "$CF_PROJECT_ID")" \
+            -H "x-api-key: $CURSEFORGE_TOKEN" \
+            -H "Accept: application/json" \
+            -F "metadata=<cf-metadata.json;type=application/json" \
+            -F "file=@$CF_FILE" ; code=$?
+          if [ $code -ne 0 ]; then echo "CurseForge upload failed (curl exit $code)"; exit 1; fi
+          echo "CurseForge upload accepted"
 
       # After the release ships, drop an empty "## vX.Y.Z" section into
       # CHANGELOG.md as a commit so the section can be filled in with Chinese
