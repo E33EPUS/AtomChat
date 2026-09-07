@@ -21,15 +21,16 @@ import java.util.stream.Stream;
  *
  * <p>Layout:
  * <ul>
- *   <li>{@code <gameDir>/atomchat-data/image-cache/} — raw chat-image bytes
- *       (safe to delete, capped by {@code ImageLoader})</li>
+ *   <li>{@code <gameDir>/atomchat-data/image-cache/} — processed chat-image
+ *       cache (safe to delete, capped by {@code ImageLoader})</li>
  *   <li>{@code <gameDir>/atomchat-data/avatars/} — companion server avatar
  *       uploads (functional data, not auto-deleted)</li>
  * </ul>
  *
  * <p>Old v0.2.3 locations under {@code config/atomchat/} are migrated once on
- * first start. Migration never deletes the old directory; it leaves a short
- * marker file explaining where the data went.
+ * first start. A directory that has been superseded by the new location is
+ * marked with {@code .moved-to-atomchat-data.txt}; startup removes those old
+ * trees automatically so a stale multi-GB cache cannot keep occupying disk.
  */
 public final class CacheDirs {
     private CacheDirs() {
@@ -39,7 +40,7 @@ public final class CacheDirs {
         return FabricLoader.getInstance().getGameDir().resolve("atomchat-data");
     }
 
-    /** Decoded-image raw bytes downloaded from chat links. */
+    /** Processed chat-image cache files decoded from downloaded chat links. */
     public static Path imageCacheDir() {
         return dataRoot().resolve("image-cache");
     }
@@ -53,6 +54,7 @@ public final class CacheDirs {
         Path config = FabricLoader.getInstance().getConfigDir().resolve("atomchat");
         migrateDir(config.resolve("image-cache"), imageCacheDir(), "image cache");
         migrateDir(config.resolve("avatars"), avatarDataDir(), "companion avatar data");
+        cleanupMovedLegacyDirs(config);
     }
 
     private static void migrateDir(Path oldDir, Path newDir, String label) {
@@ -62,8 +64,8 @@ public final class CacheDirs {
         try {
             if (Files.isDirectory(newDir) && hasEntries(newDir)) {
                 // New location already has data: keep it authoritative, do not
-                // merge/overwrite. Just mark the old one so users know it is
-                // no longer read.
+                // merge/overwrite. Just mark the old one as no longer read;
+                // cleanup below deletes it in the same pass.
                 markMoved(oldDir, newDir);
                 return;
             }
@@ -72,12 +74,46 @@ public final class CacheDirs {
                 deleteEmptyTree(newDir);
             }
             Files.move(oldDir, newDir, StandardCopyOption.ATOMIC_MOVE);
-            markMoved(newDir, newDir);
             AtomChat.LOGGER.info("Migrated AtomChat {} from {} to {}", label, oldDir, newDir);
         } catch (Exception e) {
             // Never fail startup over a cache move; the old path simply stays.
             AtomChat.LOGGER.warn("Failed to migrate AtomChat {} from {} to {}",
                     label, oldDir, newDir, e);
+        }
+    }
+
+    /**
+     * Deletes old v0.2.3 runtime-data directories that carry the migration
+     * marker. The marker proves the new {@code atomchat-data} location is
+     * authoritative, so these trees are pure dead weight.
+     */
+    private static void cleanupMovedLegacyDirs(Path config) {
+        cleanupMovedLegacyDir(config.resolve("image-cache"), "image cache");
+        cleanupMovedLegacyDir(config.resolve("avatars"), "companion avatar data");
+    }
+
+    private static void cleanupMovedLegacyDir(Path oldDir, String label) {
+        if (oldDir == null || !Files.isDirectory(oldDir)
+                || !Files.exists(oldDir.resolve(".moved-to-atomchat-data.txt"))) {
+            return;
+        }
+        try {
+            deleteTree(oldDir);
+            AtomChat.LOGGER.info("Removed migrated AtomChat {} at {}", label, oldDir);
+        } catch (IOException e) {
+            AtomChat.LOGGER.warn("Failed to remove migrated AtomChat {} at {}",
+                    label, oldDir, e);
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path p : (Iterable<Path>) walk.sorted(Comparator.reverseOrder())::iterator) {
+                Files.deleteIfExists(p);
+            }
         }
     }
 

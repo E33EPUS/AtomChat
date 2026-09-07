@@ -2,6 +2,8 @@ package com.atom.chat.image;
 
 import com.atom.chat.AtomChat;
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.Data;
+import io.github.humbleui.skija.EncodedImageFormat;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
@@ -16,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -47,10 +50,13 @@ import java.util.function.LongSupplier;
  *       images; evicted entries rely on Skija's managed finalisation rather
  *       than an eager {@code close()} so a bitmap drawn in the current frame
  *       can never be pulled from under the renderer.</li>
- *   <li><b>Disk cache</b> — raw bytes under {@code <gameDir>/atomchat-data/image-cache/}
+ *   <li><b>Disk cache</b> — processed cache files under {@code <gameDir>/atomchat-data/image-cache/}
  *       (SHA-256 of the URL), so re-entering a world does not re-download.
- *       The disk layer is capped at {@value #MAX_DISK_FILES} files /
- *       {@value #MAX_DISK_MB} MB and trims oldest entries by mtime.</li>
+ *       Files are re-encoded as WebP/PNG at the {@value #MAX_DIM}px display
+ *       size instead of storing the original download, so the disk layer is
+ *       both small and fast to reload. It is capped at
+ *       {@value #MAX_DISK_FILES} files / {@value #MAX_DISK_MB} MB and trims
+ *       oldest entries by mtime on startup and after every write.</li>
  * </ol>
  *
  * <p>Failed fetches enter a short negative cache so a dead URL is not
@@ -63,11 +69,13 @@ public final class ImageLoader {
     public static final int MAX_DIM = 768;
     /** How long a failed URL stays blacklisted. */
     public static final long FAILURE_TTL_MS = 60_000L;
-    /** Disk cache: maximum number of raw files kept. */
+    /** Disk cache: maximum number of processed files kept. */
     public static final int MAX_DISK_FILES = 500;
-    /** Disk cache: maximum total raw bytes kept (100 MB). */
+    /** Disk cache: maximum total processed bytes kept (100 MB). */
     public static final long MAX_DISK_BYTES = 100L * 1024L * 1024L;
     private static final long MAX_DISK_MB = MAX_DISK_BYTES / (1024L * 1024L);
+    /** WebP quality for the processed disk cache (80 keeps photos small). */
+    private static final int DISK_CACHE_QUALITY = 80;
 
     /** Byte source for a URL; HTTP by default, injected in tests. */
     interface Fetcher {
@@ -104,9 +112,11 @@ public final class ImageLoader {
         return INSTANCE;
     }
 
-    /** Enables the disk layer; called once by the client entrypoint. */
+    /** Enables the disk layer and trims any over-limit leftovers; called once
+     *  by the client entrypoint. */
     public void init(Path diskDir) {
         this.diskDir = diskDir;
+        trimDiskCache();
     }
 
     private static byte[] httpFetch(String url) throws Exception {
@@ -172,23 +182,16 @@ public final class ImageLoader {
 
     private void load(String url, Path disk) {
         try {
-            byte[] bytes;
-            if (disk != null && Files.exists(disk)) {
-                bytes = Files.readAllBytes(disk);
-            } else {
-                bytes = fetcher.fetch(url);
-                if (disk != null) {
-                    try {
-                        Files.createDirectories(disk.getParent());
-                        Files.write(disk, bytes);
-                        trimDiskCache();
-                    } catch (Exception e) {
-                        AtomChat.LOGGER.warn("Failed to write image cache for {}", url, e);
-                    }
-                }
-            }
+            boolean fromDisk = disk != null && Files.exists(disk);
+            byte[] bytes = fromDisk ? Files.readAllBytes(disk) : fetcher.fetch(url);
             Image image = downscale(Image.makeFromEncoded(bytes));
             if (image != null) {
+                if (disk != null) {
+                    // Store only the small display version, never the original
+                    // download. Existing raw-format entries are converted to
+                    // the processed format on their next load.
+                    writeDiskCache(disk, encodeForDisk(image));
+                }
                 synchronized (cache) {
                     cache.put(url, image);
                 }
@@ -204,6 +207,50 @@ public final class ImageLoader {
         }
     }
 
+    /** Re-encodes a decoded image for disk at display size (WebP, PNG fallback). */
+    private static byte[] encodeForDisk(Image image) {
+        try (Data data = image.encodeToData(EncodedImageFormat.WEBP, DISK_CACHE_QUALITY)) {
+            if (data != null && data.getSize() > 0) {
+                return data.getBytes();
+            }
+        } catch (Throwable ignored) {
+            // Some Skia builds may not ship WebP; fall back to PNG below.
+        }
+        try (Data data = image.encodeToData(EncodedImageFormat.PNG)) {
+            if (data != null && data.getSize() > 0) {
+                return data.getBytes();
+            }
+        } catch (Throwable ignored) {
+            AtomChat.LOGGER.warn("Could not encode image for disk cache");
+        }
+        return null;
+    }
+
+    /** Atomically replaces the disk cache file, then trims the whole cache. */
+    private void writeDiskCache(Path disk, byte[] bytes) {
+        if (disk == null || bytes == null || bytes.length == 0) {
+            return;
+        }
+        Path tmp = null;
+        try {
+            Files.createDirectories(disk.getParent());
+            tmp = disk.resolveSibling(disk.getFileName() + ".tmp");
+            Files.write(tmp, bytes);
+            Files.move(tmp, disk, StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            AtomChat.LOGGER.warn("Failed to write image cache for {}", disk, e);
+        } finally {
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException ignored) {
+                    // A stale temp is harmless; the next write replaces it.
+                }
+            }
+        }
+        trimDiskCache();
+    }
+
     private void fail(String url) {
         failedUntil.put(url, clock.getAsLong() + FAILURE_TTL_MS);
     }
@@ -213,7 +260,7 @@ public final class ImageLoader {
      * last-modified time are deleted first. Cache loss is always acceptable —
      * a deleted entry is simply downloaded again on the next visible request.
      */
-    private void trimDiskCache() {
+    public void trimDiskCache() {
         Path dir = diskDir;
         if (dir == null || !Files.isDirectory(dir)) {
             return;
