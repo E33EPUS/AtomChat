@@ -150,7 +150,7 @@ public class AtomChatConfig {
      * compact group: only the first keeps the avatar/name row, later bubbles get
      * a tighter gap (Discord/Telegram style).
      */
-    public boolean compactMessagesEnabled = true;
+    public boolean compactMessagesEnabled = false;
     /**
      * User-defined quick phrases, shown in the chat composer's phrase panel.
      * Clicking one inserts it into the input box (never sends it straight
