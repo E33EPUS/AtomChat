@@ -3,7 +3,7 @@
 <h1 align="center">AtomChat</h1>
 
 <p align="center">
-  <em>A phone-app chat experience for Minecraft's vanilla chat box</em>
+  <em>A phone-app style chat experience for Minecraft, powered by Skia.</em>
 </p>
 
 <p align="center">
