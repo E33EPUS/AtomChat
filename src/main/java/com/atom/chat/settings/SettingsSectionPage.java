@@ -123,7 +123,6 @@ public final class SettingsSectionPage {
     private static final String LABEL_BUBBLE_COLORS = "atomchat.settings.group.bubblecolors";
     private static final String LABEL_UI_COLORS = "atomchat.settings.group.uicolors";
     private static final String LABEL_CHAT_MESSAGES = "atomchat.settings.group.chat.messages";
-    private static final String LABEL_CHAT_NOTIFY = "atomchat.settings.group.chat.notify";
     private static final String LABEL_CHAT_HISTORY = "atomchat.settings.group.chat.history";
     private static final String LABEL_CHAT_TELEPORT = "atomchat.settings.group.chat.teleport";
     private static final String ACTION_WALLPAPER_PICK = "wallpaper_pick";
@@ -251,9 +250,6 @@ public final class SettingsSectionPage {
         if (LABEL_CHAT_MESSAGES.equals(labelKey)) {
             return "chat_messages";
         }
-        if (LABEL_CHAT_NOTIFY.equals(labelKey)) {
-            return "chat_notify";
-        }
         if (LABEL_CHAT_HISTORY.equals(labelKey)) {
             return "chat_history";
         }
@@ -330,6 +326,125 @@ public final class SettingsSectionPage {
         };
     }
 
+    /**
+     * Dynamic row height: switch/action/info descriptions may wrap to a second
+     * line instead of being ellipsized. The row grows only when the text does
+     * not fit the width the right-hand control/verb/hint leaves available.
+     */
+    public float rowHeight(Row row, UiLayout layout) {
+        RowKind kind = row.kind();
+        float base = rowHeight(kind);
+        if (kind != RowKind.SWITCH && kind != RowKind.ACTION && kind != RowKind.INFO) {
+            return base;
+        }
+        Font subFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
+        String text = descriptionText(row);
+        float maxWidth = descriptionMaxWidth(row, layout.list.w());
+        if (text.isEmpty() || maxWidth <= 0.0F
+                || SkiaFontRenderer.getStringWidth(subFont, text) <= maxWidth) {
+            return base;
+        }
+        List<String> lines = SkiaFontRenderer.wrap(subFont, text, maxWidth);
+        return base + Math.max(0, lines.size() - 1) * descriptionLineHeight(subFont);
+    }
+
+    /** Copy for an action card, shared by layout measurement and drawing. */
+    private record ActionCopy(String title, String subtitle, String verb,
+                              boolean available, boolean redConfirm) {
+    }
+
+    private ActionCopy actionCopy(Row row) {
+        SettingsItem item = row.item();
+        boolean available = item.available();
+        boolean redConfirm = needsConfirm(row.actionId()) && actionArmed(row.actionId());
+        String subtitle;
+        String verb;
+        if (!available) {
+            subtitle = tr(item.subtitleKey() + ".unavailable");
+            verb = "";
+        } else if (redConfirm) {
+            subtitle = tr(item.subtitleKey());
+            verb = tr("atomchat.settings.appearance.wallpaper.clear.confirm");
+        } else if (ACTION_WALLPAPER_PICK.equals(row.actionId())) {
+            Path wallpaper = WallpaperStore.current();
+            subtitle = wallpaper != null && wallpaper.getFileName() != null
+                    ? wallpaper.getFileName().toString()
+                    : tr(item.subtitleKey());
+            verb = tr("atomchat.settings.action.choose");
+        } else if (ACTION_TELEPORT_MODE.equals(row.actionId())) {
+            String mode = AtomChatConfig.get().teleportCommandMode;
+            subtitle = tr("atomchat.settings.chat.teleport." + (mode == null ? "auto" : mode));
+            verb = tr("atomchat.settings.action.cycle");
+        } else if (ACTION_THEME.equals(row.actionId())) {
+            String theme = AtomChatConfig.get().themeName;
+            subtitle = tr("atomchat.settings.theme."
+                    + (theme == null || theme.isBlank() ? "none" : theme));
+            verb = tr("atomchat.settings.action.cycle");
+        } else if (ACTION_HISTORY_CLEAR.equals(row.actionId())) {
+            subtitle = tr(AtomChatConfig.get().chatHistoryEnabled
+                    ? "atomchat.settings.chat.history.clear.desc.saved"
+                    : "atomchat.settings.chat.history.clear.desc.memory");
+            verb = tr("atomchat.settings.action.clear");
+        } else if (ACTION_CACHE_CLEAR.equals(row.actionId())) {
+            long bytes = ImageLoader.get().diskCacheBytes();
+            subtitle = humanBytes(bytes) + " · " + tr(item.subtitleKey());
+            verb = tr("atomchat.settings.action.clear");
+        } else {
+            subtitle = tr(item.subtitleKey());
+            verb = tr("atomchat.settings.action.clear");
+        }
+        return new ActionCopy(tr(item.titleKey()), subtitle, verb, available, redConfirm);
+    }
+
+    /** The descriptive line that may wrap (switch subtitle / action subtitle / info value). */
+    private String descriptionText(Row row) {
+        return switch (row.kind()) {
+            case SWITCH -> {
+                SettingsItem item = row.item();
+                String key = item.available()
+                        ? item.subtitleKey() : item.subtitleKey() + ".unavailable";
+                yield tr(key);
+            }
+            case ACTION -> actionCopy(row).subtitle();
+            case INFO -> row.info().value();
+            default -> "";
+        };
+    }
+
+    /** Width available for the descriptive line after reserving right-side UI. */
+    private float descriptionMaxWidth(Row row, float rowW) {
+        float padX = UiTokens.SETTINGS_ROW_PAD;
+        return switch (row.kind()) {
+            case SWITCH -> {
+                float switchX = rowW - padX - UiTokens.SWITCH_W;
+                yield Math.max(0.0F, switchX - padX - s(10));
+            }
+            case ACTION -> {
+                ActionCopy copy = actionCopy(row);
+                float reserved = 0.0F;
+                if (copy.available()) {
+                    Font verbFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
+                    reserved = SkiaFontRenderer.getStringWidth(verbFont, copy.verb()) + s(12);
+                }
+                yield Math.max(0.0F, rowW - padX * 2.0F - reserved);
+            }
+            case INFO -> {
+                float reserved = 0.0F;
+                if (row.info().isLink()) {
+                    Font hintFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
+                    reserved = SkiaFontRenderer.getStringWidth(hintFont,
+                            tr("atomchat.settings.about.open")) + s(12);
+                }
+                yield Math.max(0.0F, rowW - padX * 2.0F - reserved);
+            }
+            default -> 0.0F;
+        };
+    }
+
+    private static float descriptionLineHeight(Font font) {
+        return SkiaFontRenderer.getHeight(font);
+    }
+
     /** Rows in display order for the given section. */
     public List<Row> rows(SettingsSection section) {
         return switch (section) {
@@ -379,11 +494,6 @@ public final class SettingsSectionPage {
             addSwitches(rows, SettingsSection.CHAT,
                     "entry", "poke", "images", "anti_spam", "compact_messages");
             addSliders(rows, SettingsSection.CHAT, "timestamp");
-        });
-        addGroup(rows, LABEL_CHAT_NOTIFY, () -> {
-            addSwitches(rows, SettingsSection.CHAT,
-                    "mention_banner", "mention_sound", "whisper_banner", "whisper_sound");
-            addSliders(rows, SettingsSection.CHAT, "notify_volume");
         });
         addGroup(rows, LABEL_CHAT_HISTORY, () -> {
             addSwitches(rows, SettingsSection.CHAT, "history");
@@ -480,18 +590,18 @@ public final class SettingsSectionPage {
         }
         float total = UiTokens.ROOT_CONTENT_GAP;
         for (Row row : rows) {
-            total += rowHeight(row.kind());
+            total += rowHeight(row, layout);
         }
         total += (rows.size() - 1) * UiTokens.SETTINGS_ROW_GAP;
         return total;
     }
 
-    private static UiLayout.Rect rowRect(List<Row> rows, int index, float scrollY, UiLayout layout) {
+    private UiLayout.Rect rowRect(List<Row> rows, int index, float scrollY, UiLayout layout) {
         float y = layout.list.y() + UiTokens.ROOT_CONTENT_GAP - scrollY;
         for (int i = 0; i < index; i++) {
-            y += rowHeight(rows.get(i).kind()) + UiTokens.SETTINGS_ROW_GAP;
+            y += rowHeight(rows.get(i), layout) + UiTokens.SETTINGS_ROW_GAP;
         }
-        return new UiLayout.Rect(layout.list.x(), y, layout.list.w(), rowHeight(rows.get(index).kind()));
+        return new UiLayout.Rect(layout.list.x(), y, layout.list.w(), rowHeight(rows.get(index), layout));
     }
 
     private static UiLayout.Rect sliderTrackRect(UiLayout.Rect row) {
@@ -725,75 +835,52 @@ public final class SettingsSectionPage {
         return heroImage;
     }
 
-    /** Plain action card: title + description + a right-aligned verb. */
+    /**
+     * Draws a settings description below the title. Fits on one line it keeps
+     * the existing baseline; otherwise it wraps and sits bottom-aligned inside
+     * the (already grown) row so long English text is never lost to an ellipsis.
+     */
+    private void drawWrappedDescription(Canvas canvas, UiLayout.Rect rect, Font font,
+                                        String text, float x, float maxWidth, int color) {
+        if (text == null || text.isEmpty() || maxWidth <= 0.0F
+                || SkiaFontRenderer.getStringWidth(font, text) <= maxWidth) {
+            SkiaFontRenderer.drawText(canvas, font, text == null ? "" : text, x,
+                    SkiaFontRenderer.centerBaselineY(font, rect.y() + s(37)), color);
+            return;
+        }
+        List<String> lines = SkiaFontRenderer.wrap(font, text, maxWidth);
+        float lineH = descriptionLineHeight(font);
+        float blockH = lines.size() * lineH;
+        float centerY = rect.y() + Math.max(s(37), rect.h() - s(8) - blockH / 2.0F);
+        SkiaFontRenderer.drawLines(canvas, font, lines, x, centerY, lineH, color);
+    }
+
     private void drawAction(Canvas canvas, Row row, UiLayout.Rect rect, float hover) {
+        ActionCopy copy = actionCopy(row);
         Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
         Font subFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
         float textX = rect.x() + UiTokens.SETTINGS_ROW_PAD;
         float maxW = rect.w() - UiTokens.SETTINGS_ROW_PAD * 2.0F;
 
-        boolean available = row.item().available();
-        boolean redConfirm = needsConfirm(row.actionId()) && actionArmed(row.actionId());
-        String subtitle;
-        String verb;
-        if (!available) {
-            subtitle = tr(row.item().subtitleKey() + ".unavailable");
-            verb = "";
-        } else if (redConfirm) {
-            // Armed state: the right-hand verb itself becomes the red confirm
-            // question; the subtitle keeps its normal content.
-            subtitle = tr(row.item().subtitleKey());
-            verb = tr("atomchat.settings.appearance.wallpaper.clear.confirm");
-        } else if (ACTION_WALLPAPER_PICK.equals(row.actionId())) {
-            Path wallpaper = WallpaperStore.current();
-            subtitle = wallpaper != null && wallpaper.getFileName() != null
-                    ? wallpaper.getFileName().toString()
-                    : tr(row.item().subtitleKey());
-            verb = tr("atomchat.settings.action.choose");
-        } else if (ACTION_TELEPORT_MODE.equals(row.actionId())) {
-            String mode = AtomChatConfig.get().teleportCommandMode;
-            subtitle = tr("atomchat.settings.chat.teleport." + (mode == null ? "auto" : mode));
-            verb = tr("atomchat.settings.action.cycle");
-        } else if (ACTION_THEME.equals(row.actionId())) {
-            String theme = AtomChatConfig.get().themeName;
-            subtitle = tr("atomchat.settings.theme."
-                    + (theme == null || theme.isBlank() ? "none" : theme));
-            verb = tr("atomchat.settings.action.cycle");
-        } else if (ACTION_HISTORY_CLEAR.equals(row.actionId())) {
-            // The scope depends on the persistence switch, so say which one it is.
-            subtitle = tr(AtomChatConfig.get().chatHistoryEnabled
-                    ? "atomchat.settings.chat.history.clear.desc.saved"
-                    : "atomchat.settings.chat.history.clear.desc.memory");
-            verb = tr("atomchat.settings.action.clear");
-        } else if (ACTION_CACHE_CLEAR.equals(row.actionId())) {
-            long bytes = ImageLoader.get().diskCacheBytes();
-            subtitle = humanBytes(bytes) + " · " + tr(row.item().subtitleKey());
-            verb = tr("atomchat.settings.action.clear");
-        } else {
-            subtitle = tr(row.item().subtitleKey());
-            verb = tr("atomchat.settings.action.clear");
-        }
-
         SkiaFontRenderer.drawText(canvas, titleFont,
-                SkiaFontRenderer.truncate(titleFont, tr(row.item().titleKey()), maxW), textX,
+                SkiaFontRenderer.truncate(titleFont, copy.title(), maxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
                 textPrimary());
-        Font verbFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
-        SkiaFontRenderer.drawText(canvas, subFont,
-                SkiaFontRenderer.truncate(subFont, subtitle,
-                        maxW - SkiaFontRenderer.getStringWidth(verbFont, verb) - s(12)), textX,
-                SkiaFontRenderer.centerBaselineY(subFont, rect.y() + s(37)),
-                redConfirm ? Color.makeARGB(255, 235, 64, 52) : sec(available ? 200 : 130));
+        drawWrappedDescription(canvas, rect, subFont, copy.subtitle(), textX,
+                descriptionMaxWidth(row, rect.w()), copy.redConfirm()
+                        ? Color.makeARGB(255, 235, 64, 52)
+                        : sec(copy.available() ? 200 : 130));
         // Same treatment as the link cards' "Open": full-weight, centred —
         // the card's call to action, not a footnote.
-        if (available) {
-            SkiaFontRenderer.drawTextRight(canvas, verbFont, verb,
+        if (copy.available()) {
+            Font verbFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
+            SkiaFontRenderer.drawTextRight(canvas, verbFont, copy.verb(),
                     rect.right() - UiTokens.SETTINGS_ROW_PAD,
                     rect.y() + rect.h() / 2.0F,
-                    redConfirm ? Color.makeARGB(255, 235, 64, 52) : textPrimary());
+                    copy.redConfirm() ? Color.makeARGB(255, 235, 64, 52) : textPrimary());
         }
         // Unavailable veil, same language as the wallpaper-gated blur switch.
-        if (!available) {
+        if (!copy.available()) {
             SkiaDraw.drawRoundedRect(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
                     UiTokens.settingsRowRadius(), Color.makeARGB(90, 10, 12, 16));
         }
@@ -883,6 +970,7 @@ public final class SettingsSectionPage {
         Font subFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
         float textX = rect.x() + UiTokens.SETTINGS_ROW_PAD;
         float maxW = Math.max(0.0F, switchX - textX - s(10));
+        float descMaxW = descriptionMaxWidth(row, rect.w());
         // An overridden option explains itself instead of silently doing nothing.
         String subtitleKey = item.available()
                 ? item.subtitleKey() : item.subtitleKey() + ".unavailable";
@@ -890,9 +978,7 @@ public final class SettingsSectionPage {
                 SkiaFontRenderer.truncate(titleFont, tr(item.titleKey()), maxW), textX,
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
                 textPrimary());
-        SkiaFontRenderer.drawText(canvas, subFont,
-                SkiaFontRenderer.truncate(subFont, tr(subtitleKey), maxW), textX,
-                SkiaFontRenderer.centerBaselineY(subFont, rect.y() + s(37)),
+        drawWrappedDescription(canvas, rect, subFont, tr(subtitleKey), textX, descMaxW,
                 sec(item.available() ? 200 : 130));
         if (!item.available()) {
             SkiaDraw.drawRoundedRect(canvas, rect.x(), rect.y(), rect.w(), rect.h(),
@@ -949,17 +1035,41 @@ public final class SettingsSectionPage {
                 SkiaFontRenderer.centerBaselineY(titleFont, rect.y() + s(20)),
                 textPrimary());
 
-        String value = SkiaFontRenderer.truncate(valueFont, row.info().value(), valueMaxW);
+        String valueText = row.info().value();
+        boolean valueFits = valueMaxW <= 0.0F
+                || SkiaFontRenderer.getStringWidth(valueFont, valueText) <= valueMaxW;
         // Link affordance = colour plus underline, so it stays distinct from
         // the grey non-link values on the same page. The right-aligned hint
         // tells the user the whole card is clickable before they try it.
-        SkiaFontRenderer.drawText(canvas, valueFont, value, textX,
-                SkiaFontRenderer.centerBaselineY(valueFont, rect.y() + s(37)),
-                link ? LINK_COLOR : sec(200));
+        if (valueFits) {
+            SkiaFontRenderer.drawText(canvas, valueFont, valueText, textX,
+                    SkiaFontRenderer.centerBaselineY(valueFont, rect.y() + s(37)),
+                    link ? LINK_COLOR : sec(200));
+            if (link) {
+                float underlineY = rect.y() + s(37) + SkiaFontRenderer.textHeight(valueFont) / 2.0F + s(2);
+                SkiaDraw.drawRoundedRect(canvas, textX, underlineY,
+                        SkiaFontRenderer.getStringWidth(valueFont, valueText), s(1.5F), s(0.75F), LINK_COLOR);
+            }
+        } else {
+            List<String> lines = SkiaFontRenderer.wrap(valueFont, valueText, valueMaxW);
+            float lineH = descriptionLineHeight(valueFont);
+            float blockH = lines.size() * lineH;
+            float centerY = rect.y() + Math.max(s(37), rect.h() - s(8) - blockH / 2.0F);
+            SkiaFontRenderer.drawLines(canvas, valueFont, lines, textX, centerY, lineH,
+                    link ? LINK_COLOR : sec(200));
+            if (link) {
+                float top = centerY - blockH / 2.0F;
+                for (int i = 0; i < lines.size(); i++) {
+                    float lineCenterY = top + (i + 0.5F) * lineH;
+                    float baseline = SkiaFontRenderer.centerBaselineY(valueFont, lineCenterY);
+                    float underlineY = baseline + SkiaFontRenderer.textHeight(valueFont) / 2.0F + s(2);
+                    SkiaDraw.drawRoundedRect(canvas, textX, underlineY,
+                            SkiaFontRenderer.getStringWidth(valueFont, lines.get(i)),
+                            s(1.5F), s(0.75F), LINK_COLOR);
+                }
+            }
+        }
         if (link) {
-            float underlineY = rect.y() + s(37) + SkiaFontRenderer.textHeight(valueFont) / 2.0F + s(2);
-            SkiaDraw.drawRoundedRect(canvas, textX, underlineY,
-                    SkiaFontRenderer.getStringWidth(valueFont, value), s(1.5F), s(0.75F), LINK_COLOR);
             // Full-weight and vertically centred: it is the card's call to
             // action, not a footnote.
             String hint = tr("atomchat.settings.about.open");

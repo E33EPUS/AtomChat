@@ -2,9 +2,7 @@ package com.atom.chat;
 
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageLoader;
-import com.atom.chat.notification.NotificationBanner;
 import com.atom.chat.render.PanelBlurRenderer;
-import com.atom.chat.render.SkiaGraphics;
 import com.atom.chat.util.CacheDirs;
 import com.atom.chat.wallpaper.WallpaperStore;
 import net.fabricmc.api.ClientModInitializer;
@@ -14,10 +12,8 @@ import com.atom.chat.chat.PrivateEchoTracker;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.AtomChatScreen;
 import net.minecraft.client.gui.screen.AtomChatScreen.AtomChatOpenMode;
 import net.minecraft.client.option.KeyBinding;
@@ -79,31 +75,11 @@ public class AtomChatClient implements ClientModInitializer {
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             com.atom.chat.history.ChatHistory.tick(client);
-            NotificationBanner.INSTANCE.tick();
             while (OPEN_ATOMCHAT_KEY.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new AtomChatScreen("", AtomChatOpenMode.RESTORE));
                 }
             }
-        });
-
-        // Skia notification banners. They render only when no screen is open;
-        // while AtomChat is open the panel already shows the conversation.
-        HudRenderCallback.EVENT.register((drawContext, tickDelta) -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.world == null || client.player == null || client.currentScreen != null) {
-                return;
-            }
-            if (!NotificationBanner.INSTANCE.hasActive()) {
-                return;
-            }
-            SkiaGraphics.INSTANCE.draw(null, (canvas, worldSnapshot) -> {
-                float fbH = client.getFramebuffer().textureHeight;
-                float density = Math.max(1.0F, fbH / 1080.0F);
-                float screenW = client.getFramebuffer().textureWidth / density;
-                float screenH = fbH / density;
-                NotificationBanner.INSTANCE.render(canvas, screenW, screenH);
-            });
         });
     }
 }

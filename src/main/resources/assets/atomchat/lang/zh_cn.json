@@ -9,7 +9,6 @@
   "atomchat.tab.chat": "聊天",
   "atomchat.tab.profile": "个人",
   "atomchat.tab.settings": "设置",
-
   "atomchat.page.profile.title": "个人档案",
   "atomchat.profile.name": "名字",
   "atomchat.profile.uuid": "UUID",
@@ -67,7 +66,6 @@
   "atomchat.context.unblock": "取消屏蔽",
   "atomchat.channel.private": "私聊",
   "atomchat.banner.whisper": "[私聊]",
-
   "atomchat.settings.appearance": "外观",
   "atomchat.settings.appearance.sub": "背景模糊与界面动效",
   "atomchat.settings.appearance.blur": "背景模糊",
@@ -91,8 +89,8 @@
   "atomchat.settings.appearance.otherbubble": "他人气泡颜色",
   "atomchat.settings.appearance.bubbletext": "自身气泡文字色",
   "atomchat.settings.appearance.otherbubbletext": "他人气泡文字色",
-"atomchat.settings.appearance.secondarycapsulebg": "次要胶囊底色（系统消息/时间戳/引用）",
-"atomchat.settings.appearance.secondarycapsuletext": "次要胶囊文字色",
+  "atomchat.settings.appearance.secondarycapsulebg": "次要胶囊底色",
+  "atomchat.settings.appearance.secondarycapsuletext": "次要胶囊文字色",
   "atomchat.settings.appearance.cardcolor": "卡片颜色",
   "atomchat.settings.appearance.textsecondary": "副文字颜色",
   "atomchat.settings.appearance.textprimary": "界面文字颜色",
@@ -115,13 +113,11 @@
   "atomchat.settings.color.copied": "已复制",
   "atomchat.settings.group.behaviour": "行为",
   "atomchat.settings.group.chat.messages": "消息",
-  "atomchat.settings.group.chat.notify": "通知",
   "atomchat.settings.group.chat.history": "聊天记录",
   "atomchat.settings.group.chat.teleport": "传送",
   "atomchat.settings.appearance.opacity": "背景不透明度",
   "atomchat.settings.appearance.width": "面板宽度",
   "atomchat.settings.appearance.scale": "界面缩放",
-
   "atomchat.settings.chat": "聊天与通知",
   "atomchat.settings.chat.sub": "消息展示与互动",
   "atomchat.settings.chat.entry": "消息入场动画",
@@ -139,18 +135,6 @@
   "atomchat.settings.chat.anti_spam.desc": "连续相同消息合并为一条并显示次数",
   "atomchat.settings.chat.compact_messages": "紧凑消息分组",
   "atomchat.settings.chat.compact_messages.desc": "同一发送者连续消息只显示一次头像和名字",
-  "atomchat.settings.chat.mention_banner": "提及横幅",
-  "atomchat.settings.chat.mention_banner.desc": "被 @ 或回复时显示 Skia 横幅",
-  "atomchat.settings.chat.mention_sound": "提及音效",
-  "atomchat.settings.chat.mention_sound.desc": "被 @ 或回复时播放提示音",
-  "atomchat.settings.chat.whisper_banner": "私聊横幅",
-  "atomchat.settings.chat.whisper_banner.desc": "收到私聊时显示 Skia 横幅",
-  "atomchat.settings.chat.whisper_sound": "私聊音效",
-  "atomchat.settings.chat.whisper_sound.desc": "收到私聊时播放提示音",
-  "atomchat.settings.chat.notify_volume": "通知音量",
-  "atomchat.notify.mention": "提及",
-  "atomchat.notify.quote": "回复",
-  "atomchat.notify.whisper": "私聊",
   "atomchat.settings.chat.history": "保留聊天记录",
   "atomchat.settings.chat.history.desc": "按服务器/世界分别保存，重进时恢复（含私聊）",
   "atomchat.settings.chat.history.clear": "清空聊天记录",
@@ -169,7 +153,6 @@
   "atomchat.settings.chat.timestamp.desc": "消息间隔超过该时间时显示时钟",
   "atomchat.settings.chat.timestamp.off": "关闭",
   "atomchat.settings.action.cycle": "切换",
-
   "atomchat.settings.privacy": "隐私与屏蔽",
   "atomchat.settings.privacy.sub": "屏蔽名单与消息过滤",
   "atomchat.settings.privacy.hide": "隐藏被屏蔽玩家的消息",
@@ -177,7 +160,6 @@
   "atomchat.settings.privacy.list": "屏蔽名单",
   "atomchat.settings.privacy.unblock": "取消屏蔽",
   "atomchat.settings.privacy.empty": "暂无屏蔽玩家",
-
   "atomchat.settings.about": "关于",
   "atomchat.settings.about.sub": "版本与开源声明",
   "atomchat.settings.about.version": "版本",
@@ -194,7 +176,6 @@
   "atomchat.settings.about.cache.clear.desc": "删除聊天图片下载缓存，不影响表情/壁纸/头像",
   "atomchat.settings.about.debug": "调试模式",
   "atomchat.settings.about.debug.desc": "输出额外诊断信息以便排查问题",
-
   "atomchat.conversation.private_group": "私聊",
   "atomchat.conversation.no_players": "无在线玩家"
 }

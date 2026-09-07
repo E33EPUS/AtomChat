@@ -21,14 +21,6 @@ import org.lwjgl.opengl.GL33C;
  * Pattern ported from Tuui's Graphics class.
  */
 public class SkiaGraphics {
-    /**
-     * Shared bridge. AtomChatScreen and the notification HUD overlay both draw
-     * through the same Skia instance (never at the same time: screens render
-     * only while open, the overlay only while no screen is open), so the two
-     * never create competing GL contexts on Minecraft's main framebuffer.
-     */
-    public static final SkiaGraphics INSTANCE = new SkiaGraphics();
-
     private Canvas canvas;
     private DirectContext context;
     private Surface surface;

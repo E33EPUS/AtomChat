@@ -9,7 +9,6 @@
   "atomchat.tab.chat": "Chats",
   "atomchat.tab.profile": "Profile",
   "atomchat.tab.settings": "Settings",
-
   "atomchat.page.profile.title": "Profile",
   "atomchat.profile.name": "Name",
   "atomchat.profile.uuid": "UUID",
@@ -67,7 +66,6 @@
   "atomchat.context.unblock": "Unblock",
   "atomchat.channel.private": "Private",
   "atomchat.banner.whisper": "[Whisper]",
-
   "atomchat.settings.appearance": "Appearance",
   "atomchat.settings.appearance.sub": "Background blur and motion",
   "atomchat.settings.appearance.blur": "Background blur",
@@ -91,8 +89,8 @@
   "atomchat.settings.appearance.otherbubble": "Others' bubble color",
   "atomchat.settings.appearance.bubbletext": "Your bubble text color",
   "atomchat.settings.appearance.otherbubbletext": "Others' bubble text color",
-"atomchat.settings.appearance.secondarycapsulebg": "Capsule background (system/time/quote)",
-"atomchat.settings.appearance.secondarycapsuletext": "Capsule text color",
+  "atomchat.settings.appearance.secondarycapsulebg": "Capsule background",
+  "atomchat.settings.appearance.secondarycapsuletext": "Capsule text color",
   "atomchat.settings.appearance.cardcolor": "Card color",
   "atomchat.settings.appearance.textsecondary": "Secondary text color",
   "atomchat.settings.appearance.textprimary": "Interface text color",
@@ -115,13 +113,11 @@
   "atomchat.settings.color.copied": "Copied",
   "atomchat.settings.group.behaviour": "Behaviour",
   "atomchat.settings.group.chat.messages": "Messages",
-  "atomchat.settings.group.chat.notify": "Notifications",
   "atomchat.settings.group.chat.history": "Chat history",
   "atomchat.settings.group.chat.teleport": "Teleport",
   "atomchat.settings.appearance.opacity": "Background opacity",
   "atomchat.settings.appearance.width": "Panel width",
   "atomchat.settings.appearance.scale": "Interface scale",
-
   "atomchat.settings.chat": "Chat & notifications",
   "atomchat.settings.chat.sub": "Message display and interactions",
   "atomchat.settings.chat.entry": "Message entrance animation",
@@ -139,18 +135,6 @@
   "atomchat.settings.chat.anti_spam.desc": "Merge consecutive identical messages into one with a counter",
   "atomchat.settings.chat.compact_messages": "Compact message groups",
   "atomchat.settings.chat.compact_messages.desc": "Show avatar and name once per same-sender run",
-  "atomchat.settings.chat.mention_banner": "Mention banner",
-  "atomchat.settings.chat.mention_banner.desc": "Show a Skia banner when you are @mentioned or quoted",
-  "atomchat.settings.chat.mention_sound": "Mention sound",
-  "atomchat.settings.chat.mention_sound.desc": "Play a sound when you are @mentioned or quoted",
-  "atomchat.settings.chat.whisper_banner": "Whisper banner",
-  "atomchat.settings.chat.whisper_banner.desc": "Show a Skia banner for incoming private messages",
-  "atomchat.settings.chat.whisper_sound": "Whisper sound",
-  "atomchat.settings.chat.whisper_sound.desc": "Play a sound for incoming private messages",
-  "atomchat.settings.chat.notify_volume": "Notification volume",
-  "atomchat.notify.mention": "Mention",
-  "atomchat.notify.quote": "Reply",
-  "atomchat.notify.whisper": "Whisper",
   "atomchat.settings.chat.history": "Keep chat history",
   "atomchat.settings.chat.history.desc": "Save it per server/world and restore it when you rejoin (private chats too)",
   "atomchat.settings.chat.history.clear": "Clear chat history",
@@ -169,7 +153,6 @@
   "atomchat.settings.chat.timestamp.desc": "Show a clock after this many minutes between messages",
   "atomchat.settings.chat.timestamp.off": "Off",
   "atomchat.settings.action.cycle": "Switch",
-
   "atomchat.settings.privacy": "Privacy & blocking",
   "atomchat.settings.privacy.sub": "Block list and message filtering",
   "atomchat.settings.privacy.hide": "Hide blocked players' messages",
@@ -177,7 +160,6 @@
   "atomchat.settings.privacy.list": "Blocked players",
   "atomchat.settings.privacy.unblock": "Unblock",
   "atomchat.settings.privacy.empty": "No blocked players",
-
   "atomchat.settings.about": "About",
   "atomchat.settings.about.sub": "Version and open-source notices",
   "atomchat.settings.about.version": "Version",
@@ -194,7 +176,6 @@
   "atomchat.settings.about.cache.clear.desc": "Delete downloaded chat images; emotes, wallpaper and avatars are kept",
   "atomchat.settings.about.debug": "Debug mode",
   "atomchat.settings.about.debug.desc": "Enable extra diagnostic output",
-
   "atomchat.conversation.private_group": "Private",
   "atomchat.conversation.no_players": "No players online"
 }
