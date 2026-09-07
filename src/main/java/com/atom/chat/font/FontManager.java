@@ -21,6 +21,7 @@ public final class FontManager {
     private static boolean usingFallbackTypeface;
     private static Typeface defaultTypeface;
     private static final java.util.Map<String, Font> CACHE = new java.util.HashMap<>();
+    private static final java.util.Map<String, Font> BOLD_CACHE = new java.util.HashMap<>();
 
     private FontManager() {
     }
@@ -85,6 +86,23 @@ public final class FontManager {
             font.setEmboldened(true);
         }
         CACHE.put(key, font);
+        return font;
+    }
+
+    /**
+     * A separate cached faux-bold face for headings and labels that need more
+     * weight than the regular medium body. Uses a distinct cache entry so the
+     * shared regular font is never mutated.
+     */
+    public static Font boldFont(float size) {
+        String key = size + "px-bold";
+        Font cached = BOLD_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        Font font = new Font(getDefaultTypeface(), size);
+        font.setEmboldened(true);
+        BOLD_CACHE.put(key, font);
         return font;
     }
 }

@@ -129,7 +129,7 @@ public final class NotificationBanner {
         float padX = UiTokens.s(14);
         float line1Y = y + UiTokens.s(16);
         float line2Y = y + UiTokens.s(37);
-        Font titleFont = FontManager.font(UiTokens.FONT_NAME);
+        Font titleFont = FontManager.boldFont(UiTokens.FONT_NAME);
         Font bodyFont = FontManager.font(UiTokens.FONT_QUOTE);
         String typeLabel = tr(typeKey(b.type()));
         String title = typeLabel + (b.sender() != null && !b.sender().isBlank() ? "  " + b.sender() : "");

@@ -668,7 +668,7 @@ public final class ProfilePage {
         }
 
         // Name under the avatar.
-        Font nameFont = FontManager.font(UiTokens.PROFILE_NAME_FONT);
+        Font nameFont = FontManager.boldFont(UiTokens.PROFILE_NAME_FONT);
         SkiaFontRenderer.drawTextCentered(canvas, nameFont, subjectName(),
                 hero.x() + hero.w() / 2.0F,
                 avatar.bottom() + s(26),
