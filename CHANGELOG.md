@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.2.4
+
+### 新增
+
+- **Skia 通知横幅与音效**：被 @ 提及、被引用回复或收到私聊/密语时，屏幕关闭状态下会弹出 Skia 深色圆角横幅（不是原版 HUD），并播放提示音（2 秒去重）。设置 → 聊天新增「提及横幅 / 提及音效 / 私聊横幅 / 私聊音效」开关与「通知音量」滑条；系统消息不弹横幅。
+- **防刷屏**：同一发送者连续发送完全相同的内容时合并为一条消息，名字旁显示 `xN` 次数；开关在设置 → 聊天。
+- **紧凑消息分组**：同一发送者 5 分钟内的连续消息只保留第一条的头像与名字，后续气泡间距收紧（Discord/Telegram 式）；开关在设置 → 聊天。
+- **跨消息文字拖选**：文字选择不再限制在单条消息内，可跨多条消息拖选，Ctrl+C 一次复制多段。
+- **历史保留天数滑条**：设置 → 聊天新增滑条（0 = 永久，1–365 天），到期历史文件在进世界时自动清理。
+- **数据目录治理**：自动下载的聊天图片缓存与 companion 他人头像数据从 `config/atomchat/` 迁到 `<游戏目录>/atomchat-data/`，config 目录不再被运行时数据撑大；图片缓存上限 500 个文件 / 100 MB，自动按时间清理最旧文件；「关于」页新增「清除图片缓存」卡片（带二次确认），显示当前缓存占用。
+
+### Added
+
+- **Skia notification banners and sounds**: when you are @mentioned, quoted or whispered while no screen is open, AtomChat draws a rounded dark Skia banner (no vanilla HUD) and plays a deduped sound. New Settings → Chat toggles for mention/whisper banners and sounds plus a notification-volume slider; system messages stay silent.
+- **Anti-spam**: consecutive identical messages from the same sender merge into one bubble with an `xN` counter. Toggle in Settings → Chat.
+- **Compact message groups**: within a same-sender five-minute run, only the first message keeps the avatar/name row and later bubbles use a tighter gap. Toggle in Settings → Chat.
+- **Cross-message text selection**: drag-select text across multiple messages and copy it all with Ctrl+C.
+- **History retention slider**: Settings → Chat now controls `historyRetentionDays` (0 = forever, 1–365 days); expired files are pruned on world join.
+- **Data-dir cleanup**: auto-downloaded chat-image caches and companion avatar uploads moved from `config/atomchat/` to `<gameDir>/atomchat-data/`; image cache capped at 500 files / 100 MB with oldest-file trimming; About page has a confirm-guarded “Clear image cache” card showing current usage.
+
 ## v0.2.3
 
 ### 新增
