@@ -3,14 +3,15 @@ package com.atom.chat.render;
 import com.atom.chat.AtomChat;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.GlUniform;
-import net.minecraft.client.gl.ShaderProgram;
-import net.minecraft.client.render.BufferBuilder;
-import net.minecraft.client.render.BufferRenderer;
-import net.minecraft.client.render.Tessellator;
-import net.minecraft.client.render.VertexFormat;
-import net.minecraft.client.render.VertexFormats;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.Tesselator;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL30;
@@ -33,10 +34,8 @@ public final class PanelBlurRenderer {
     private static final String KAWASE_SHADER_NAME = "atomchat_kawase_blur";
     private static final int KAWASE_PASSES = 5;
 
-    private static ShaderProgram roundedShader;
-    private static boolean roundedLoadAttempted;
-    private static ShaderProgram kawaseShader;
-    private static boolean kawaseLoadAttempted;
+    private static ShaderInstance roundedShader;
+    private static ShaderInstance kawaseShader;
 
     // Panel-sized GPU ping-pong buffers.
     private static int inputFbo = -1, inputTex = -1;   // 1:1 capture from main framebuffer
@@ -51,10 +50,28 @@ public final class PanelBlurRenderer {
     private PanelBlurRenderer() {
     }
 
+    /** NeoForge shader registration; fired from the mod event bus. */
+    public static void registerShaders(RegisterShadersEvent event) {
+        try {
+            event.registerShader(new ShaderInstance(event.getResourceProvider(),
+                            ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, ROUNDED_SHADER_NAME),
+                            DefaultVertexFormat.POSITION_TEX_COLOR),
+                    shader -> roundedShader = shader);
+            event.registerShader(new ShaderInstance(event.getResourceProvider(),
+                            ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, KAWASE_SHADER_NAME),
+                            DefaultVertexFormat.POSITION),
+                    shader -> kawaseShader = shader);
+        } catch (Exception e) {
+            AtomChat.LOGGER.warn("AtomChat panel blur shaders failed to load; blur disabled", e);
+            roundedShader = null;
+            kawaseShader = null;
+        }
+    }
+
     /**
      * Blurs the panel region and draws it back with a rounded mask.
      *
-     * @param pose   current DrawContext pose (identity for AtomChat's own UI)
+     * @param pose   current GUI pose (identity for AtomChat's own UI)
      * @param x      panel left in GUI-scaled coordinates
      * @param y      panel top in GUI-scaled coordinates
      * @param width  panel width in GUI-scaled coordinates
@@ -67,13 +84,13 @@ public final class PanelBlurRenderer {
         if (alpha <= 0.003F || width <= 0.0F || height <= 0.0F) {
             return false;
         }
-        if (getKawaseShader() == null || getRoundedShader() == null) {
+        if (kawaseShader == null || roundedShader == null) {
             return false;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        var fb = client.getFramebuffer();
-        double scale = client.getWindow().getScaleFactor();
+        Minecraft client = Minecraft.getInstance();
+        var fb = client.getMainRenderTarget();
+        double scale = client.getWindow().getGuiScale();
 
         int px = (int) Math.round(x * scale);
         int py = (int) Math.round(y * scale);
@@ -84,7 +101,7 @@ public final class PanelBlurRenderer {
         }
 
         ensureTextures(pw, ph);
-        int blurTex = refreshBlur(fb.fbo, fb.textureHeight, px, py, pw, ph);
+        int blurTex = refreshBlur(fb.frameBufferId, fb.height, px, py, pw, ph);
         if (blurTex == -1) {
             return false;
         }
@@ -92,88 +109,44 @@ public final class PanelBlurRenderer {
         return drawRoundedQuad(pose, x, y, width, height, radius, alpha, blurTex);
     }
 
-    public static void ensureLoaded() {
-        getRoundedShader();
-        getKawaseShader();
-    }
-
     public static boolean isAvailable() {
         return roundedShader != null && kawaseShader != null;
     }
 
     public static void resetShader() {
-        roundedLoadAttempted = false;
-        roundedShader = null;
-        kawaseLoadAttempted = false;
-        kawaseShader = null;
-    }
-
-    private static ShaderProgram getRoundedShader() {
-        if (!roundedLoadAttempted) {
-            roundedLoadAttempted = true;
-            try {
-                roundedShader = new ShaderProgram(
-                        MinecraftClient.getInstance().getResourceManager(),
-                        ROUNDED_SHADER_NAME,
-                        VertexFormats.POSITION_TEXTURE_COLOR);
-            } catch (Throwable t) {
-                AtomChat.LOGGER.warn("AtomChat panel blur shader failed to load; blur disabled", t);
-                roundedShader = null;
-            }
-        }
-        return roundedShader;
-    }
-
-    private static ShaderProgram getKawaseShader() {
-        if (!kawaseLoadAttempted) {
-            kawaseLoadAttempted = true;
-            try {
-                kawaseShader = new ShaderProgram(
-                        MinecraftClient.getInstance().getResourceManager(),
-                        KAWASE_SHADER_NAME,
-                        VertexFormats.POSITION);
-            } catch (Throwable t) {
-                AtomChat.LOGGER.warn("AtomChat Kawase blur shader failed to load; blur disabled", t);
-                kawaseShader = null;
-            }
-        }
-        return kawaseShader;
+        // NeoForge re-registers shaders through RegisterShadersEvent; this hook
+        // exists for parity with the Fabric reload listener and is intentionally
+        // a no-op here (a null shader would not be lazily re-created).
     }
 
     private static boolean drawRoundedQuad(Matrix4f pose, float x, float y, float w, float h, float radius, float alpha, int texture) {
-        ShaderProgram sh = roundedShader;
+        ShaderInstance sh = roundedShader;
         if (sh == null) {
             return false;
         }
 
-        GlUniform uRect = sh.getUniform("u_Rect");
-        GlUniform uRadius = sh.getUniform("u_Radius");
-        GlUniform uFlipV = sh.getUniform("u_FlipV");
-        if (uRect == null || uRadius == null || uFlipV == null) {
-            return false;
-        }
+        var uRect = sh.safeGetUniform("u_Rect");
+        var uRadius = sh.safeGetUniform("u_Radius");
+        var uFlipV = sh.safeGetUniform("u_FlipV");
 
         float poseScale = Math.abs(pose.m00());
         Vector4f center = pose.transform(new Vector4f(x + w / 2.0F, y + h / 2.0F, 0.0F, 1.0F));
-        uRect.set(0, center.x);
-        uRect.set(1, center.y);
-        uRect.set(2, w / 2.0F * poseScale);
-        uRect.set(3, h / 2.0F * poseScale);
-        uRadius.set(0, Math.min(radius, Math.min(w, h) / 2.0F) * poseScale);
+        uRect.set(center.x(), center.y(), w / 2.0F * poseScale, h / 2.0F * poseScale);
+        uRadius.set(Math.min(radius, Math.min(w, h) / 2.0F) * poseScale);
         // GL textures are bottom-up; the shader flips V so GUI top-left is texture top.
-        uFlipV.set(0, 1.0F);
+        uFlipV.set(1.0F);
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderTexture(0, texture);
         RenderSystem.setShader(() -> sh);
 
-        BufferBuilder bb = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-        bb.vertex(pose, x, y, 0).texture(0.0F, 0.0F).color(1.0F, 1.0F, 1.0F, alpha);
-        bb.vertex(pose, x, y + h, 0).texture(0.0F, 1.0F).color(1.0F, 1.0F, 1.0F, alpha);
-        bb.vertex(pose, x + w, y + h, 0).texture(1.0F, 1.0F).color(1.0F, 1.0F, 1.0F, alpha);
-        bb.vertex(pose, x + w, y, 0).texture(1.0F, 0.0F).color(1.0F, 1.0F, 1.0F, alpha);
-        BufferRenderer.drawWithGlobalProgram(bb.end());
+        BufferBuilder bb = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+        bb.addVertex(pose, x, y, 0).setUv(0.0F, 0.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
+        bb.addVertex(pose, x, y + h, 0).setUv(0.0F, 1.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
+        bb.addVertex(pose, x + w, y + h, 0).setUv(1.0F, 1.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
+        bb.addVertex(pose, x + w, y, 0).setUv(1.0F, 0.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
+        BufferUploader.drawWithShader(bb.buildOrThrow());
 
         RenderSystem.disableBlend();
         return true;
@@ -278,12 +251,12 @@ public final class PanelBlurRenderer {
     }
 
     private static void kawasePass(int dstFbo, int srcTex, int w, int h, float spacing) {
-        ShaderProgram sh = kawaseShader;
+        ShaderInstance sh = kawaseShader;
         if (sh == null) {
             return;
         }
 
-        GlUniform uSpacing = sh.getUniform("u_Spacing");
+        var uSpacing = sh.safeGetUniform("u_Spacing");
         if (uSpacing == null) {
             return;
         }
@@ -297,15 +270,15 @@ public final class PanelBlurRenderer {
 
         RenderSystem.disableBlend();
         RenderSystem.setShaderTexture(0, srcTex);
-        uSpacing.set(0, spacing);
+        uSpacing.set(spacing);
         RenderSystem.setShader(() -> sh);
 
-        BufferBuilder bb = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION);
-        bb.vertex(-1.0F, -1.0F, 0.0F);
-        bb.vertex(1.0F, -1.0F, 0.0F);
-        bb.vertex(1.0F, 1.0F, 0.0F);
-        bb.vertex(-1.0F, 1.0F, 0.0F);
-        BufferRenderer.drawWithGlobalProgram(bb.end());
+        BufferBuilder bb = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
+        bb.addVertex(-1.0F, -1.0F, 0.0F);
+        bb.addVertex(1.0F, -1.0F, 0.0F);
+        bb.addVertex(1.0F, 1.0F, 0.0F);
+        bb.addVertex(-1.0F, 1.0F, 0.0F);
+        BufferUploader.drawWithShader(bb.buildOrThrow());
 
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, oldFbo);
         GL30.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);

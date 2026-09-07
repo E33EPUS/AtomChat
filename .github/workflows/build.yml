@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: ["Fabric-1.21.1"]
+    branches: ["Fabric-1.21.1", "NeoForge-1.21.1"]
   pull_request:
-    branches: ["Fabric-1.21.1"]
+    branches: ["Fabric-1.21.1", "NeoForge-1.21.1"]
 
 permissions:
   contents: read

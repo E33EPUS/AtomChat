@@ -1,36 +1,38 @@
 package com.atom.chat;
 
-import net.fabricmc.api.ModInitializer;
-import net.fabricmc.loader.api.FabricLoader;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class AtomChat implements ModInitializer {
+@Mod(AtomChat.MOD_ID)
+public class AtomChat {
     public static final String MOD_ID = "atomchat";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-    @Override
-    public void onInitialize() {
-        // Avatar companion: codecs on both logical sides, receivers on the
-        // game-server side (dedicated server or an integrated double-open).
-        com.atom.chat.net.AvatarPayloads.register();
-        com.atom.chat.net.AvatarCompanionServer.register();
+    /** Captured from the NeoForge mod container at construction time. */
+    private static volatile String version = "unknown";
+
+    public AtomChat(IEventBus modEventBus, ModContainer modContainer) {
+        // Payload codecs and avatar-companion receivers are registered on the
+        // NeoForge payload bus; this event fires for both logical sides.
+        modEventBus.addListener(AtomChat::onRegisterPayloads);
+        version = modContainer.getModInfo().getVersion().toString();
         LOGGER.info("AtomChat initialized");
+    }
+
+    private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
+        com.atom.chat.net.AvatarPayloads.register(event);
     }
 
     /**
      * Friendly mod version for the settings about page. Read from the loader
      * metadata rather than a hardcoded constant so it can never drift away
-     * from gradle.properties. Guarded because the container is absent outside
-     * a real Fabric launch.
+     * from gradle.properties.
      */
     public static String version() {
-        try {
-            return FabricLoader.getInstance().getModContainer(MOD_ID)
-                    .map(container -> container.getMetadata().getVersion().getFriendlyString())
-                    .orElse("unknown");
-        } catch (Throwable t) {
-            return "unknown";
-        }
+        return version;
     }
 }

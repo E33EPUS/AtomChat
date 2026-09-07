@@ -23,7 +23,7 @@ import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Surface;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -408,7 +408,7 @@ public final class ImageCropper {
             if (image == null) {
                 Font font = FontManager.font(UiTokens.PROFILE_ROW_FONT);
                 SkiaFontRenderer.drawTextCentered(canvas, font,
-                        Text.translatable("atomchat.profile.crop.loading").getString(),
+                        Component.translatable("atomchat.profile.crop.loading").getString(),
                         cx, cy, Color.makeARGB(alpha, 255, 255, 255));
             }
         } finally {

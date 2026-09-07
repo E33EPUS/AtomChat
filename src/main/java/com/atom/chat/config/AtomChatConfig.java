@@ -3,7 +3,6 @@ package com.atom.chat.config;
 import com.atom.chat.AtomChat;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -184,7 +183,7 @@ public class AtomChatConfig {
     }
 
     private static AtomChatConfig load() {
-        Path path = FabricLoader.getInstance().getConfigDir().resolve("atomchat/atomchat-client.json");
+        Path path = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/atomchat-client.json");
         if (Files.exists(path)) {
             try {
                 String json = Files.readString(path, StandardCharsets.UTF_8);
@@ -211,7 +210,7 @@ public class AtomChatConfig {
     }
 
     public static void save(AtomChatConfig config) {
-        Path path = FabricLoader.getInstance().getConfigDir().resolve("atomchat/atomchat-client.json");
+        Path path = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/atomchat-client.json");
         try {
             Files.createDirectories(path.getParent());
             Files.writeString(path, GSON.toJson(config), StandardCharsets.UTF_8);

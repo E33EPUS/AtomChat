@@ -1,6 +1,6 @@
 package com.atom.chat.chat;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.util.UUID;
@@ -13,7 +13,7 @@ class PrivateChatStoreTest {
     }
 
     private ChatMessage incoming(String name, String text) {
-        return new ChatMessage(Text.literal(text), false, false,
+        return new ChatMessage(Component.literal(text), false, false,
                 null, null, UUID.randomUUID(), name, name, text);
     }
 

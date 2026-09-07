@@ -5,7 +5,7 @@ import com.atom.chat.ui.UiTokens;
 import io.github.humbleui.skija.Font;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Static helpers around CICode image messages, shared by the screen and the
@@ -99,6 +99,6 @@ public final class Cicodes {
 
     /** Minecraft language lookup, same rule as the screen's tr(). */
     private static String tr(String key, Object... args) {
-        return Text.translatable(key, args).getString();
+        return Component.translatable(key, args).getString();
     }
 }

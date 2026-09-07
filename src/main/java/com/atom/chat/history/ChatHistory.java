@@ -7,9 +7,9 @@ import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.history.HistoryStore.Entry;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -76,7 +76,7 @@ public final class ChatHistory {
     }
 
     /** Adopts the world key for the connection that just started. */
-    public static void onJoin(MinecraftClient client) {
+    public static void onJoin(Minecraft client) {
         if (enabled() && HistoryStore.isWorldSpecific(currentKey)) {
             saveNow(client);
         }
@@ -89,7 +89,7 @@ public final class ChatHistory {
     }
 
     /** Writes the world that is being left; the caller clears memory afterwards. */
-    public static void onDisconnect(MinecraftClient client) {
+    public static void onDisconnect(Minecraft client) {
         if (enabled() && HistoryStore.isWorldSpecific(currentKey)) {
             saveNow(client);
         }
@@ -97,7 +97,7 @@ public final class ChatHistory {
         dirty = false;
     }
 
-    public static void tick(MinecraftClient client) {
+    public static void tick(Minecraft client) {
         if (!enabled() || !dirty || !HistoryStore.isWorldSpecific(currentKey)) {
             return;
         }
@@ -143,12 +143,12 @@ public final class ChatHistory {
         });
     }
 
-    private static void saveNow(MinecraftClient client) {
+    private static void saveNow(Minecraft client) {
         String key = currentKey;
         if (key == null) {
             return;
         }
-        RegistryWrapper.WrapperLookup lookup = lookup(client);
+        net.minecraft.core.HolderLookup.Provider lookup = lookup(client);
         List<String> lines = new ArrayList<>();
         for (ChatMessage m : ChatStore.get().snapshot()) {
             String line = HistoryStore.toLine(toEntry(m, lookup, null));
@@ -186,7 +186,7 @@ public final class ChatHistory {
         });
     }
 
-    private static void loadInto(MinecraftClient client, String key) {
+    private static void loadInto(Minecraft client, String key) {
         Path file = HistoryStore.file(key);
         if (!Files.exists(file)) {
             return;
@@ -198,7 +198,7 @@ public final class ChatHistory {
             AtomChat.LOGGER.warn("Failed to read chat history {}", file, e);
             return;
         }
-        RegistryWrapper.WrapperLookup lookup = lookup(client);
+        net.minecraft.core.HolderLookup.Provider lookup = lookup(client);
         List<ChatMessage> loadedPublic = new ArrayList<>();
         List<Loaded> loadedPrivate = new ArrayList<>();
         for (String line : raw) {
@@ -267,11 +267,11 @@ public final class ChatHistory {
         }
     }
 
-    private static Entry toEntry(ChatMessage m, RegistryWrapper.WrapperLookup lookup, String peer) {
+    private static Entry toEntry(ChatMessage m, net.minecraft.core.HolderLookup.Provider lookup, String peer) {
         String comp = null;
         if (lookup != null && m.getComponent() != null) {
             try {
-                comp = Text.Serialization.toJsonString(m.getComponent(), lookup);
+                comp = Component.Serializer.toJson(m.getComponent(), lookup);
             } catch (Exception e) {
                 comp = null;
             }
@@ -283,18 +283,18 @@ public final class ChatHistory {
                 m.getSenderName(), m.getProfileName(), m.getContentText(), comp);
     }
 
-    private static ChatMessage fromEntry(Entry e, RegistryWrapper.WrapperLookup lookup) {
-        Text component = null;
+    private static ChatMessage fromEntry(Entry e, net.minecraft.core.HolderLookup.Provider lookup) {
+        Component component = null;
         if (e.componentJson != null && lookup != null) {
             try {
-                component = Text.Serialization.fromJson(e.componentJson, lookup);
+                component = Component.Serializer.fromJson(e.componentJson, lookup);
             } catch (Exception ignored) {
                 component = null;
             }
         }
         if (component == null) {
             // Plain-text fallback: the line is still worth showing.
-            component = Text.literal(e.contentText != null ? e.contentText : "");
+            component = Component.literal(e.contentText != null ? e.contentText : "");
         }
         UUID uuid = null;
         if (e.senderUuid != null) {
@@ -337,30 +337,30 @@ public final class ChatHistory {
         return partner.uuid() != null ? partner.uuid().toString() : partner.realName();
     }
 
-    private static String keyFor(MinecraftClient client) {
-        boolean singleplayer = client.getServer() != null;
+    private static String keyFor(Minecraft client) {
+        boolean singleplayer = client.getSingleplayerServer() != null;
         String levelName = null;
         if (singleplayer) {
             try {
-                levelName = client.getServer().getSaveProperties().getLevelName();
+                levelName = client.getSingleplayerServer().getWorldData().getLevelName();
             } catch (Exception ignored) {
                 levelName = null;
             }
         }
         String serverName = null;
-        if (client.getCurrentServerEntry() != null) {
-            serverName = client.getCurrentServerEntry().name;
+        if (client.getCurrentServer() != null) {
+            serverName = client.getCurrentServer().name;
         }
         return HistoryStore.keyFor(singleplayer, levelName, serverName);
     }
 
-    private static RegistryWrapper.WrapperLookup lookup(MinecraftClient client) {
+    private static net.minecraft.core.HolderLookup.Provider lookup(Minecraft client) {
         if (client == null) {
             return null;
         }
         try {
-            if (client.world != null) {
-                return client.world.getRegistryManager();
+            if (client.level != null) {
+                return client.level.registryAccess();
             }
         } catch (Exception ignored) {
             // fall through

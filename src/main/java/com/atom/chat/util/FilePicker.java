@@ -2,7 +2,7 @@ package com.atom.chat.util;
 
 import com.atom.chat.AtomChat;
 import com.formdev.flatlaf.FlatLightLaf;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 import javax.swing.Action;
 import javax.swing.Icon;
@@ -162,7 +162,7 @@ public final class FilePicker {
     }
 
     private static String tr(String key) {
-        return Text.translatable(key).getString();
+        return Component.translatable(key).getString();
     }
 
     private static Path showChooser(Predicate<String> nameFilter) {

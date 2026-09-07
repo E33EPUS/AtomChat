@@ -1,8 +1,8 @@
 package com.atom.chat.text;
 
 import com.atom.chat.text.RichTextLayout.RichLine;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,7 +33,7 @@ class RichTextLayoutTest {
     void wrapSlicesRunsPreservingStyles() {
         Style red = Style.EMPTY.withColor(0xFF0000);
         Style blue = Style.EMPTY.withColor(0x0000FF);
-        RichText text = RichText.of(Text.literal("ab").setStyle(red).append(Text.literal("cdef").setStyle(blue)));
+        RichText text = RichText.of(Component.literal("ab").setStyle(red).append(Component.literal("cdef").setStyle(blue)));
         List<RichLine> lines = RichTextLayout.wrap(text, CHAR_10, 30f);
 
         assertEquals("abc", lines.get(0).getPlainText());

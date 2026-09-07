@@ -1,6 +1,6 @@
 package com.atom.chat.chat;
 
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import java.util.Locale;
 
@@ -55,7 +55,7 @@ public final class TeleportCommands {
      * Resolves the teleport command for the configured mode. The probe runs
      * once per session; a failure switch overrides it for the session.
      */
-    public static String commandFor(MinecraftClient client, String mode) {
+    public static String commandFor(Minecraft client, String mode) {
         if ("tp".equals(mode)) {
             return "/tp";
         }
@@ -72,12 +72,12 @@ public final class TeleportCommands {
     }
 
     /** True when the server's command tree advertises a tpa-family command. */
-    static boolean probeSupportsTpa(MinecraftClient client) {
+    static boolean probeSupportsTpa(Minecraft client) {
         try {
-            if (client == null || client.player == null || client.player.networkHandler == null) {
+            if (client == null || client.player == null || client.player.connection == null) {
                 return false;
             }
-            var root = client.player.networkHandler.getCommandDispatcher().getRoot();
+            var root = client.player.connection.getCommands().getRoot();
             return root.getChild("tpa") != null
                     || root.getChild("tpaccept") != null
                     || root.getChild("tpahere") != null;

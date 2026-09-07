@@ -1,7 +1,6 @@
 package com.atom.chat.watut;
 
 import com.atom.chat.AtomChat;
-import net.fabricmc.loader.api.FabricLoader;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
@@ -33,7 +32,7 @@ public final class WatutBridge {
             return;
         }
         resolved = true;
-        if (!FabricLoader.getInstance().isModLoaded("watut")) {
+        if (!net.neoforged.fml.ModList.get().isLoaded("watut")) {
             return;
         }
         try {

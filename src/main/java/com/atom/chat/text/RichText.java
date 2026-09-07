@@ -1,10 +1,9 @@
 package com.atom.chat.text;
 
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextVisitFactory;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Immutable flat representation of a Minecraft {@link Text} tree.
+ * Immutable flat representation of a Minecraft {@link Component} tree.
  *
  * <p>The tree is flattened into runs of plain text plus their effective styles. A
  * separate root style is kept because it can be useful when rebuilding/rendering a
@@ -31,29 +30,74 @@ public final class RichText {
         this.rootStyle = rootStyle;
     }
 
-    public static RichText of(Text text) {
+    public static RichText of(Component text) {
         List<RichRun> out = new ArrayList<>();
+        // toFlatList visits effective-style string segments, including the root
+        // style on every child; literal section-sign codes inside a segment are
+        // parsed separately below.
+        for (Component part : text.toFlatList(Style.EMPTY)) {
+            appendLegacyParsed(out, part.getString(), part.getStyle(), part.getStyle());
+        }
+        return new RichText(mergeRuns(out), text.getStyle());
+    }
+
+    private static void appendLegacyParsed(List<RichRun> out, String raw, Style baseStyle, Style style) {
         StringBuilder current = new StringBuilder();
-        Style[] currentStyle = new Style[1];
-        TextVisitFactory.visitFormatted(text, Style.EMPTY, (index, style, codePoint) -> {
-            if (currentStyle[0] != null && !currentStyle[0].equals(style)) {
+        for (int i = 0; i < raw.length(); i++) {
+            char ch = raw.charAt(i);
+            if (ch == '§' && i + 1 < raw.length()) {
+                char code = raw.charAt(i + 1);
                 if (current.length() > 0) {
-                    out.add(new RichRun(current.toString(), currentStyle[0]));
+                    out.add(new RichRun(current.toString(), style));
                     current.setLength(0);
                 }
+                net.minecraft.ChatFormatting cf = net.minecraft.ChatFormatting.getByCode(code);
+                if (cf == null) {
+                    // Unknown code: preserve it literally instead of swallowing it.
+                    current.append(ch).append(code);
+                } else {
+                    style = applySectionCode(style, baseStyle, cf);
+                }
+                i++;
+            } else {
+                current.append(ch);
             }
-            currentStyle[0] = style;
-            current.appendCodePoint(codePoint);
-            return true;
-        });
-        if (current.length() > 0) {
-            out.add(new RichRun(current.toString(), currentStyle[0]));
         }
-        return new RichText(out, text.getStyle());
+        if (current.length() > 0) {
+            out.add(new RichRun(current.toString(), style));
+        }
+    }
+
+    private static Style applySectionCode(Style style, Style baseStyle, net.minecraft.ChatFormatting cf) {
+        return switch (cf) {
+            case RESET -> baseStyle;
+            case BOLD -> style.withBold(true);
+            case ITALIC -> style.withItalic(true);
+            case UNDERLINE -> style.withUnderlined(true);
+            case STRIKETHROUGH -> style.withStrikethrough(true);
+            case OBFUSCATED -> style.withObfuscated(true);
+            default -> style.withColor(cf);
+        };
+    }
+
+    private static List<RichRun> mergeRuns(List<RichRun> runs) {
+        if (runs.size() <= 1) {
+            return runs;
+        }
+        List<RichRun> merged = new ArrayList<>();
+        for (RichRun run : runs) {
+            if (!merged.isEmpty() && merged.get(merged.size() - 1).style().equals(run.style())) {
+                RichRun last = merged.remove(merged.size() - 1);
+                merged.add(new RichRun(last.text() + run.text(), last.style()));
+            } else {
+                merged.add(run);
+            }
+        }
+        return merged;
     }
 
     public static RichText literal(String text) {
-        return of(Text.literal(text));
+        return of(Component.literal(text));
     }
 
     public static RichText empty() {
@@ -77,14 +121,14 @@ public final class RichText {
     }
 
     /**
-     * Rebuilds a Minecraft {@link Text} from this flat run list, preserving each
+     * Rebuilds a Minecraft {@link Component} from this flat run list, preserving each
      * run's effective style. Useful when a rewrite has to splice original styled
      * slices back together with new placeholder runs.
      */
-    public Text toText() {
-        MutableText out = Text.literal("").setStyle(rootStyle);
+    public Component toText() {
+        MutableComponent out = Component.literal("").setStyle(rootStyle);
         for (RichRun run : runs) {
-            out.append(Text.literal(run.text()).setStyle(run.style()));
+            out.append(Component.literal(run.text()).setStyle(run.style()));
         }
         return out;
     }
@@ -139,7 +183,7 @@ public final class RichText {
                 clean = clean.withHoverEvent(null);
             }
             if (style.isUnderlined()) {
-                clean = clean.withUnderline(false);
+                clean = clean.withUnderlined(false);
             }
             out.add(new RichRun(run.text(), clean));
         }

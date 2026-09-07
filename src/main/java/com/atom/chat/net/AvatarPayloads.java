@@ -1,18 +1,20 @@
 package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 import java.util.UUID;
 
 /**
  * Avatar-companion payloads (0.1.10). Same-jar dual entrypoint: the records
- * and codecs are registered in the common entrypoint so both the integrated
- * server of a double-open client and a dedicated server speak the protocol.
+ * and codecs are registered from the common @Mod constructor so both the
+ * integrated server of a double-open client and a dedicated server speak the
+ * protocol.
  *
  * <p>Protocol:
  * <ul>
@@ -33,73 +35,89 @@ public final class AvatarPayloads {
 
     public static final int MAX_AVATAR_BYTES = 256 * 1024;
 
-    public record AvatarUploadPayload(UUID uuid, byte[] data) implements CustomPayload {
-        public static final CustomPayload.Id<AvatarUploadPayload> ID =
-                new CustomPayload.Id<>(Identifier.of(AtomChat.MOD_ID, "avatar_upload"));
-        public static final PacketCodec<RegistryByteBuf, AvatarUploadPayload> CODEC =
-                PacketCodec.of(AvatarUploadPayload::write, AvatarUploadPayload::read);
+    public record AvatarUploadPayload(UUID uuid, byte[] data) implements CustomPacketPayload {
+        public static final Type<AvatarUploadPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_upload"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarUploadPayload> STREAM_CODEC =
+                new StreamCodec<>() {
+                    @Override
+                    public AvatarUploadPayload decode(RegistryFriendlyByteBuf buf) {
+                        return new AvatarUploadPayload(buf.readUUID(), buf.readByteArray());
+                    }
 
-        private static void write(AvatarUploadPayload payload, RegistryByteBuf buf) {
-            buf.writeUuid(payload.uuid());
-            buf.writeByteArray(payload.data());
-        }
-
-        private static AvatarUploadPayload read(RegistryByteBuf buf) {
-            return new AvatarUploadPayload(buf.readUuid(), buf.readByteArray());
-        }
+                    @Override
+                    public void encode(RegistryFriendlyByteBuf buf, AvatarUploadPayload payload) {
+                        buf.writeUUID(payload.uuid());
+                        buf.writeByteArray(payload.data());
+                    }
+                };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
-            return ID;
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
         }
     }
 
-    public record AvatarRequestPayload(UUID uuid) implements CustomPayload {
-        public static final CustomPayload.Id<AvatarRequestPayload> ID =
-                new CustomPayload.Id<>(Identifier.of(AtomChat.MOD_ID, "avatar_request"));
-        public static final PacketCodec<RegistryByteBuf, AvatarRequestPayload> CODEC =
-                PacketCodec.of(AvatarRequestPayload::write, AvatarRequestPayload::read);
+    public record AvatarRequestPayload(UUID uuid) implements CustomPacketPayload {
+        public static final Type<AvatarRequestPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_request"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarRequestPayload> STREAM_CODEC =
+                new StreamCodec<>() {
+                    @Override
+                    public AvatarRequestPayload decode(RegistryFriendlyByteBuf buf) {
+                        return new AvatarRequestPayload(buf.readUUID());
+                    }
 
-        private static void write(AvatarRequestPayload payload, RegistryByteBuf buf) {
-            buf.writeUuid(payload.uuid());
-        }
-
-        private static AvatarRequestPayload read(RegistryByteBuf buf) {
-            return new AvatarRequestPayload(buf.readUuid());
-        }
+                    @Override
+                    public void encode(RegistryFriendlyByteBuf buf, AvatarRequestPayload payload) {
+                        buf.writeUUID(payload.uuid());
+                    }
+                };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
-            return ID;
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
         }
     }
 
     /** Empty {@code data} = the uuid has no custom avatar. */
-    public record AvatarDataPayload(UUID uuid, byte[] data) implements CustomPayload {
-        public static final CustomPayload.Id<AvatarDataPayload> ID =
-                new CustomPayload.Id<>(Identifier.of(AtomChat.MOD_ID, "avatar_data"));
-        public static final PacketCodec<RegistryByteBuf, AvatarDataPayload> CODEC =
-                PacketCodec.of(AvatarDataPayload::write, AvatarDataPayload::read);
+    public record AvatarDataPayload(UUID uuid, byte[] data) implements CustomPacketPayload {
+        public static final Type<AvatarDataPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_data"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarDataPayload> STREAM_CODEC =
+                new StreamCodec<>() {
+                    @Override
+                    public AvatarDataPayload decode(RegistryFriendlyByteBuf buf) {
+                        return new AvatarDataPayload(buf.readUUID(), buf.readByteArray());
+                    }
 
-        private static void write(AvatarDataPayload payload, RegistryByteBuf buf) {
-            buf.writeUuid(payload.uuid());
-            buf.writeByteArray(payload.data());
-        }
-
-        private static AvatarDataPayload read(RegistryByteBuf buf) {
-            return new AvatarDataPayload(buf.readUuid(), buf.readByteArray());
-        }
+                    @Override
+                    public void encode(RegistryFriendlyByteBuf buf, AvatarDataPayload payload) {
+                        buf.writeUUID(payload.uuid());
+                        buf.writeByteArray(payload.data());
+                    }
+                };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
-            return ID;
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
         }
     }
 
-    /** Registers every codec; must run on both logical sides (common init). */
-    public static void register() {
-        PayloadTypeRegistry.playC2S().register(AvatarUploadPayload.ID, AvatarUploadPayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(AvatarRequestPayload.ID, AvatarRequestPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(AvatarDataPayload.ID, AvatarDataPayload.CODEC);
+    /** Registers every payload on the NeoForge payload bus (common entry). */
+    public static void register(RegisterPayloadHandlersEvent event) {
+        PayloadRegistrar registrar = event.registrar("1").optional();
+        registrar.playToServer(AvatarUploadPayload.TYPE, AvatarUploadPayload.STREAM_CODEC,
+                AvatarCompanionServer::handleUpload);
+        registrar.playToServer(AvatarRequestPayload.TYPE, AvatarRequestPayload.STREAM_CODEC,
+                AvatarCompanionServer::handleRequest);
+        // The S2C receiver touches client-only rendering classes; keep it in a
+        // dist-guarded lambda so a dedicated server never loads them.
+        registrar.playToClient(AvatarDataPayload.TYPE, AvatarDataPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (net.neoforged.fml.loading.FMLEnvironment.dist == net.neoforged.api.distmarker.Dist.CLIENT) {
+                        ctx.enqueueWork(() -> AvatarCompanionClient.onAvatarData(payload.uuid(), payload.data()));
+                    }
+                });
     }
 }

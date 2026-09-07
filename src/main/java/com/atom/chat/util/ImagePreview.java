@@ -1,6 +1,6 @@
 package com.atom.chat.util;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;
@@ -47,7 +47,7 @@ public final class ImagePreview {
     }
 
     private static String tr(String key) {
-        return Text.translatable(key).getString();
+        return Component.translatable(key).getString();
     }
 
     /** Builds the pane and wires it to the chooser's selection changes. */

@@ -1,8 +1,8 @@
 package com.atom.chat.chat;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.Component;
 
 import java.util.UUID;
 
@@ -31,12 +31,12 @@ public final class TellClickDetector {
 
     private static final String[] TELL_PREFIXES = {"/tell ", "/msg ", "/w ", "/whisper "};
 
-    public static SenderMeta detectByTellClick(Text message, String text) {
+    public static SenderMeta detectByTellClick(Component message, String text) {
         if (ChatClassifier.isVanillaBroadcast(message)) {
             return null;
         }
-        var player = MinecraftClient.getInstance().player;
-        if (player == null || player.networkHandler == null || text == null || text.isEmpty()) {
+        var player = Minecraft.getInstance().player;
+        if (player == null || player.connection == null || text == null || text.isEmpty()) {
             return null;
         }
         final int[] pos = {0};
@@ -49,7 +49,7 @@ public final class TellClickDetector {
             pos[0] = e;
             var click = style.getClickEvent();
             if (tellName[0] == null && click != null
-                    && click.getAction() == net.minecraft.text.ClickEvent.Action.SUGGEST_COMMAND
+                    && click.getAction() == net.minecraft.network.chat.ClickEvent.Action.SUGGEST_COMMAND
                     && click.getValue() != null) {
                 String cmd = click.getValue();
                 for (String prefix : TELL_PREFIXES) {
@@ -70,15 +70,15 @@ public final class TellClickDetector {
                 }
             }
             return java.util.Optional.<Object>empty();
-        }, net.minecraft.text.Style.EMPTY);
+        }, net.minecraft.network.chat.Style.EMPTY);
 
         int nameRangeLimit = Math.max(32, text.length() / 3);
         if (tellName[0] == null || range[0] > nameRangeLimit) {
             return null;
         }
 
-        PlayerListEntry sender = null;
-        for (var info : player.networkHandler.getPlayerList()) {
+        PlayerInfo sender = null;
+        for (var info : player.connection.getOnlinePlayers()) {
             String profile = info.getProfile().getName();
             if (profile.equals(tellName[0]) || profile.replaceAll("§.", "").equals(tellName[0])) {
                 sender = info;

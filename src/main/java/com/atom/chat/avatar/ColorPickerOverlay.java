@@ -19,7 +19,7 @@ import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.skija.Shader;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Modal HSV colour picker shown over the panel when the user taps the "+"
@@ -385,14 +385,14 @@ public final class ColorPickerOverlay {
             Font titleFont = FontManager.font(UiTokens.SETTINGS_TILE_TITLE);
             if (target != null) {
                 SkiaFontRenderer.drawText(canvas, titleFont,
-                        Text.translatable(target.titleKey()).getString(),
+                        Component.translatable(target.titleKey()).getString(),
                         cx + pad(), SkiaFontRenderer.centerBaselineY(titleFont, cy + s(28)),
                         Color.makeARGB(alpha, 255, 255, 255));
             }
             Font valueFont = FontManager.font(UiTokens.SETTINGS_TILE_SUB);
             boolean copied = System.currentTimeMillis() < copiedUntil;
             String hexText = copied
-                    ? Text.translatable("atomchat.settings.color.copied").getString()
+                    ? Component.translatable("atomchat.settings.color.copied").getString()
                     : ColorUtil.formatHex(live);
             float hexW = SkiaFontRenderer.getStringWidth(valueFont, hexText);
             float hexX = cx + cw - pad() - hexW;

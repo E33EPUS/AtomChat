@@ -1,9 +1,9 @@
 package com.atom.chat.chat;
 
 import com.atom.chat.text.RichText;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -16,7 +16,7 @@ import java.util.UUID;
  * that identifies a player line from the online/known name list.
  *
  * <p>Trimmed port of e33chat's ChatPipeline (MIT, same author). Plain-string
- * parsing is used to locate style-slice boundaries; rich Text slicing then
+ * parsing is used to locate style-slice boundaries; rich Component slicing then
  * preserves the original run styles when available.
  */
 public final class ChatPipeline {
@@ -27,12 +27,12 @@ public final class ChatPipeline {
      *  players once seen in chat — the offline-player tail that lets relayed
      *  lines (bot bridges, delayed echoes) still parse as player chat. */
     public static List<String> onlineNameCandidates() {
-        var player = MinecraftClient.getInstance().player;
-        if (player == null || player.networkHandler == null) {
+        var player = Minecraft.getInstance().player;
+        if (player == null || player.connection == null) {
             return List.of();
         }
         LinkedHashSet<String> names = new LinkedHashSet<>();
-        player.networkHandler.getPlayerList().forEach(info -> {
+        player.connection.getOnlinePlayers().forEach(info -> {
             for (String cand : ChatClassifier.nameCandidates(info)) {
                 names.add(cand);
             }
@@ -63,7 +63,7 @@ public final class ChatPipeline {
             return null;
         }
 
-        PlayerListEntry info = ChatClassifier.resolveOnlinePlayer(pl.playerName());
+        PlayerInfo info = ChatClassifier.resolveOnlinePlayer(pl.playerName());
         String profile = info != null ? info.getProfile().getName() : pl.playerName();
         UUID uuid = info != null ? info.getProfile().getId() : ChatClassifier.resolveUuid(pl.playerName());
         return new SenderMeta(uuid, pl.displayLabel(), profile, pl.content(), false);
@@ -137,7 +137,7 @@ public final class ChatPipeline {
      * sender/profile names carried by {@code meta}; otherwise returns empty so
      * callers keep their system-safe fallback.
      */
-    public static Optional<RichChatParts> sliceRichText(Text fullLine, SenderMeta meta) {
+    public static Optional<RichChatParts> sliceRichText(Component fullLine, SenderMeta meta) {
         if (fullLine == null || meta == null) {
             return Optional.empty();
         }

@@ -32,7 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Message list presentation, split out of AtomChatScreen: rendering, entrance
@@ -887,7 +887,7 @@ public final class MessageListView {
 
     /** Minecraft language lookup for all AtomChat UI copy. */
     private static String tr(String key, Object... args) {
-        return Text.translatable(key, args).getString();
+        return Component.translatable(key, args).getString();
     }
 
     private int accent() {
@@ -919,7 +919,7 @@ public final class MessageListView {
         return AtomChatConfig.get().secondaryCapsuleText;
     }
 
-    /** Text inside a chat bubble (body rich text and quoted text). */
+    /** Component inside a chat bubble (body rich text and quoted text). */
     private int bubbleText(ChatMessage msg) {
         return msg != null && msg.isOwn()
                 ? AtomChatConfig.get().bubbleTextColor

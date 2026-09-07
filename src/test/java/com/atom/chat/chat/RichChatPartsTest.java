@@ -1,8 +1,8 @@
 package com.atom.chat.chat;
 
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RichChatPartsTest {
     @Test
     void slicesDecoratedLine() {
-        Text line = Text.literal("[萌新]player>>谁能给我钻石？")
+        Component line = Component.literal("[萌新]player>>谁能给我钻石？")
                 .setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/msg player ")));
         RichChatParts parts = ChatPipeline.sliceRichText(line, new SenderMeta(null, "player", "player", "谁能给我钻石？", false))
                 .orElseThrow();
@@ -22,7 +22,7 @@ class RichChatPartsTest {
     @Test
     void slicePreservesSenderStylesFromDecoratedLine() {
         Style click = Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/msg player "));
-        Text line = Text.literal("[萌新]player>>谁能给我钻石？").setStyle(click);
+        Component line = Component.literal("[萌新]player>>谁能给我钻石？").setStyle(click);
         RichChatParts parts = ChatPipeline.sliceRichText(line, new SenderMeta(null, "player", "player", "谁能给我钻石？", false))
                 .orElseThrow();
         assertEquals(click, parts.sender().runs().get(0).style());
@@ -30,7 +30,7 @@ class RichChatPartsTest {
 
     @Test
     void slicesWhenMetaCarriesDecoratedSenderName() {
-        Text line = Text.literal("[萌新]player>>谁能给我钻石？");
+        Component line = Component.literal("[萌新]player>>谁能给我钻石？");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "[萌新]player", "player", "谁能给我钻石？", false))
                 .orElseThrow();
@@ -40,7 +40,7 @@ class RichChatPartsTest {
 
     @Test
     void sliceKeepsBracketSuffixDecorationInSender() {
-        Text line = Text.literal("[VIP]Steve[AFK] >> hi");
+        Component line = Component.literal("[VIP]Steve[AFK] >> hi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "Steve", "Steve", "hi", false))
                 .orElseThrow();
@@ -50,7 +50,7 @@ class RichChatPartsTest {
 
     @Test
     void sliceKeepsParenthesizedSuffixDecorationInSender() {
-        Text line = Text.literal("Steve(VIP) : hi");
+        Component line = Component.literal("Steve(VIP) : hi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "Steve", "Steve", "hi", false))
                 .orElseThrow();
@@ -60,7 +60,7 @@ class RichChatPartsTest {
 
     @Test
     void sliceContentLinkifiesBareUrls() {
-        Text line = Text.literal("[萌新]player>>see https://example.com/x now");
+        Component line = Component.literal("[萌新]player>>see https://example.com/x now");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "player", "player", "see https://example.com/x now", false))
                 .orElseThrow();
@@ -71,7 +71,7 @@ class RichChatPartsTest {
 
     @Test
     void sliceAngleLineSenderDropsVanillaAngleBrackets() {
-        Text line = Text.literal("<Steve> hi");
+        Component line = Component.literal("<Steve> hi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "Steve", "Steve", "hi", false))
                 .orElseThrow();
@@ -81,7 +81,7 @@ class RichChatPartsTest {
 
     @Test
     void slicePrefixedAngleLineSenderKeepsPrefixOnly() {
-        Text line = Text.literal("[VIP]<Steve> hi");
+        Component line = Component.literal("[VIP]<Steve> hi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "Steve", "Steve", "hi", false))
                 .orElseThrow();
@@ -91,7 +91,7 @@ class RichChatPartsTest {
 
     @Test
     void slicesLegacyFormattedAngleLineUsingVisibleOffsets() {
-        Text line = Text.literal("§a<Steve> §bhi");
+        Component line = Component.literal("§a<Steve> §bhi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "Steve", "Steve", "hi", false))
                 .orElseThrow();
@@ -101,7 +101,7 @@ class RichChatPartsTest {
 
     @Test
     void slicesLegacyDecoratedPrefixLineUsingVisibleOffsets() {
-        Text line = Text.literal("§7[VIP]§rSteve>>§ahi");
+        Component line = Component.literal("§7[VIP]§rSteve>>§ahi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,
                         new SenderMeta(null, "Steve", "Steve", "hi", false))
                 .orElseThrow();
@@ -111,7 +111,7 @@ class RichChatPartsTest {
 
     @Test
     void emptyWhenMetaHasNoUsableName() {
-        Text line = Text.literal("[系统]公告: 欢迎");
+        Component line = Component.literal("[系统]公告: 欢迎");
         assertTrue(ChatPipeline.sliceRichText(line, new SenderMeta(null, null, null, null, true)).isEmpty());
     }
 }

@@ -1,12 +1,12 @@
 package com.atom.chat.chat;
 
 import com.atom.chat.text.RichText;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 import java.util.UUID;
 
 public class ChatMessage {
-    private final Text component;
+    private final Component component;
     private final String rawText;
     private final long timestamp;
     private final boolean own;
@@ -20,26 +20,26 @@ public class ChatMessage {
     private final RichText senderRich;
     private final RichText contentRich;
 
-    public ChatMessage(Text component, boolean own) {
+    public ChatMessage(Component component, boolean own) {
         this(component, own, false);
     }
 
-    public ChatMessage(Text component, boolean own, boolean system) {
+    public ChatMessage(Component component, boolean own, boolean system) {
         this(component, own, system, null, null, null, null, null, null);
     }
 
-    public ChatMessage(Text component, boolean own, String quoteName, String quoteText) {
+    public ChatMessage(Component component, boolean own, String quoteName, String quoteText) {
         this(component, own, false, quoteName, quoteText, null, null, null, null);
     }
 
-    public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
+    public ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText) {
         this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
                 System.currentTimeMillis());
     }
 
     /** Variant used when rehydrating persisted history: keeps the original time. */
-    public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
+    public ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText, long timestamp) {
         this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
                 legacySenderRich(system, senderName, profileName),
@@ -47,14 +47,14 @@ public class ChatMessage {
                 timestamp);
     }
 
-    public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
+    public ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText,
                        RichText senderRich, RichText contentRich) {
         this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
                 senderRich, contentRich, System.currentTimeMillis());
     }
 
-    public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
+    public ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText,
                        RichText senderRich, RichText contentRich, long timestamp) {
         this.component = component;
@@ -138,7 +138,7 @@ public class ChatMessage {
         return text;
     }
 
-    public Text getComponent() {
+    public Component getComponent() {
         return component;
     }
 
@@ -207,7 +207,7 @@ public class ChatMessage {
     }
 
     /**
-     * Text to draw inside the bubble. Rich-content aware callers supply the final
+     * Component to draw inside the bubble. Rich-content aware callers supply the final
      * content through {@link #getContentRich()}; legacy constructors populate that
      * rich part from the plain text after stripping quote/prefix decorations.
      */

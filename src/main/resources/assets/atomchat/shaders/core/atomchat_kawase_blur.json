@@ -4,8 +4,8 @@
     "srcrgb": "one",
     "dstrgb": "zero"
   },
-  "vertex": "atomchat_kawase_blur",
-  "fragment": "atomchat_kawase_blur",
+  "vertex": "atomchat:atomchat_kawase_blur",
+  "fragment": "atomchat:atomchat_kawase_blur",
   "samplers": [
     { "name": "Sampler0" }
   ],

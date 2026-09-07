@@ -1,8 +1,8 @@
 package com.atom.chat.text;
 
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -12,7 +12,7 @@ class RichTextTest {
     @Test
     void flattenPreservesRunStyles() {
         Style click = Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/x"));
-        Text text = Text.literal("a").setStyle(click).append(Text.literal("b"));
+        Component text = Component.literal("a").setStyle(click).append(Component.literal("b"));
         RichText rich = RichText.of(text);
         assertEquals("ab", rich.getString());
         assertEquals(1, rich.runs().size());
@@ -21,11 +21,11 @@ class RichTextTest {
 
     @Test
     void sliceKeepsStyles() {
-        Text text = Text.literal("abc").setStyle(Style.EMPTY.withColor(0xFF0000))
-                .append(Text.literal("def").setStyle(Style.EMPTY.withUnderline(true)));
+        Component text = Component.literal("abc").setStyle(Style.EMPTY.withColor(0xFF0000))
+                .append(Component.literal("def").setStyle(Style.EMPTY.withUnderlined(true)));
         RichText sliced = RichText.of(text).slice(2, 5);
         assertEquals("cde", sliced.getString());
-        assertEquals(0xFF0000, sliced.runs().get(0).style().getColor().getRgb());
+        assertEquals(0xFF0000, sliced.runs().get(0).style().getColor().getValue());
     }
 
     @Test
@@ -59,7 +59,7 @@ class RichTextTest {
     @Test
     void linkifyLeavesExistingClickRunsUntouched() {
         Style click = Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, "https://already.example"));
-        RichText rich = RichText.of(Text.literal("https://example.com").setStyle(click));
+        RichText rich = RichText.of(Component.literal("https://example.com").setStyle(click));
         RichText linked = rich.linkifyUrls();
         assertEquals(1, linked.runs().size());
         assertEquals(click, linked.runs().get(0).style());
@@ -68,33 +68,33 @@ class RichTextTest {
     @Test
     void linkifyPreservesOriginalRunStyle() {
         Style colored = Style.EMPTY.withColor(0x00FF00);
-        RichText rich = RichText.of(Text.literal("see https://example.com/x").setStyle(colored));
+        RichText rich = RichText.of(Component.literal("see https://example.com/x").setStyle(colored));
         RichText linked = rich.linkifyUrls();
         RichText.RichRun link = linked.runs().stream()
                 .filter(r -> r.style().getClickEvent() != null)
                 .findFirst().orElseThrow();
-        assertEquals(0x00FF00, link.style().getColor().getRgb());
+        assertEquals(0x00FF00, link.style().getColor().getValue());
         assertEquals(colored, link.style().withClickEvent(null));
     }
 
     @Test
     void ofParsesLegacyFormattingCodesAndStripsControlPairs() {
-        RichText rich = RichText.of(Text.literal("§aHello §rWorld"));
+        RichText rich = RichText.of(Component.literal("§aHello §rWorld"));
         assertEquals("Hello World", rich.getString());
         assertEquals(2, rich.runs().size());
         assertEquals("Hello ", rich.runs().get(0).text());
-        assertEquals(0x55FF55, rich.runs().get(0).style().getColor().getRgb());
+        assertEquals(0x55FF55, rich.runs().get(0).style().getColor().getValue());
         assertEquals("World", rich.runs().get(1).text());
         assertEquals(null, rich.runs().get(1).style().getColor());
     }
 
     @Test
     void ofGroupsContiguousCharactersByEffectiveStyle() {
-        RichText rich = RichText.of(Text.literal("§aA§cB"));
+        RichText rich = RichText.of(Component.literal("§aA§cB"));
         assertEquals("AB", rich.getString());
         assertEquals(2, rich.runs().size());
-        assertEquals(0x55FF55, rich.runs().get(0).style().getColor().getRgb());
-        assertEquals(0xFF5555, rich.runs().get(1).style().getColor().getRgb());
+        assertEquals(0x55FF55, rich.runs().get(0).style().getColor().getValue());
+        assertEquals(0xFF5555, rich.runs().get(1).style().getColor().getValue());
     }
 
     @Test
@@ -107,7 +107,7 @@ class RichTextTest {
     @Test
     void slicePreservesRootStyle() {
         Style root = Style.EMPTY.withColor(0x123456);
-        RichText emptyText = RichText.of(Text.literal("").setStyle(root));
+        RichText emptyText = RichText.of(Component.literal("").setStyle(root));
         assertEquals(root, emptyText.slice(0, 0).rootStyle());
     }
 }

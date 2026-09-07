@@ -1,9 +1,9 @@
 package com.atom.chat.text;
 
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.text.TranslatableTextContent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,7 +43,7 @@ public final class ChatTextRewriter {
      * Returns a rewritten copy of {@code message}, or {@code null} when no image
      * code or quote prefix is present.
      */
-    public static Text rewrite(Text message) {
+    public static Component rewrite(Component message) {
         if (message == null) {
             return null;
         }
@@ -55,7 +55,7 @@ public final class ChatTextRewriter {
         }
         replacements.sort(Comparator.comparingInt(Replacement::start));
 
-        MutableText out = Text.literal("");
+        MutableComponent out = Component.literal("");
         int pos = 0;
         for (Replacement replacement : replacements) {
             if (replacement.start() < pos) {
@@ -64,7 +64,7 @@ public final class ChatTextRewriter {
             if (replacement.start() > pos) {
                 out.append(rich.slice(pos, replacement.start()).toText());
             }
-            out.append(Text.translatable(replacement.langKey()).setStyle(replacement.style()));
+            out.append(Component.translatable(replacement.langKey()).setStyle(replacement.style()));
             pos = replacement.end();
         }
         if (pos < full.length()) {
@@ -80,35 +80,35 @@ public final class ChatTextRewriter {
      *
      * @param ownName real profile name used as the sender for outgoing echoes
      */
-    public static Text rewritePrivate(Text message, String ownName) {
-        if (!(message.getContent() instanceof TranslatableTextContent tc)) {
+    public static Component rewritePrivate(Component message, String ownName) {
+        if (!(message.getContents() instanceof TranslatableContents tc)) {
             return null;
         }
         String key = tc.getKey();
         Object[] args = tc.getArgs();
-        Text name;
-        Text content;
+        Component name;
+        Component content;
         if (key.equals("commands.message.display.incoming") && args.length >= 2) {
             name = asText(args[0]);
             content = asText(args[1]);
         } else if (key.equals("commands.message.display.outgoing") && args.length >= 2) {
-            name = ownName == null || ownName.isBlank() ? Text.literal("") : Text.literal(ownName);
+            name = ownName == null || ownName.isBlank() ? Component.literal("") : Component.literal(ownName);
             content = asText(args[1]);
         } else {
             return null;
         }
-        MutableText out = Text.literal("<");
+        MutableComponent out = Component.literal("<");
         out.append(name);
         out.append(">");
-        out.append(Text.translatable("atomchat.banner.whisper")
+        out.append(Component.translatable("atomchat.banner.whisper")
                 .setStyle(Style.EMPTY.withColor(0xFF55FF)));
         out.append(" ");
         out.append(content);
         return out;
     }
 
-    private static Text asText(Object arg) {
-        return arg instanceof Text text ? text : Text.literal(String.valueOf(arg));
+    private static Component asText(Object arg) {
+        return arg instanceof Component text ? text : Component.literal(String.valueOf(arg));
     }
 
     private static List<Replacement> findReplacements(String full) {

@@ -27,9 +27,9 @@ import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.skija.Path;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.Rect;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.Component;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -104,7 +104,7 @@ public final class ConversationListPage {
     }
 
     private static String tr(String key, Object... args) {
-        return Text.translatable(key, args).getString();
+        return Component.translatable(key, args).getString();
     }
 
     private static float s(float v) {
@@ -142,7 +142,7 @@ public final class ConversationListPage {
     }
 
     private List<Row> buildRows() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         List<Row> all = new ArrayList<>();
         all.add(new Row(RowKind.PUBLIC, null, latestPublic(), ChatStore.publicUnread(), true, false));
 
@@ -193,12 +193,12 @@ public final class ConversationListPage {
     }
 
     private static List<PlayerRef> onlinePlayers() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.getNetworkHandler() == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.getConnection() == null) {
             return List.of();
         }
         List<PlayerRef> out = new ArrayList<>();
-        for (PlayerListEntry entry : client.getNetworkHandler().getPlayerList()) {
+        for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
             String name = entry.getProfile().getName();
             if (name == null || name.isBlank()) {
                 continue;
@@ -212,11 +212,11 @@ public final class ConversationListPage {
         if (player == null) {
             return false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.getNetworkHandler() == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.getConnection() == null) {
             return false;
         }
-        for (PlayerListEntry entry : client.getNetworkHandler().getPlayerList()) {
+        for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
             if (player.uuid() != null && player.uuid().equals(entry.getProfile().getId())) {
                 return true;
             }
@@ -227,11 +227,11 @@ public final class ConversationListPage {
         return false;
     }
 
-    private static PlayerRef ownRef(MinecraftClient client) {
+    private static PlayerRef ownRef(Minecraft client) {
         if (client == null || client.player == null) {
             return null;
         }
-        return PlayerRef.of(client.player.getUuid(), client.player.getName().getString());
+        return PlayerRef.of(client.player.getUUID(), client.player.getName().getString());
     }
 
     public float measureContent(UiLayout layout) {

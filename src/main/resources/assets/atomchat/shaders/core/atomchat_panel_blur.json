@@ -4,8 +4,8 @@
     "srcrgb": "srcalpha",
     "dstrgb": "1-srcalpha"
   },
-  "vertex": "atomchat_panel_blur",
-  "fragment": "atomchat_panel_blur",
+  "vertex": "atomchat:atomchat_panel_blur",
+  "fragment": "atomchat:atomchat_panel_blur",
   "samplers": [
     { "name": "Sampler0" }
   ],

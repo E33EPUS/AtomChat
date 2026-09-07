@@ -14,8 +14,8 @@ import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.types.Rect;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -106,7 +106,7 @@ public final class EmojiPanel {
     public EmojiPanel(Host host) {
         this.host = host;
         this.emoteStore = new EmoteStore(
-                net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("atomchat/emotes"));
+                net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/emotes"));
     }
 
     public boolean isOpen() {
@@ -327,7 +327,7 @@ public final class EmojiPanel {
     private static String[] tabLabels() {
         String[] labels = new String[TAB_KEYS.length];
         for (int i = 0; i < labels.length; i++) {
-            labels[i] = Text.translatable(TAB_KEYS[i]).getString();
+            labels[i] = Component.translatable(TAB_KEYS[i]).getString();
         }
         return labels;
     }

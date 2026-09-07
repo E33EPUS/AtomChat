@@ -1,6 +1,6 @@
 package com.atom.chat.text;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -11,12 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ChatTextRewriterTest {
     @Test
     void rewriteReturnsNullForPlainText() {
-        assertNull(ChatTextRewriter.rewrite(Text.literal("<Steve> hello")));
+        assertNull(ChatTextRewriter.rewrite(Component.literal("<Steve> hello")));
     }
 
     @Test
     void rewriteImageCodeReplacesRawCicode() {
-        Text rewritten = ChatTextRewriter.rewrite(Text.literal(
+        Component rewritten = ChatTextRewriter.rewrite(Component.literal(
                 "<Steve> [[CICode,url=https://example.com/a.png,name=a.png]]"));
         assertNotNull(rewritten);
         assertFalse(rewritten.getString().contains("[[CICode"));
@@ -25,7 +25,7 @@ class ChatTextRewriterTest {
 
     @Test
     void rewriteQuoteStripsQuotePrefix() {
-        Text rewritten = ChatTextRewriter.rewrite(Text.literal(
+        Component rewritten = ChatTextRewriter.rewrite(Component.literal(
                 "<Steve> 「引用 @Bob: old message」hello"));
         assertNotNull(rewritten);
         assertFalse(rewritten.getString().contains("「引用"));
@@ -35,6 +35,6 @@ class ChatTextRewriterTest {
 
     @Test
     void rewriteDoesNotTouchMentionInMiddleOfSentence() {
-        assertNull(ChatTextRewriter.rewrite(Text.literal("<Steve> I said 「引用 @Bob: hi」 just now")));
+        assertNull(ChatTextRewriter.rewrite(Component.literal("<Steve> I said 「引用 @Bob: hi」 just now")));
     }
 }

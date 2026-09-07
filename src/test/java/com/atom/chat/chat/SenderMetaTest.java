@@ -1,7 +1,7 @@
 package com.atom.chat.chat;
 
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -25,8 +25,8 @@ class SenderMetaTest {
 
     @Test
     void carriesStyledComponents() {
-        Text sender = Text.literal("Alice").setStyle(Style.EMPTY.withUnderline(true));
-        SenderMeta meta = new SenderMeta(null, "Alice", "Alice", "hi", false, sender, Text.literal("hi"));
+        Component sender = Component.literal("Alice").setStyle(Style.EMPTY.withUnderlined(true));
+        SenderMeta meta = new SenderMeta(null, "Alice", "Alice", "hi", false, sender, Component.literal("hi"));
         assertEquals(sender, meta.senderComponent());
     }
 

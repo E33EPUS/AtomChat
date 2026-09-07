@@ -4,9 +4,9 @@
 [![CurseForge](https://img.shields.io/curseforge/dt/1681271?label=CurseForge&color=f16436)](https://www.curseforge.com/minecraft/mc-mods/atomchat)
 [![Build](https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg)](https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml)
 
-为 Minecraft 带来手机 App 风格的聊天体验（Fabric 1.21.1，Skia 渲染）。以 [E33Chat](https://modrinth.com/mod/e33chat) 的设计思路为蓝本的独立重写。
+为 Minecraft 带来手机 App 风格的聊天体验（NeoForge 1.21.1，Skia 渲染）。以 [E33Chat](https://modrinth.com/mod/e33chat) 的设计思路为蓝本的独立重写。
 
-> 本分支是**源码分支**。完整用户文档（中文 / English）位于默认分支 [Master/README.md](https://github.com/E33EPUS/atomchat/blob/Master/README.md)。
+> 本分支是 **NeoForge 源码分支**。完整用户文档（中文 / English）位于默认分支 [Master/README.md](https://github.com/E33EPUS/atomchat/blob/Master/README.md)。
 
 ## 功能特性
 
@@ -24,7 +24,7 @@
 ./gradlew.bat test     # 仅测试
 ```
 
-产物：`build/libs/atomchat-Fabric-1.21.1-<version>.jar`。开发环境需要 JDK 21。
+产物：`build/libs/atomchat-NeoForge-1.21.1-<version>.jar`。开发环境需要 JDK 21。
 
 ### 包结构
 
@@ -39,7 +39,7 @@
 | `com.atom.chat.render` | Skia 渲染封装（绘制、富文本、动画器） |
 | `com.atom.chat.theme` / `wallpaper` / `avatar` / `image` | 主题预设、壁纸、头像、图片加载 |
 | `com.atom.chat.nav` | 导航栈与页面枚举 |
-| `net.minecraft.client.gui.screen.AtomChatScreen` | 屏幕壳：布局、路由装配、输入处理 |
+| `com.atom.chat.screen.AtomChatScreen` | 屏幕壳：布局、路由装配、输入处理 |
 
 ### 代码约定
 
@@ -62,7 +62,7 @@ CI 自动完成：构建测试 → GitHub Release（附 jar）→ Modrinth / Cur
 
 ## 依赖
 
-- Minecraft 1.21.1 + Fabric Loader + Fabric API
+- Minecraft 1.21.1 + NeoForge 21.1.235
 - Java 21+
 - Skija `0.116.8` / FlatLaf `3.7.2`（构建时打入 JAR）
 - 可选：WATUT（输入中指示）、IMBlocker（输入法桥）

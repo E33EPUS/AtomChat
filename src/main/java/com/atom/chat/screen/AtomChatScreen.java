@@ -1,4 +1,4 @@
-package net.minecraft.client.gui.screen;
+package com.atom.chat.screen;
 import com.atom.chat.AtomChat;
 
 import com.atom.chat.chat.BlockList;
@@ -67,17 +67,19 @@ import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.types.Rect;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.skija.SamplingMode;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.StringHelper;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.CommandSuggestions;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.StringUtil;
+import net.minecraft.util.Mth;
 import org.apache.commons.lang3.StringUtils;
-import net.fabricmc.loader.api.FabricLoader;
 
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFWDropCallback;
@@ -103,12 +105,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** How this screen was opened: from the vanilla chat box or from the AtomChat key. */
     public enum AtomChatOpenMode { DIRECT_WORLD, RESTORE }
 
+    private final Minecraft client = Minecraft.getInstance();
+    /** Command/mention suggestor anchored to the Skia input row. */
+    private CommandSuggestions chatInputSuggestor;
+
     private final NavigationStack<NavPage> navigation;
 
     private final ConversationListPage conversationListPage = new ConversationListPage(this);
     /** Local custom avatar for the profile page and own bubbles. */
     private final AvatarStore avatarStore = new AvatarStore(
-            FabricLoader.getInstance().getConfigDir().resolve("atomchat/avatar"));
+            net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/avatar"));
     /** QQ-style crop overlay for avatar and wallpaper picks. */
     private final ImageCropper imageCropper = new ImageCropper(new ImageCropper.Callback() {
         @Override
@@ -120,7 +126,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     // companion (presence is only YES after a data response).
                     if (client.player != null) {
                         com.atom.chat.net.AvatarCompanionClient.uploadOwnAvatar(
-                                client.player.getUuid(), pngBytes);
+                                client.player.getUUID(), pngBytes);
                     }
                 }
             } else if ("wallpaper".equals(targetId)) {
@@ -168,8 +174,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // companion can answer for them.
         profilePage.setRoleResolver((uuid, name) -> {
             if (uuid != null && this.client.player != null
-                    && uuid.equals(this.client.player.getUuid())) {
-                return this.client.player.hasPermissionLevel(2);
+                    && uuid.equals(this.client.player.getUUID())) {
+                return this.client.player.hasPermissions(2);
             }
             return null;
         });
@@ -210,9 +216,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** Picks a wallpaper image off-thread; the store mutation returns to render. */
     private void pickWallpaperFile() {
-        KeyBinding.unpressAll();
-        if (this.client.mouse != null) {
-            ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+        KeyMapping.releaseAll();
+        if (this.client.mouseHandler != null) {
+            ((MouseHandlerAccessor) this.client.mouseHandler).atomchat$setActiveButton(0);
         }
         Thread worker = new Thread(() -> {
             Path file = FilePicker.pickImage(this::suppressAutoIconify, this::restoreAutoIconify,
@@ -233,9 +239,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
     /** Picks a custom avatar off-thread; the cropper opens on the render side. */
     private void pickAvatarFile() {
-        KeyBinding.unpressAll();
-        if (this.client.mouse != null) {
-            ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+        KeyMapping.releaseAll();
+        if (this.client.mouseHandler != null) {
+            ((MouseHandlerAccessor) this.client.mouseHandler).atomchat$setActiveButton(0);
         }
         Thread worker = new Thread(() -> {
             Path file = FilePicker.pickImage(this::suppressAutoIconify, this::restoreAutoIconify,
@@ -280,7 +286,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final MessageListView messageListView = new MessageListView(new MessageListView.Host() {
         @Override
         public UUID ownUuid() {
-            return client.player != null ? client.player.getUuid() : null;
+            return client.player != null ? client.player.getUUID() : null;
         }
 
         @Override
@@ -568,7 +574,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private boolean isVanillaChatKey(int keyCode, int scanCode) {
-        return client != null && client.options.chatKey.matchesKey(keyCode, scanCode);
+        return client != null && client.options.keyChat.matches(keyCode, scanCode);
     }
 
     /**
@@ -852,15 +858,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** Persists the hidden EditBox draft to the page that is currently open. */
     private void saveCurrentDraft() {
-        if (chatField == null) {
+        if (input == null) {
             return;
         }
         if (topPage() == AppPage.WORLD_CHAT) {
-            worldDraft = chatField.getText();
+            worldDraft = input.getValue();
         } else if (topPage() == AppPage.PRIVATE_CHAT) {
             PlayerRef target = activePrivateTarget();
             if (target != null) {
-                privateDrafts.put(target.key(), chatField.getText());
+                privateDrafts.put(target.key(), input.getValue());
             }
         }
     }
@@ -876,16 +882,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return;
         }
         String draft = privateDrafts.getOrDefault(target.key(), "");
-        if (chatField != null) {
-            chatField.setText(draft);
-            chatField.setCursorToStart(false);
+        if (input != null) {
+            input.setValue(draft);
+            input.moveCursorToStart(false);
         }
     }
 
     private void loadWorldDraft() {
-        if (chatField != null) {
-            chatField.setText(worldDraft);
-            chatField.setCursorToStart(false);
+        if (input != null) {
+            input.setValue(worldDraft);
+            input.moveCursorToStart(false);
         }
     }
 
@@ -920,7 +926,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         if (closing && System.currentTimeMillis() - closeStart >= OPEN_ANIM_MS) {
             this.client.setScreen(null);
             return;
@@ -935,7 +941,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         blurDrawnThisFrame = false;
         boolean blurWanted = AtomChatConfig.get().blurEnabled && !WallpaperStore.isSet();
         if (blurWanted) {
-            PanelBlurRenderer.ensureLoaded();
+            // Shaders are registered through RegisterShadersEvent.
         }
 
         graphics.checkFrameBufferId();
@@ -951,14 +957,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     float vh = panelHeight() - strokeWidth * 2.0F;
                     float vRadius = UiTokens.panelRadius() - strokeWidth;
                     double density = uiDensity();
-                    double scaleFactor = this.client.getWindow().getScaleFactor();
+                    double scaleFactor = this.client.getWindow().getGuiScale();
                     float gx = (float) (vx * density / scaleFactor);
                     float gy = (float) (vy * density / scaleFactor);
                     float gw = (float) (vw * density / scaleFactor);
                     float gh = (float) (vh * density / scaleFactor);
                     float gr = (float) (vRadius * density / scaleFactor);
                     blurDrawnThisFrame = PanelBlurRenderer.render(
-                            context.getMatrices().peek().getPositionMatrix(),
+                            context.pose().last().pose(),
                             gx, gy, gw, gh, gr, panelProgress);
                 } catch (Throwable t) {
                     AtomChat.LOGGER.warn("AtomChat panel blur pre-pass failed, using solid background", t);
@@ -975,7 +981,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         // correctly; its text/cursor are drawn by Skia above. The suggestion popup
         // still renders through the vanilla pipeline on top. Root pages do not
         // show the composer, so none of this may run outside WORLD_CHAT.
-        if (!closing && chatField != null && isWorldChatPage()) {
+        if (!closing && input != null && isWorldChatPage()) {
             positionInputField(layout());
             if (chatInputSuggestor != null) {
                 chatInputSuggestor.render(context, mouseX, mouseY);
@@ -990,7 +996,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 : null;
         Style hovered = hoveredSpan != null ? hoveredSpan.style() : null;
         if (hovered != null && hovered.getHoverEvent() != null) {
-            context.drawHoverEvent(this.textRenderer, hovered, mouseX, mouseY);
+            context.renderComponentHoverEffect(this.font, hovered, mouseX, mouseY);
         }
     }
 
@@ -1024,15 +1030,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** Collapses the suggestion popup and clears the gray ghost suffix. */
     private void dismissSuggestor() {
         if (chatInputSuggestor != null) {
-            chatInputSuggestor.setWindowActive(false);
-            chatField.setSuggestion(null);
+            chatInputSuggestor.hide();
+            input.setSuggestion(null);
         }
     }
 
     /** GUI-space anchor for the suggestion window: bottom edge of the popup. */
     private int anchorInputTopY() {
         double density = uiDensity();
-        double scaleFactor = this.client.getWindow().getScaleFactor();
+        double scaleFactor = this.client.getWindow().getGuiScale();
         // The popup must clear the whole input bar (button row + text row),
         // not just the caret line; otherwise it overlaps the bar's top half.
         return (int) Math.round((layout().inputBar.y() - s(4)) * density / scaleFactor);
@@ -1040,13 +1046,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private int anchorInputLeftX() {
         double density = uiDensity();
-        double scaleFactor = this.client.getWindow().getScaleFactor();
+        double scaleFactor = this.client.getWindow().getGuiScale();
         return (int) Math.round((layout().inputBar.x() + UiTokens.INPUT_TEXT_X) * density / scaleFactor);
     }
 
     private void positionInputField(UiLayout layout) {
         double density = uiDensity();
-        double scaleFactor = this.client.getWindow().getScaleFactor();
+        double scaleFactor = this.client.getWindow().getGuiScale();
         // The hidden EditBox is what anchors the native IME composition window.
         // EditBox computes its screen caret as fieldX + vanilla-font prefix
         // width, while AtomChat draws the committed text with Skia. Shift the
@@ -1060,19 +1066,19 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         float skiaLinePrefixVirtual = SkiaFontRenderer.getStringWidth(inputFont, linePrefix);
         int desiredGuiX = (int) Math.round((layout.inputBar.x() + UiTokens.INPUT_TEXT_X + skiaLinePrefixVirtual)
                 * density / scaleFactor);
-        int vanillaWholePrefixGuiWidth = this.client.textRenderer.getWidth(wholePrefix);
-        chatField.setX(desiredGuiX - vanillaWholePrefixGuiWidth);
+        int vanillaWholePrefixGuiWidth = this.client.font.width(wholePrefix);
+        input.setX(desiredGuiX - vanillaWholePrefixGuiWidth);
         // IMBlocker bridge: English IME while a command is being typed
         // (e33chat parity). Change-guarded — the reflection call only fires
         // when the command/native state actually flips.
         boolean commandMode = current.startsWith("/");
         if (commandMode != imeEnglishState) {
             imeEnglishState = commandMode;
-            com.atom.chat.compat.IMBlockerCompat.setCommandMode(chatField, commandMode);
+            com.atom.chat.compat.IMBlockerCompat.setCommandMode(input, commandMode);
         }
-        chatField.setY((int) Math.round(caretLineTopY() * density / scaleFactor));
-        chatField.setWidth((int) Math.max(10.0F, Math.round((layout.inputBar.w() - UiTokens.INPUT_TEXT_X * 2.0F) * density / scaleFactor)));
-        chatField.setHeight((int) Math.round(inputLineHeight() * density / scaleFactor));
+        input.setY((int) Math.round(caretLineTopY() * density / scaleFactor));
+        input.setWidth((int) Math.max(10.0F, Math.round((layout.inputBar.w() - UiTokens.INPUT_TEXT_X * 2.0F) * density / scaleFactor)));
+        input.setHeight((int) Math.round(inputLineHeight() * density / scaleFactor));
     }
 
     /**
@@ -1090,7 +1096,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         int from = Math.min(inputScrollLine, Math.max(0, total - shown));
         float lineH = inputLineHeight();
         float firstTop = layout.inputTextCenterY - lineH / 2.0F;
-        int row = MathHelper.clamp((int) Math.floor((vmy - firstTop) / lineH), 0, shown - 1);
+        int row = Mth.clamp((int) Math.floor((vmy - firstTop) / lineH), 0, shown - 1);
         int line = Math.min(from + row, total - 1);
         int lineStart = 0;
         for (int i = 0; i < line; i++) {
@@ -1131,12 +1137,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         for (int i = 0; i < line; i++) {
             lineStart += lines.get(i).length();
         }
-        int col = MathHelper.clamp(caret - lineStart, 0, lines.get(line).length());
+        int col = Mth.clamp(caret - lineStart, 0, lines.get(line).length());
         return lines.get(line).substring(0, col);
     }
 
     @Override
-    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphics context, int mouseX, int mouseY, float delta) {
         // World stays fully visible, same as vanilla chat; the panel provides its own background.
     }
 
@@ -1145,11 +1151,19 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         super.init();
         // Swap the vanilla suggestor for our anchored one on the same chat field;
         // ChatScreen's changed listener drives whatever sits in chatInputSuggestor.
-        this.chatInputSuggestor = new AtomChatSuggestor(this.client, this, this.chatField,
-                this.client.textRenderer, false, false, 1, 10, true, -805306368,
+        this.chatInputSuggestor = new AtomChatSuggestor(this.client, this, this.input,
+                this.client.font, false, false, 1, 10, true, -805306368,
                 this::anchorInputTopY, this::anchorInputLeftX);
-        this.chatInputSuggestor.setCanLeave(false);
-        this.chatInputSuggestor.setWindowActive(false);
+        this.chatInputSuggestor.setAllowHiding(false);
+        this.chatInputSuggestor.hide();
+        // Drive our anchored suggestor from the same EditBox responder vanilla
+        // ChatScreen would use for its package-private commandSuggestions.
+        this.input.setResponder(text -> {
+            if (this.chatInputSuggestor != null) {
+                this.chatInputSuggestor.setAllowSuggestions(!text.equals(originalChatText));
+                this.chatInputSuggestor.updateCommandInfo();
+            }
+        });
         // init() also runs on every resize, hence the guard inside.
         installDropCallback();
     }
@@ -1158,26 +1172,26 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private String phraseSavedComposer = "";
 
     private String inputGetText() {
-        return chatField != null ? chatField.getText() : "";
+        return input != null ? input.getValue() : "";
     }
 
     private void inputSetText(String text) {
-        if (chatField != null) {
-            chatField.setText(text == null ? "" : text);
+        if (input != null) {
+            input.setValue(text == null ? "" : text);
         }
     }
 
     private void inputAppend(String text) {
-        if (chatField == null) {
+        if (input == null) {
             return;
         }
-        String current = chatField.getText();
+        String current = input.getValue();
         if (current.length() + text.length() <= 256) {
-            chatField.setText(current + text);
+            input.setValue(current + text);
         }
         inputFocused = true;
-        setFocused(chatField);
-        chatField.setFocused(true);
+        setFocused(input);
+        input.setFocused(true);
     }
 
     // ---- quick-phrase edit borrows the composer field (the IME carrier) ----
@@ -1199,8 +1213,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             quickPhrasePanel.startEdit(target);
         }
         inputFocused = true;
-        setFocused(chatField);
-        chatField.setFocused(true);
+        setFocused(input);
+        input.setFocused(true);
         setCaretAtEnd();
     }
 
@@ -1227,8 +1241,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private void setCaretAtEnd() {
-        if (chatField != null) {
-            chatField.setCursor(chatField.getText().length(), false);
+        if (input != null) {
+            input.moveCursorTo(input.getValue().length(), false);
         }
     }
 
@@ -1282,7 +1296,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return;
         }
         try {
-            dropCallback = GLFW.glfwSetDropCallback(this.client.getWindow().getHandle(),
+            dropCallback = GLFW.glfwSetDropCallback(this.client.getWindow().getWindow(),
                     (win, count, names) -> onFilesDropped(count, names));
         } catch (Throwable t) {
             AtomChat.LOGGER.warn("Failed to install the file drop callback", t);
@@ -1294,7 +1308,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return;
         }
         try {
-            GLFW.glfwSetDropCallback(this.client.getWindow().getHandle(), null);
+            GLFW.glfwSetDropCallback(this.client.getWindow().getWindow(), null);
             dropCallback.free();
         } catch (Throwable t) {
             AtomChat.LOGGER.warn("Failed to remove the file drop callback", t);
@@ -1341,9 +1355,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private void drawPanel(Canvas canvas, float x, float y, Image worldSnapshot, int mouseX, int mouseY, float delta) {
-        inputFocused = chatField != null && chatField.isFocused();
-        if (isPrivateReadOnly() && chatField != null) {
-            chatField.setFocused(false);
+        inputFocused = input != null && input.isFocused();
+        if (isPrivateReadOnly() && input != null) {
+            input.setFocused(false);
             inputFocused = false;
         }
         long nowMs = System.currentTimeMillis();
@@ -1695,7 +1709,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                             SkiaFontRenderer.centerBaselineY(inputFont, cy), textPrimary());
                 }
             }
-            if (inputFocused && chatField != null && (System.currentTimeMillis() / 500L) % 2L == 0L) {
+            if (inputFocused && input != null && (System.currentTimeMillis() / 500L) % 2L == 0L) {
                 int caret = caretIndex();
                 float cursorY;
                 String measure;
@@ -1708,7 +1722,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     for (int i = 0; i < caretRow; i++) {
                         lineStart += lines.get(i).length();
                     }
-                    int col = MathHelper.clamp(caret - lineStart, 0, lines.get(caretRow).length());
+                    int col = Mth.clamp(caret - lineStart, 0, lines.get(caretRow).length());
                     cursorY = layout.inputTextCenterY + (caretRow - from) * lineH;
                     measure = lines.get(caretRow).substring(0, col);
                 }
@@ -1899,7 +1913,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return 1.0F;
         }
         float pos = rootTabAnim.getValue();
-        return MathHelper.clamp((from - pos) / (float) (from - to), 0.0F, 1.0F);
+        return Mth.clamp((from - pos) / (float) (from - to), 0.0F, 1.0F);
     }
 
     private AppPage rootPageForIndex(int index) {
@@ -1988,7 +2002,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** Minecraft language lookup for all AtomChat UI copy. */
     private static String tr(String key, Object... args) {
-        return Text.translatable(key, args).getString();
+        return Component.translatable(key, args).getString();
     }
 
     private void drawIconButton(Canvas canvas, float bx, float by, int id, int mouseX, int mouseY) {
@@ -2066,12 +2080,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      */
     private void drawInputSelection(Canvas canvas, Font font, List<String> lines, int from, int shown,
                                     float textX, float centerY, float lineH) {
-        if (chatField == null || lines.isEmpty()) {
+        if (input == null || lines.isEmpty()) {
             return;
         }
         int len = inputGetText().length();
-        int a = MathHelper.clamp(chatField.selectionStart, 0, len);
-        int b = MathHelper.clamp(chatField.selectionEnd, 0, len);
+        int a = Mth.clamp(input.cursorPos, 0, len);
+        int b = Mth.clamp(input.highlightPos, 0, len);
         int selStart = Math.min(a, b);
         int selEnd = Math.max(a, b);
         if (selStart >= selEnd) {
@@ -2144,7 +2158,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         int r = (int) (255 + (ar - 255) * controller.getScrollActive());
         int g = (int) (255 + (ag - 255) * controller.getScrollActive());
         int bch = (int) (255 + (ab - 255) * controller.getScrollActive());
-        int alpha = MathHelper.clamp((int) ((170 + 60 * controller.getScrollEmphasis())
+        int alpha = Mth.clamp((int) ((170 + 60 * controller.getScrollEmphasis())
                 * controller.getScrollBarAlpha()), 0, 255);
         int color = (alpha << 24) | (r << 16) | (g << 8) | bch;
         float trackX = list.right() - trackW - s(2);
@@ -2203,9 +2217,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      * thread; the store mutation hops back to the render thread.
      */
     private void pickEmoteFile() {
-        KeyBinding.unpressAll();
-        if (this.client.mouse != null) {
-            ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+        KeyMapping.releaseAll();
+        if (this.client.mouseHandler != null) {
+            ((MouseHandlerAccessor) this.client.mouseHandler).atomchat$setActiveButton(0);
         }
         Thread worker = new Thread(() -> {
             Path file = FilePicker.pickImage(this::suppressAutoIconify, this::restoreAutoIconify,
@@ -2394,11 +2408,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (player == null) {
             return false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.getNetworkHandler() == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.getConnection() == null) {
             return false;
         }
-        for (PlayerListEntry entry : client.getNetworkHandler().getPlayerList()) {
+        for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
             if (player.uuid() != null && player.uuid().equals(entry.getProfile().getId())) {
                 return true;
             }
@@ -2481,7 +2495,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         // auto: probe the server command tree, fall back on failure replies.
         String command = TeleportCommands.commandFor(client, AtomChatConfig.get().teleportCommandMode);
-        this.client.player.networkHandler.sendChatCommand(command.substring(1) + " " + player.realName());
+        this.client.player.connection.sendCommand(command.substring(1) + " " + player.realName());
         TeleportCommands.noteTeleportSent();
     }
 
@@ -2495,7 +2509,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private void copyToClipboard(String text) {
         try {
-            this.client.keyboard.setClipboard(text);
+            this.client.keyboardHandler.setClipboard(text);
         } catch (Throwable t) {
             // Never let a clipboard failure abort the click handler: it used to
             // leave the menu stuck open with no clue why.
@@ -2554,9 +2568,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private void pickAndUploadImage() {
         // The native AWT dialog grabs OS input; release MC's held keys/button so
         // the UI does not think the image button is still pressed when it returns.
-        KeyBinding.unpressAll();
-        if (this.client.mouse != null) {
-            ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+        KeyMapping.releaseAll();
+        if (this.client.mouseHandler != null) {
+            ((MouseHandlerAccessor) this.client.mouseHandler).atomchat$setActiveButton(0);
         }
         Thread worker = new Thread(() -> {
             Path file = FilePicker.pickImage(this::suppressAutoIconify, this::restoreAutoIconify);
@@ -2694,7 +2708,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private void setAutoIconify(boolean value) {
         runOnRender(() -> {
             try {
-                GLFW.glfwSetWindowAttrib(this.client.getWindow().getHandle(),
+                GLFW.glfwSetWindowAttrib(this.client.getWindow().getWindow(),
                         GLFW.GLFW_AUTO_ICONIFY, value ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
             } catch (Throwable t) {
                 AtomChat.LOGGER.warn("Failed to toggle GLFW_AUTO_ICONIFY for the image picker", t);
@@ -2726,12 +2740,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      */
     private void refocusWindow() {
         this.client.execute(() -> {
-            KeyBinding.unpressAll();
-            if (this.client.mouse != null) {
-                ((MouseHandlerAccessor) this.client.mouse).atomchat$setActiveButton(0);
+            KeyMapping.releaseAll();
+            if (this.client.mouseHandler != null) {
+                ((MouseHandlerAccessor) this.client.mouseHandler).atomchat$setActiveButton(0);
             }
             try {
-                GLFW.glfwFocusWindow(this.client.getWindow().getHandle());
+                GLFW.glfwFocusWindow(this.client.getWindow().getWindow());
             } catch (Throwable t) {
                 AtomChat.LOGGER.warn("Failed to refocus the window after the image picker", t);
             }
@@ -2776,7 +2790,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
         boolean command = normalized.startsWith("/");
         if (command) {
-            this.client.player.networkHandler.sendChatCommand(normalized.substring(1));
+            this.client.player.connection.sendCommand(normalized.substring(1));
         } else {
             if (!normalized.startsWith("「引用")
                     && (normalized.startsWith("http://") || normalized.startsWith("https://"))
@@ -2784,17 +2798,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     && ImageFiles.isImageUrl(normalized)) {
                 normalized = "[[CICode,url=" + normalized + ",name=图片]]";
             }
-            this.client.player.networkHandler.sendChatMessage(normalized);
+            this.client.player.connection.sendChat(normalized);
         }
-        this.client.inGameHud.getChatHud().addToMessageHistory(normalized);
+        this.client.gui.getChat().addRecentChat(normalized);
         // Vanilla never echoes commands back into the chat feed as your own
         // message, so do not manufacture a local bubble for them either.
         // Non-command chat still gets an immediate local echo so the UI feels
         // like a phone messenger even before the server relays the message.
         if (!command) {
-            UUID ownUuid = this.client.player.getUuid();
+            UUID ownUuid = this.client.player.getUUID();
             String ownProfile = this.client.player.getName().getString();
-            ChatStore.get().add(new ChatMessage(Text.literal(normalized), true, false, quoteName, quoteText,
+            ChatStore.get().add(new ChatMessage(Component.literal(normalized), true, false, quoteName, quoteText,
                     ownUuid, ownProfile, ownProfile, normalized));
         }
         inputSetText("");
@@ -2811,15 +2825,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         String historyText = normalized;
         String sendText = command ? normalized
                 : "/msg " + target.realName() + " " + normalized;
-        this.client.player.networkHandler.sendChatCommand(sendText.startsWith("/")
+        this.client.player.connection.sendCommand(sendText.startsWith("/")
                 ? sendText.substring(1) : sendText);
-        this.client.inGameHud.getChatHud().addToMessageHistory(historyText);
+        this.client.gui.getChat().addRecentChat(historyText);
 
         if (!command) {
-            UUID ownUuid = this.client.player.getUuid();
+            UUID ownUuid = this.client.player.getUUID();
             String ownProfile = this.client.player.getName().getString();
             PrivateChatStore.addOutgoing(target,
-                    new ChatMessage(Text.literal(historyText), true, false,
+                    new ChatMessage(Component.literal(historyText), true, false,
                             replyTarget != null ? messageSenderName(replyTarget) : null,
                             replyTarget != null ? quoteTextFor(replyTarget) : null,
                             ownUuid, ownProfile, ownProfile, historyText));
@@ -2832,7 +2846,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private static String normalizeInput(String text) {
-        return StringHelper.truncateChat(StringUtils.normalizeSpace(text.trim()));
+        return StringUtil.trimChatMessage(StringUtils.normalizeSpace(text.trim()));
     }
 
 
@@ -2883,7 +2897,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         return AtomChatConfig.get().textSecondaryColor;
     }
 
-    /** Text inside a chat bubble (body rich text and quoted text). */
+    /** Component inside a chat bubble (body rich text and quoted text). */
     private int bubbleText(ChatMessage msg) {
         return msg != null && msg.isOwn()
                 ? AtomChatConfig.get().bubbleTextColor
@@ -2911,7 +2925,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      */
     private float uiDensity() {
         var window = this.client.getWindow();
-        float base = Math.max(1.0F, window.getFramebufferHeight() / 1080.0F);
+        float base = Math.max(1.0F, window.getHeight() / 1080.0F);
         return base * Math.max(0.5F, AtomChatConfig.get().uiScale);
     }
 
@@ -2922,11 +2936,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private float vw() {
-        return this.client.getWindow().getFramebufferWidth() / uiDensity();
+        return this.client.getWindow().getWidth() / uiDensity();
     }
 
     private float vh() {
-        return this.client.getWindow().getFramebufferHeight() / uiDensity();
+        return this.client.getWindow().getHeight() / uiDensity();
     }
 
     private float panelX() {
@@ -3008,7 +3022,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private int caretIndex() {
-        return chatField == null ? 0 : MathHelper.clamp(chatField.getCursor(), 0, inputGetText().length());
+        return input == null ? 0 : Mth.clamp(input.getCursorPosition(), 0, inputGetText().length());
     }
 
     /** Keeps the caret's line inside the visible window, clamping to the ends. */
@@ -3043,15 +3057,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     private float toVirtualX(double guiX) {
-        return (float) (guiX * this.client.getWindow().getScaleFactor() / uiDensity());
+        return (float) (guiX * this.client.getWindow().getGuiScale() / uiDensity());
     }
 
     private float toVirtualY(double guiY) {
-        return (float) (guiY * this.client.getWindow().getScaleFactor() / uiDensity());
+        return (float) (guiY * this.client.getWindow().getGuiScale() / uiDensity());
     }
 
     @Override
-    public boolean shouldPause() {
+    public boolean isPauseScreen() {
         return false;
     }
 
@@ -3168,7 +3182,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     } else if (keyCode == 67 && (modifiers & 2) != 0) {
                         copyToClipboard(colorPicker.copyHex());
                     } else if (keyCode == GLFW_KEY_V && (modifiers & 2) != 0) {
-                        colorPicker.pasteHex(AtomChatScreen.this.client.keyboard.getClipboard());
+                        colorPicker.pasteHex(AtomChatScreen.this.client.keyboardHandler.getClipboard());
                     }
                 } else if (keyCode == 256) {
                     colorPicker.cancel();
@@ -3552,8 +3566,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     } else if (row == 1) {
                         replyTarget = contextMessage;
                         inputFocused = true;
-                        setFocused(chatField);
-                        chatField.setFocused(true);
+                        setFocused(input);
+                        input.setFocused(true);
                     } else {
                         saveImage(contextMessage);
                     }
@@ -3598,23 +3612,23 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             dismissSuggestor();
             if (button == 0 && layout.inputBar.contains((float) mx, (float) my)) {
                 inputFocused = true;
-                setFocused(chatField);
-                chatField.setFocused(true);
+                setFocused(input);
+                input.setFocused(true);
                 // Click-to-position / drag-select on the multi-line Skia input:
                 // map the virtual point to a text index ourselves (the hidden
                 // EditBox geometry is caret-shifted and single-line, useless here).
                 int idx = inputCaretIndexAt(layout, (float) mx, (float) my);
                 if (hasShiftDown() && inputDragAnchor >= 0) {
-                    chatField.setSelectionEnd(idx);
+                    input.setHighlightPos(idx);
                 } else {
                     inputDragAnchor = idx;
-                    chatField.setCursor(idx, false);
+                    input.moveCursorTo(idx, false);
                 }
                 inputDragging = true;
                 return true;
             }
             setFocused(null);
-            chatField.setFocused(false);
+            input.setFocused(false);
 
             // Scrollbar drag start
             if (button == 0 && overScrollbarTrack(layout, mx, my, currentScroll())) {
@@ -3722,9 +3736,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 return false;
             }
             // Input drag selection: extend from the press anchor to the pointer.
-            if (inputDragging && button == 0 && chatField != null) {
+            if (inputDragging && button == 0 && input != null) {
                 int idx = inputCaretIndexAt(layout(), toVirtualX(mouseX), toVirtualY(mouseY));
-                chatField.setSelectionEnd(idx);
+                input.setHighlightPos(idx);
                 return true;
             }
             // Any drag while a click is pending must suppress the click-on-release,
@@ -3768,7 +3782,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     inputDragging = false;
                 }
                 if (shouldClick) {
-                    handleTextClick(pending.style());
+                    handleComponentClicked(pending.style());
                     return true;
                 }
                 if (wasSelecting) {
@@ -3822,7 +3836,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (keyCode == 67 && (modifiers & 2) != 0 && messageListView.hasSelection()) {
                 String copied = messageListView.copySelection();
                 if (!copied.isEmpty()) {
-                    client.keyboard.setClipboard(copied);
+                    client.keyboardHandler.setClipboard(copied);
                 }
                 return true;
             }
@@ -3849,7 +3863,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // Up/Down become caret navigation as soon as the text wraps onto a second
             // line (>= INPUT_MAX_LINES). Once multiline, Up/Down never fall back to
             // vanilla chat history — that remains a single-line behaviour.
-            if (inputFocused && chatField != null && (keyCode == 265 || keyCode == 264)) {
+            if (inputFocused && input != null && (keyCode == 265 || keyCode == 264)) {
                 List<String> lines = wrappedInput(layout().inputTextMaxWidth());
                 if (lines.size() >= UiTokens.INPUT_MAX_LINES) {
                     int caret = caretIndex();
@@ -3866,9 +3880,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                         }
                         // Move straight up/down at the same visual column, clamped to
                         // the target line's length (standard text-editor behaviour).
-                        int col = MathHelper.clamp(caret - rowStart, 0, lines.get(row).length());
+                        int col = Mth.clamp(caret - rowStart, 0, lines.get(row).length());
                         int pos = targetStart + Math.min(col, lines.get(target).length());
-                        chatField.setCursor(pos, false);
+                        input.moveCursorTo(pos, false);
                     }
                     return true;
                 }
@@ -3876,7 +3890,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (inputFocused && AtomChatConfig.get().debug) {
                 AtomChat.LOGGER.info("keyPressed: {} (sc {}) mod {}", keyCode, scanCode, modifiers);
             }
-            // Falls through to super (ChatScreen): the focused chatField consumes
+            // Falls through to super (ChatScreen): the focused input consumes
             // backspace/ctrl+v/arrows/IME input; up/down drive vanilla chat history.
             return false;
         }
@@ -3888,7 +3902,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             }
             if (AtomChatConfig.get().debug) {
                 AtomChat.LOGGER.info("charTyped: '{}' (U+{}) focused={} field={}",
-                        chr, Integer.toHexString(chr), inputFocused, chatField != null && chatField.isFocused());
+                        chr, Integer.toHexString(chr), inputFocused, input != null && input.isFocused());
             }
             return false;
         }

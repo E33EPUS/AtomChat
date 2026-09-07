@@ -4,7 +4,7 @@ import com.atom.chat.AtomChat;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.wallpaper.WallpaperStore;
 import io.github.humbleui.skija.Color;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 import java.util.List;
 
@@ -134,7 +134,7 @@ public final class SettingsCatalog {
                             () -> AtomChatConfig.get().timestampIntervalMinutes,
                             v -> AtomChatConfig.get().timestampIntervalMinutes = Math.round(v),
                             v -> Math.round(v) == 0
-                                    ? Text.translatable("atomchat.settings.chat.timestamp.off").getString()
+                                    ? Component.translatable("atomchat.settings.chat.timestamp.off").getString()
                                     : Math.round(v) + " min"));
             default -> List.of();
         };

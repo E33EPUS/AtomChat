@@ -3,7 +3,7 @@ package com.atom.chat.image;
 import com.atom.chat.avatar.AvatarImage;
 import com.atom.chat.avatar.AvatarStore;
 import io.github.humbleui.skija.Image;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import java.util.UUID;
 
@@ -25,8 +25,8 @@ public final class OwnPlayerAvatarSource implements PlayerAvatarSource {
     /** The local player's uuid, or null when not in a world. Package-visible
      *  so the companion source can exclude the local player. */
     static UUID ownUuid() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        return client != null && client.player != null ? client.player.getUuid() : null;
+        Minecraft client = Minecraft.getInstance();
+        return client != null && client.player != null ? client.player.getUUID() : null;
     }
 
     @Override

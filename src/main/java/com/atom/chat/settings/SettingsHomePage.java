@@ -16,7 +16,7 @@ import io.github.humbleui.skija.PaintStrokeCap;
 import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.skija.Path;
 import io.github.humbleui.types.Rect;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Settings home: a 2x2 grid of Windows-11-style tiles. Each tile is a large
@@ -154,7 +154,7 @@ public final class SettingsHomePage {
     }
 
     private static String tr(String key) {
-        return Text.translatable(key).getString();
+        return Component.translatable(key).getString();
     }
 
     private static void drawIconCentered(Canvas canvas, Path icon, float cx, float cy, float size, int color) {

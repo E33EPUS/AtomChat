@@ -1,8 +1,8 @@
 package com.atom.chat.chat;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.Component;
 
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -26,11 +26,11 @@ public final class ChatClassifier {
     private ChatClassifier() {
     }
 
-    public static String[] nameCandidates(PlayerListEntry info) {
+    public static String[] nameCandidates(PlayerInfo info) {
         Set<String> out = new LinkedHashSet<>();
         String profile = info.getProfile().getName();
         addNameVariants(out, profile);
-        Text tab = info.getDisplayName();
+        Component tab = info.getTabListDisplayName();
         if (tab != null) {
             addNameVariants(out, tab.getString().trim());
         }
@@ -56,8 +56,8 @@ public final class ChatClassifier {
      * claimed as player chat; anything else is UNKNOWN and may be inspected by
      * the tolerant text fallback.
      */
-    public static Route classifyByKey(Text message) {
-        if (message.getContent() instanceof net.minecraft.text.TranslatableTextContent tc) {
+    public static Route classifyByKey(Component message) {
+        if (message.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents tc) {
             String key = tc.getKey();
             if (isPlayerKey(key)) {
                 return Route.PLAYER;
@@ -76,7 +76,7 @@ public final class ChatClassifier {
      * @return true for vanilla system/broadcast lines that must never be claimed
      *         as player chat (advancements/deaths/joins/admin/emote/commands).
      */
-    public static boolean isVanillaBroadcast(Text message) {
+    public static boolean isVanillaBroadcast(Component message) {
         return classifyByKey(message) == Route.SYSTEM;
     }
 
@@ -126,16 +126,16 @@ public final class ChatClassifier {
     }
 
     /**
-     * Resolves a display name to an online PlayerListEntry. Exact match over all
+     * Resolves a display name to an online PlayerInfo. Exact match over all
      * name variants first, then longest contained profile/name for decorated
      * names like "[Title]Steve".
      */
-    public static PlayerListEntry resolveOnlinePlayer(String displayName) {
-        var player = MinecraftClient.getInstance().player;
-        if (player == null || player.networkHandler == null || displayName == null || displayName.isEmpty()) {
+    public static PlayerInfo resolveOnlinePlayer(String displayName) {
+        var player = Minecraft.getInstance().player;
+        if (player == null || player.connection == null || displayName == null || displayName.isEmpty()) {
             return null;
         }
-        var online = player.networkHandler.getPlayerList();
+        var online = player.connection.getOnlinePlayers();
         for (var info : online) {
             for (String cand : nameCandidates(info)) {
                 if (cand.equals(displayName)) {
@@ -143,7 +143,7 @@ public final class ChatClassifier {
                 }
             }
         }
-        PlayerListEntry best = null;
+        PlayerInfo best = null;
         int bestLen = 0;
         for (var info : online) {
             for (String cand : nameCandidates(info)) {
@@ -157,7 +157,7 @@ public final class ChatClassifier {
     }
 
     public static UUID resolveUuid(String displayName) {
-        PlayerListEntry info = resolveOnlinePlayer(displayName);
+        PlayerInfo info = resolveOnlinePlayer(displayName);
         if (info != null) {
             return info.getProfile().getId();
         }

@@ -13,9 +13,9 @@ import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
 import io.github.humbleui.skija.Canvas;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import net.minecraft.stat.Stat;
-import net.minecraft.stat.StatHandler;
-import net.minecraft.stat.Stats;
+import net.minecraft.stats.Stat;
+import net.minecraft.stats.StatsCounter;
+import net.minecraft.stats.Stats;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
@@ -26,9 +26,9 @@ import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.skija.Path;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.Rect;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -251,21 +251,21 @@ public final class ProfilePage {
         if (subject != null) {
             return subject.uuid();
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        return client.player != null ? client.player.getUuid() : null;
+        Minecraft client = Minecraft.getInstance();
+        return client.player != null ? client.player.getUUID() : null;
     }
 
     private String subjectName() {
         if (subject != null) {
             return subject.realName();
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         return client.player != null ? client.player.getName().getString() : "-";
     }
 
     private boolean subjectIsSelf() {
-        UUID own = MinecraftClient.getInstance().player != null
-                ? MinecraftClient.getInstance().player.getUuid() : null;
+        UUID own = Minecraft.getInstance().player != null
+                ? Minecraft.getInstance().player.getUUID() : null;
         return subject == null || (subjectUuid() != null && subjectUuid().equals(own));
     }
 
@@ -301,7 +301,7 @@ public final class ProfilePage {
     }
 
     private StatTotals statTotals() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player == null) {
             return null;
         }
@@ -309,18 +309,18 @@ public final class ProfilePage {
         if (statsCache != null && now - statsCacheMs < 1000L) {
             return statsCache;
         }
-        StatHandler stats = client.player.getStatHandler();
+        StatsCounter stats = client.player.getStats();
         long mined = 0L;
         long killed = 0L;
-        for (Object2IntMap.Entry<Stat<?>> entry : stats.statMap.object2IntEntrySet()) {
+        for (Object2IntMap.Entry<Stat<?>> entry : stats.stats.object2IntEntrySet()) {
             Stat<?> stat = entry.getKey();
-            if (stat.getType() == Stats.MINED) {
+            if (stat.getType() == Stats.BLOCK_MINED) {
                 mined += entry.getIntValue();
-            } else if (stat.getType() == Stats.KILLED) {
+            } else if (stat.getType() == Stats.ENTITY_KILLED) {
                 killed += entry.getIntValue();
             }
         }
-        long walkCm = stats.getStat(Stats.CUSTOM.getOrCreateStat(Stats.WALK_ONE_CM));
+        long walkCm = stats.getValue(Stats.CUSTOM.get(Stats.WALK_ONE_CM));
         statsCache = new StatTotals(mined, killed, walkCm);
         statsCacheMs = now;
         return statsCache;
@@ -349,11 +349,11 @@ public final class ProfilePage {
     }
 
     private static String tr(String key) {
-        return Text.translatable(key).getString();
+        return Component.translatable(key).getString();
     }
 
     private static String tr(String key, Object... args) {
-        return Text.translatable(key, args).getString();
+        return Component.translatable(key, args).getString();
     }
 
     /** One copyable info row. */
@@ -383,11 +383,11 @@ public final class ProfilePage {
      * three under the hero card, identity rows stay as grouped rows below.
      */
     private List<StatTile> statTiles() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         List<StatTile> tiles = new ArrayList<>();
         UUID uuid = subjectUuid();
-        PlayerListEntry entry = uuid != null && client.player != null && client.player.networkHandler != null
-                ? client.player.networkHandler.getPlayerListEntry(uuid)
+        PlayerInfo entry = uuid != null && client.player != null && client.player.connection != null
+                ? client.player.connection.getPlayerInfo(uuid)
                 : null;
         String ping = tr("atomchat.profile.ping.value", entry != null ? entry.getLatency() : -1);
         tiles.add(new StatTile(tr("atomchat.profile.ping"), ping, ping));
@@ -405,7 +405,7 @@ public final class ProfilePage {
     }
 
     private List<InfoRow> infoRows() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         List<InfoRow> rows = new ArrayList<>();
         UUID uuid = subjectUuid();
         String name = subjectName();
@@ -418,10 +418,10 @@ public final class ProfilePage {
                     tr(operator ? "atomchat.profile.role.op" : "atomchat.profile.role.member")));
         }
         String server;
-        if (client.getCurrentServerEntry() != null && client.getCurrentServerEntry().address != null
-                && !client.getCurrentServerEntry().address.isBlank()) {
-            server = client.getCurrentServerEntry().address;
-        } else if (client.getServer() != null) {
+        if (client.getCurrentServer() != null && client.getCurrentServer().ip != null
+                && !client.getCurrentServer().ip.isBlank()) {
+            server = client.getCurrentServer().ip;
+        } else if (client.getSingleplayerServer() != null) {
             server = tr("atomchat.profile.server.singleplayer");
         } else {
             server = "-";

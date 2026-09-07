@@ -26,7 +26,7 @@ import io.github.humbleui.skija.PaintMode;
 import io.github.humbleui.skija.PaintStrokeCap;
 import io.github.humbleui.skija.PaintStrokeJoin;
 import io.github.humbleui.skija.SamplingMode;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -256,7 +256,7 @@ public final class SettingsSectionPage {
     }
 
     private static String tr(String key) {
-        return Text.translatable(key).getString();
+        return Component.translatable(key).getString();
     }
 
     public static float rowHeight(RowKind kind) {
@@ -772,7 +772,7 @@ public final class SettingsSectionPage {
         // follow the secondary text colour, dimmed to keep the muted look.
         int muted = sec(150);
         drawIconCentered(canvas, AppIcons.ICON_NO_PLAYERS_PATH, cx, top + icon / 2.0F, icon, muted);
-        SkiaFontRenderer.drawTextCentered(canvas, font, Text.translatable(textKey).getString(),
+        SkiaFontRenderer.drawTextCentered(canvas, font, Component.translatable(textKey).getString(),
                 cx, top + icon + gap + textH / 2.0F, muted);
     }
 
@@ -1148,7 +1148,7 @@ public final class SettingsSectionPage {
 
     private void openUri(String uri) {
         try {
-            net.minecraft.util.Util.getOperatingSystem().open(java.net.URI.create(uri));
+            net.minecraft.Util.getPlatform().openUri(java.net.URI.create(uri));
         } catch (Exception e) {
             AtomChat.LOGGER.warn("Failed to open link {}", uri, e);
         }

@@ -35,10 +35,10 @@ class AvatarCompanionServerTest {
     @Test
     void payloadIdsAreStable() {
         // Channel names are wire contracts: never rename these.
-        assertTrue(AvatarPayloads.AvatarUploadPayload.ID.id().getPath().equals("avatar_upload"));
-        assertTrue(AvatarPayloads.AvatarRequestPayload.ID.id().getPath().equals("avatar_request"));
-        assertTrue(AvatarPayloads.AvatarDataPayload.ID.id().getPath().equals("avatar_data"));
-        assertTrue(AvatarPayloads.AvatarUploadPayload.ID.id().getNamespace().equals("atomchat"));
+        assertTrue(AvatarPayloads.AvatarUploadPayload.TYPE.id().getPath().equals("avatar_upload"));
+        assertTrue(AvatarPayloads.AvatarRequestPayload.TYPE.id().getPath().equals("avatar_request"));
+        assertTrue(AvatarPayloads.AvatarDataPayload.TYPE.id().getPath().equals("avatar_data"));
+        assertTrue(AvatarPayloads.AvatarUploadPayload.TYPE.id().getNamespace().equals("atomchat"));
     }
 
     @Test

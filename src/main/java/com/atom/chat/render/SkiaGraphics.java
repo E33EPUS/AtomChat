@@ -12,7 +12,7 @@ import io.github.humbleui.skija.Surface;
 import io.github.humbleui.skija.SurfaceColorFormat;
 import io.github.humbleui.skija.SurfaceOrigin;
 import io.github.humbleui.skija.SurfaceProps;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL33C;
 
@@ -34,10 +34,10 @@ public class SkiaGraphics {
      */
 
     public void checkFrameBufferId() {
-        var fb = MinecraftClient.getInstance().getFramebuffer();
-        int current = fb.fbo;
-        int width = fb.textureWidth;
-        int height = fb.textureHeight;
+        var fb = Minecraft.getInstance().getMainRenderTarget();
+        int current = fb.frameBufferId;
+        int width = fb.width;
+        int height = fb.height;
         // Minecraft resizes the main framebuffer in place when the window
         // changes (F11 fullscreen toggle, dragging a windowed border), keeping
         // the same FBO id. The Skia surface must be recreated on size changes
@@ -63,10 +63,10 @@ public class SkiaGraphics {
             renderTarget.close();
         }
 
-        var fb = MinecraftClient.getInstance().getFramebuffer();
-        int width = fb.textureWidth;
-        int height = fb.textureHeight;
-        int fbo = fb.fbo;
+        var fb = Minecraft.getInstance().getMainRenderTarget();
+        int width = fb.width;
+        int height = fb.height;
+        int fbo = fb.frameBufferId;
         lastFramebufferWidth = width;
         lastFramebufferHeight = height;
 
@@ -110,7 +110,7 @@ public class SkiaGraphics {
             return;
         }
         if (density <= 0.0F) {
-            density = Math.max(1.0F, MinecraftClient.getInstance().getFramebuffer().textureHeight / 1080.0F);
+            density = Math.max(1.0F, Minecraft.getInstance().getMainRenderTarget().height / 1080.0F);
         }
 
         GlStateUtil.save();

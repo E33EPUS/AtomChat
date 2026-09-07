@@ -24,14 +24,14 @@ import com.atom.chat.chat.WhisperTextParser;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.text.ChatTextRewriter;
 import com.atom.chat.text.RichText;
-import net.minecraft.client.gui.screen.AtomChatScreen;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.hud.ChatHud;
-import net.minecraft.client.gui.hud.MessageIndicator;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.network.message.MessageSignatureData;
-import net.minecraft.text.Text;
+import com.atom.chat.screen.AtomChatScreen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.ChatComponent;
+import net.minecraft.client.GuiMessageTag;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.MessageSignature;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -40,21 +40,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.UUID;
 
-@Mixin(value = ChatHud.class, priority = 500)
+@Mixin(value = ChatComponent.class, priority = 500)
 public class ChatHudMixin {
     @Unique
     private boolean atomchat$reposting;
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
-    private void atomchat$hideVanillaChatHud(DrawContext context, int currentTick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.currentScreen instanceof AtomChatScreen) {
+    private void atomchat$hideVanillaChatHud(GuiGraphics context, int currentTick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.screen instanceof AtomChatScreen) {
             ci.cancel();
         }
     }
 
-    @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"), cancellable = true)
-    private void atomchat$captureMessage(Text message, MessageSignatureData signatureData, MessageIndicator indicator, CallbackInfo ci) {
+    @Inject(method = "addMessage(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;Lnet/minecraft/client/GuiMessageTag;)V", at = @At("HEAD"), cancellable = true)
+    private void atomchat$captureMessage(Component message, MessageSignature signatureData, GuiMessageTag indicator, CallbackInfo ci) {
         if (atomchat$reposting) {
             return;
         }
@@ -63,13 +63,13 @@ public class ChatHudMixin {
         // below only after capture has already decided what belongs in ChatStore.
         atomchat$captureAndStore(message, signatureData, indicator);
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         String ownName = client.player != null ? client.player.getName().getString() : null;
-        Text rewritten = ChatTextRewriter.rewritePrivate(message, ownName);
+        Component rewritten = ChatTextRewriter.rewritePrivate(message, ownName);
         if (rewritten != null) {
             // Keep compacting image codes / quote prefixes inside the rewritten
             // private line (e.g. "<name>[Whisper] [Quote] body").
-            Text compacted = ChatTextRewriter.rewrite(rewritten);
+            Component compacted = ChatTextRewriter.rewrite(rewritten);
             if (compacted != null) {
                 rewritten = compacted;
             }
@@ -80,7 +80,7 @@ public class ChatHudMixin {
             ci.cancel();
             atomchat$reposting = true;
             try {
-                ((ChatHud) (Object) this).addMessage(rewritten, signatureData, indicator);
+                ((ChatComponent) (Object) this).addMessage(rewritten, signatureData, indicator);
             } finally {
                 atomchat$reposting = false;
             }
@@ -88,9 +88,9 @@ public class ChatHudMixin {
     }
 
     @Unique
-    private void atomchat$captureAndStore(Text message, MessageSignatureData signatureData, MessageIndicator indicator) {
+    private void atomchat$captureAndStore(Component message, MessageSignature signatureData, GuiMessageTag indicator) {
         String raw = message.getString();
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         // Teleport failure watch: a "unknown command/no permission" reply right
         // after a menu teleport flips the session command (0.1.11 auto mode).
         TeleportCommands.checkFailure(raw);
@@ -126,7 +126,7 @@ public class ChatHudMixin {
                 addSystemMessage(message);
                 return;
             }
-            // Text-layer whisper fallback (plugin-reformatted /msg, bot relays).
+            // Component-layer whisper fallback (plugin-reformatted /msg, bot relays).
             // Must run BEFORE the player-line guard: its separator skipping
             // would mis-claim "[Steve -> me] hi" as a public bubble from Steve.
             if (atomchat$tryTextWhisper(raw, message, client)) {
@@ -249,7 +249,7 @@ public class ChatHudMixin {
         if (system) {
             return;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         String own = client.player != null ? client.player.getName().getString() : null;
         if (own != null && MentionDetector.isMentioned(body, own,
                 AtomChatConfig.get().mentionRequireAt, null)) {
@@ -263,7 +263,7 @@ public class ChatHudMixin {
      * Returns true when the line was claimed (routed into the private panel).
      */
     @Unique
-    private static boolean atomchat$tryTextWhisper(String raw, Text message, MinecraftClient client) {
+    private static boolean atomchat$tryTextWhisper(String raw, Component message, Minecraft client) {
         String ownName = client.player != null ? client.player.getName().getString() : null;
         WhisperTextParser.WhisperHit hit = WhisperTextParser.tryParse(raw, ownName);
         if (hit == null) {
@@ -284,7 +284,7 @@ public class ChatHudMixin {
             var tm = match.get();
             hit = new WhisperTextParser.WhisperHit(true, tm.displayLabel(), tm.content());
         }
-        PlayerListEntry info = ChatClassifier.resolveOnlinePlayer(hit.partnerDisplay());
+        PlayerInfo info = ChatClassifier.resolveOnlinePlayer(hit.partnerDisplay());
         String profile = info != null ? info.getProfile().getName() : hit.partnerDisplay();
         UUID uuid = info != null ? info.getProfile().getId()
                 : ChatClassifier.resolveUuid(hit.partnerDisplay());
@@ -305,7 +305,7 @@ public class ChatHudMixin {
                 return false;
             }
             String own = client.player.getName().getString();
-            whisperMeta = new SenderMeta(client.player.getUuid(), own, own,
+            whisperMeta = new SenderMeta(client.player.getUUID(), own, own,
                     hit.content(), false, true, profile, null, null);
         }
         atomchat$routePrivate(message, whisperMeta, client);
@@ -352,7 +352,7 @@ public class ChatHudMixin {
     }
 
     @Unique
-    private static void atomchat$routePrivate(Text message, SenderMeta meta, MinecraftClient client) {
+    private static void atomchat$routePrivate(Component message, SenderMeta meta, Minecraft client) {
         // Suppressed outgoing echo sentinel: the local bubble already exists.
         if (meta.system()) {
             return;
@@ -395,17 +395,17 @@ public class ChatHudMixin {
         }
     }
 
-    private static void addSystemMessage(Text message) {
+    private static void addSystemMessage(Component message) {
         ChatStore.get().add(new ChatMessage(message, false, true, null, null,
                 null, null, null, null, RichText.empty(), RichText.of(message).linkifyUrls()));
     }
 
-    private static boolean isOwn(SenderMeta meta, String raw, MinecraftClient client) {
+    private static boolean isOwn(SenderMeta meta, String raw, Minecraft client) {
         if (client.player == null) {
             return false;
         }
         if (meta.senderUuid() != null) {
-            return meta.senderUuid().equals(client.player.getUuid());
+            return meta.senderUuid().equals(client.player.getUUID());
         }
         String ownProfile = client.player.getName().getString();
         if (meta.profileName() != null && meta.profileName().equals(ownProfile)) {

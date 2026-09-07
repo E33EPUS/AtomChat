@@ -1,6 +1,6 @@
 package com.atom.chat.chat;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 import java.util.UUID;
 
@@ -20,17 +20,17 @@ import java.util.UUID;
  * @param system           true when the line is a system/broadcast message
  * @param whisper          true when this line is a private /msg message
  * @param whisperPartner   partner's real profile name for private messages
- * @param senderComponent  optional decorated sender {@link Text} captured before the
+ * @param senderComponent  optional decorated sender {@link Component} captured before the
  *                         final HUD line is built; {@code null} when only text parsing
  *                         is available (system/text-guard paths)
- * @param contentComponent optional message-body {@link Text} captured before the final
+ * @param contentComponent optional message-body {@link Component} captured before the final
  *                         HUD line is built; {@code null} when only text parsing is
  *                         available
  */
 public record SenderMeta(UUID senderUuid, String senderName, String profileName,
                          String contentText, boolean system, boolean whisper,
-                         String whisperPartner, Text senderComponent,
-                         Text contentComponent) {
+                         String whisperPartner, Component senderComponent,
+                         Component contentComponent) {
     public SenderMeta {
         senderUuid = senderUuid != null && senderUuid.equals(NIL_UUID) ? null : senderUuid;
         senderName = clean(senderName);
@@ -45,8 +45,8 @@ public record SenderMeta(UUID senderUuid, String senderName, String profileName,
     }
 
     public SenderMeta(UUID senderUuid, String senderName, String profileName,
-                      String contentText, boolean system, Text senderComponent,
-                      Text contentComponent) {
+                      String contentText, boolean system, Component senderComponent,
+                      Component contentComponent) {
         this(senderUuid, senderName, profileName, contentText, system, false, null,
                 senderComponent, contentComponent);
     }

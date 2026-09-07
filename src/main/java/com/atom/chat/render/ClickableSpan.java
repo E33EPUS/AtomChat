@@ -1,6 +1,6 @@
 package com.atom.chat.render;
 
-import net.minecraft.text.Style;
+import net.minecraft.network.chat.Style;
 
 /**
  * A clickable/hoverable text run rectangle in the coordinate space where the

@@ -10,11 +10,10 @@ import java.util.Set;
 import io.github.humbleui.skija.Bitmap;
 
 import io.github.humbleui.skija.Image;
-import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.texture.AbstractTexture;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.AbstractTexture;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.resources.ResourceLocation;
 
 import com.atom.chat.AtomChat;
 import com.atom.chat.config.AtomChatConfig;
@@ -38,12 +37,12 @@ public final class AvatarRenderer {
     private static final int FACE_V = 8;
     private static final int HAT_U = 40;
 
-    private static final Map<Identifier, Image> FACE_CACHE = new HashMap<>();
-    private static final Set<Identifier> FAILED = new HashSet<>();
+    private static final Map<ResourceLocation, Image> FACE_CACHE = new HashMap<>();
+    private static final Set<ResourceLocation> FAILED = new HashSet<>();
     private static boolean dumped;
 
     /** Returns the face image for this skin, or null while/unless sampling works. */
-    public static Image face(Identifier skin) {
+    public static Image face(ResourceLocation skin) {
         if (skin == null) {
             return null;
         }
@@ -63,11 +62,11 @@ public final class AvatarRenderer {
         return sampled;
     }
 
-    private static Image sample(Identifier skin) {
+    private static Image sample(ResourceLocation skin) {
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             AbstractTexture texture = client.getTextureManager().getTexture(skin);
-            int glId = texture.getGlId();
+            int glId = texture.getId();
 
             ByteBuffer buf = ByteBuffer.allocateDirect(SKIN_SIZE * SKIN_SIZE * 4);
             int previous = GL11C.glGetInteger(GL11C.GL_TEXTURE_BINDING_2D);
@@ -129,7 +128,7 @@ public final class AvatarRenderer {
         }
         dumped = true;
         try {
-            Path dir = FabricLoader.getInstance().getConfigDir().resolve("atomchat/debug");
+            Path dir = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/debug");
             Files.createDirectories(dir);
             NativeImage rawImg = new NativeImage(SKIN_SIZE, SKIN_SIZE, false);
             for (int y = 0; y < SKIN_SIZE; y++) {
@@ -139,10 +138,10 @@ public final class AvatarRenderer {
                     int g = raw.get(i + 1) & 0xFF;
                     int b = raw.get(i + 2) & 0xFF;
                     int a = raw.get(i + 3) & 0xFF;
-                    rawImg.setColor(x, y, (a << 24) | (b << 16) | (g << 8) | r);
+                    rawImg.setPixelRGBA(x, y, (a << 24) | (b << 16) | (g << 8) | r);
                 }
             }
-            rawImg.writeTo(dir.resolve("atomchat-debug-skin-gl.png"));
+            rawImg.writeToFile(dir.resolve("atomchat-debug-skin-gl.png"));
             NativeImage faceImg = new NativeImage(FACE_SIZE * 8, FACE_SIZE * 8, false);
             for (int y = 0; y < FACE_SIZE * 8; y++) {
                 for (int x = 0; x < FACE_SIZE * 8; x++) {
@@ -150,10 +149,10 @@ public final class AvatarRenderer {
                     int b = facePixels[i] & 0xFF;
                     int g = facePixels[i + 1] & 0xFF;
                     int r = facePixels[i + 2] & 0xFF;
-                    faceImg.setColor(x, y, (255 << 24) | (b << 16) | (g << 8) | r);
+                    faceImg.setPixelRGBA(x, y, (255 << 24) | (b << 16) | (g << 8) | r);
                 }
             }
-            faceImg.writeTo(dir.resolve("atomchat-debug-face.png"));
+            faceImg.writeToFile(dir.resolve("atomchat-debug-face.png"));
             AtomChat.LOGGER.info("Avatar debug dumps written to {}", dir);
         } catch (Throwable t) {
             AtomChat.LOGGER.warn("Avatar debug dump failed", t);

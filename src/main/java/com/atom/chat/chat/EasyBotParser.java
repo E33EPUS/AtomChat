@@ -1,7 +1,7 @@
 package com.atom.chat.chat;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
 
 import java.util.Locale;
 import java.util.Set;
@@ -120,11 +120,11 @@ public final class EasyBotParser {
      */
     private static boolean isKnownPlayer(String displayName) {
         try {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc == null || mc.player == null || mc.player.networkHandler == null) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null || mc.player.connection == null) {
                 return false;
             }
-            for (PlayerListEntry info : mc.player.networkHandler.getPlayerList()) {
+            for (PlayerInfo info : mc.player.connection.getOnlinePlayers()) {
                 for (String cand : ChatClassifier.nameCandidates(info)) {
                     if (cand.equalsIgnoreCase(displayName)) {
                         return true;

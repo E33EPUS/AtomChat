@@ -8,10 +8,10 @@ import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.FontMetrics;
 import io.github.humbleui.skija.Paint;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 
 import java.util.List;
 
@@ -101,7 +101,7 @@ public final class RichTextRenderer {
             return style;
         }
         return style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                Text.literal(style.getClickEvent().getValue())));
+                Component.literal(style.getClickEvent().getValue())));
     }
 
     /**
@@ -113,7 +113,7 @@ public final class RichTextRenderer {
         if (style == null || style.getColor() == null) {
             return fallbackColor;
         }
-        return (fallbackColor & 0xFF000000) | (style.getColor().getRgb() & 0xFFFFFF);
+        return (fallbackColor & 0xFF000000) | (style.getColor().getValue() & 0xFFFFFF);
     }
 
     private static void drawUnderline(Canvas canvas, Font font, float x, float baseline,

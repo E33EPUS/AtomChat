@@ -2,7 +2,7 @@ package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
 import io.github.humbleui.skija.Image;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.Map;
 import java.util.UUID;
@@ -45,10 +45,12 @@ public final class AvatarCompanionClient {
     private static final Map<UUID, Long> noAvatarUntil = new ConcurrentHashMap<>();
     private static final Map<UUID, Boolean> decoding = new ConcurrentHashMap<>();
 
-    /** Client init: registers the S2C receiver. */
+    /**
+     * Client init hook. NeoForge registers the S2C receiver centrally in
+     * {@link AvatarPayloads#register}; this only keeps the same call shape as
+     * the Fabric client entrypoint.
+     */
     public static void init() {
-        ClientPlayNetworking.registerGlobalReceiver(AvatarPayloads.AvatarDataPayload.ID, (payload, context) ->
-                context.client().execute(() -> onAvatarData(payload.uuid(), payload.data())));
     }
 
     /** Reset on join: avatars are re-fetched lazily after the join. */
@@ -95,7 +97,7 @@ public final class AvatarCompanionClient {
             return null;
         }
         requestedAt.put(uuid, now);
-        ClientPlayNetworking.send(new AvatarPayloads.AvatarRequestPayload(uuid));
+        PacketDistributor.sendToServer(new AvatarPayloads.AvatarRequestPayload(uuid));
         return null;
     }
 
@@ -105,10 +107,11 @@ public final class AvatarCompanionClient {
                 || pngBytes.length == 0 || pngBytes.length > AvatarPayloads.MAX_AVATAR_BYTES) {
             return;
         }
-        ClientPlayNetworking.send(new AvatarPayloads.AvatarUploadPayload(uuid, pngBytes));
+        PacketDistributor.sendToServer(new AvatarPayloads.AvatarUploadPayload(uuid, pngBytes));
     }
 
-    private static void onAvatarData(UUID uuid, byte[] data) {
+    /** S2C receiver; runs on the render thread via the payload context. */
+    static void onAvatarData(UUID uuid, byte[] data) {
         if (uuid == null) {
             return;
         }
