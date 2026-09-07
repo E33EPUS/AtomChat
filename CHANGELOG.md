@@ -15,6 +15,18 @@
 - **时间戳从未渲染**：首条消息上方现在始终显示时间戳分隔（对齐 e33chat 逻辑；「时间戳间隔」关闭时整体不显示）。
 - **档案返回动画错乱**：从他人档案页返回时，滑出动画期间页面不再瞬间变回自己的档案（注入对象在页面真正离开导航栈后才重置）。
 
+### Added
+
+- **Secondary capsule colours**: the backgrounds and text of system messages, time dividers and quote pills are now driven by two new settings (secondary capsule background / text, under the bubble colour group). The quote pill's default background moves to the shared translucent dark tone.
+- **Collapsible colour groups with per-group preview**: the two colour groups on the appearance page fold via their headings, and every colour row shows a live preview square of the current value.
+- **Generic two-step confirm button**: destructive actions (clear wallpaper, etc.) turn the right-hand verb into a red "confirm?" state with a 3-second timeout and click-outside cancel.
+
+### Fixed
+
+- **Colour picker hex input**: keyboard events were swallowed by the modal; the hex field now supports Ctrl+C copy and Ctrl+V paste (non-hex characters are stripped, so pasting `#4A90E2` works as-is).
+- **Timestamps never rendered**: the first message in a list now always carries a time divider (matching e33chat; turning the interval off disables them entirely).
+- **Profile pop animation**: returning from another player's profile no longer snaps the sliding-out page back to the local player's profile.
+
 ## v0.2.0
 
 ### 新增

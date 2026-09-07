@@ -28,6 +28,14 @@
 - CurseForge：<https://www.curseforge.com/minecraft/mc-mods/atomchat>
 - Modrinth：项目公开后在此补充链接
 
+## 发版
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+CI 自动完成：构建测试 → GitHub Release（附 jar）→ Modrinth / CurseForge 上传。发布说明取自 CHANGELOG.md 对应 `## vX.Y.Z` 节（中英双语，中文在前），热修标签（如 `v0.2.2-hotfix`）复用主版本节。平台上传可在 Actions 页对 Release 工作流 Run workflow 手动重跑，不会重建 GitHub Release。
+
 ## 依赖
 
 - Minecraft 1.21.1 + Fabric Loader + Fabric API
