@@ -63,7 +63,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           EXPECTED="${GITHUB_REF_NAME#v}"
-          ACTUAL="$(grep '^mod_version=' gradle.properties | cut -d= -f2)"
+          ACTUAL="$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '\r')"
           if [ "$EXPECTED" != "$ACTUAL" ]; then
             echo "::error::${{ matrix.loader }} branch mod_version=${ACTUAL} does not match tag ${EXPECTED}"
             exit 1
