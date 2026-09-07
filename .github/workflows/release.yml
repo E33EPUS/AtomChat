@@ -68,7 +68,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
 
       - name: Publish to Modrinth and CurseForge
-        run: ./gradlew publishMods --no-daemon
+        run: ./gradlew publishMods --info --no-daemon
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
