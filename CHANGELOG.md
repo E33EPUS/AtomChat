@@ -11,9 +11,16 @@
 - **历史保留天数滑条**：设置 → 聊天新增滑条（0 = 永久，1–365 天），到期历史文件在进世界时自动清理。
 - **数据目录治理**：自动下载的聊天图片缓存与 companion 他人头像数据从 `config/atomchat/` 迁到 `<游戏目录>/atomchat-data/`，config 目录不再被运行时数据撑大；图片缓存上限 500 个文件 / 100 MB，自动按时间清理最旧文件；「关于」页新增「清除图片缓存」卡片（带二次确认），显示当前缓存占用。
 
+### 更改
+
+- **设置页可折叠分组**：所有设置子页的现有分区标题升级为可折叠；「聊天与通知」页按「消息 / 通知 / 聊天记录 / 传送」分组，默认展开。
+- **面板内通知横幅**：AtomChat 面板打开时，@/引用/私聊横幅也显示为面板内顶部浮层（不再只在无界面时显示）。
+
 ### 修复
 
 - **打开聊天屏崩溃**：紧凑分组在计算最后一条消息的下一行间距时越界（`IndexOutOfBoundsException`）；边界探针现在在消息列表末尾直接返回 false。
+- **通知音效听不到**：`SimpleSoundInstance.forUI` 参数是 `(音效, 音量, 音高)`，旧代码把音量传到了音高位，实际音量固定 0.25；现已按配置音量播放。
+- **档案退出动画错乱**：详情页互推返回时，`pageNavDx` 把“返回中”的档案页误判成“新页进入”，方向反/叠层；现按 push/pop 标志决定滑动方向。
 
 ### Added
 
@@ -24,9 +31,16 @@
 - **History retention slider**: Settings → Chat now controls `historyRetentionDays` (0 = forever, 1–365 days); expired files are pruned on world join.
 - **Data-dir cleanup**: auto-downloaded chat-image caches and companion avatar uploads moved from `config/atomchat/` to `<gameDir>/atomchat-data/`; image cache capped at 500 files / 100 MB with oldest-file trimming; About page has a confirm-guarded “Clear image cache” card showing current usage.
 
+### Changed
+
+- **Collapsible settings groups**: every settings sub-page now treats its section headings as foldable groups; Settings → Chat is grouped into Messages / Notifications / Chat history / Teleport, all expanded by default.
+- **In-panel notification banners**: mention/quote/whisper banners also appear as a top floating overlay inside the AtomChat panel.
+
 ### Fixed
 
 - **Crash when opening the chat screen**: compact-group lookahead indexed one past the last message; the edge probe now returns false at the end of the list.
+- **Notification sound was nearly inaudible**: `SimpleSoundInstance.forUI` takes `(sound, volume, pitch)`; the old call passed the volume into the pitch slot. It now plays at the configured volume.
+- **Profile exit animation was reversed/overlapped**: detail-to-detail pops used destination-rootness instead of the push/pop flag, so the profile page slid the wrong way.
 
 ## v0.2.3
 

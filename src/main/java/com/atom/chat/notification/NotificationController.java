@@ -2,6 +2,7 @@ package com.atom.chat.notification;
 
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.config.AtomChatConfig;
+import com.atom.chat.screen.AtomChatScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
@@ -38,9 +39,10 @@ public final class NotificationController {
             playSound();
         }
         Minecraft client = Minecraft.getInstance();
-        if (NotificationBanner.enabled(type)
+        boolean canShowBanner = NotificationBanner.enabled(type)
                 && client != null && client.level != null
-                && client.screen == null) {
+                && (client.screen == null || client.screen instanceof AtomChatScreen);
+        if (canShowBanner) {
             String sender = message.getSenderName();
             if (sender == null || sender.isBlank()) {
                 sender = message.getProfileName();
@@ -60,7 +62,9 @@ public final class NotificationController {
         }
         lastSoundMs = now;
         float volume = Math.max(0.0F, Math.min(1.0F, AtomChatConfig.get().notifyVolume));
+        // SimpleSoundInstance.forUI(SoundEvent, volume, pitch) — the second
+        // float is volume. Use 1.0 pitch so the notification is clearly audible.
         client.getSoundManager().play(SimpleSoundInstance.forUI(
-                SoundEvents.EXPERIENCE_ORB_PICKUP, 0.25F, volume));
+                SoundEvents.EXPERIENCE_ORB_PICKUP, volume, 1.0F));
     }
 }
