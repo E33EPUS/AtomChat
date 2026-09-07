@@ -86,7 +86,7 @@ jobs:
           version = os.environ["VERSION"]
           with open("CHANGELOG.md", encoding="utf-8", newline="") as f:
               text = f.read()
-          if f"## v{version}" in text:
+          if f"## v{version}" in text or f"## v{version.split('-')[0]}" in text:
               print("changelog section already exists, skipping")
               sys.exit(0)
           skeleton = (
