@@ -3,7 +3,7 @@
 <h1 align="center">AtomChat</h1>
 
 <p align="center">
-  <em>为MC原版聊天框带来聊天APP版的体验</em>
+  <em>为MC原版聊天框带来手机聊天APP版的体验</em>
 </p>
 
 <p align="center">
