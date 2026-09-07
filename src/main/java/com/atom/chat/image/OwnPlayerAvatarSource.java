@@ -22,7 +22,9 @@ public final class OwnPlayerAvatarSource implements PlayerAvatarSource {
     private OwnPlayerAvatarSource() {
     }
 
-    private static UUID ownUuid() {
+    /** The local player's uuid, or null when not in a world. Package-visible
+     *  so the companion source can exclude the local player. */
+    static UUID ownUuid() {
         MinecraftClient client = MinecraftClient.getInstance();
         return client != null && client.player != null ? client.player.getUuid() : null;
     }

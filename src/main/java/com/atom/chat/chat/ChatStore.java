@@ -17,12 +17,32 @@ public final class ChatStore {
 
     public synchronized void add(ChatMessage message) {
         messages.add(message);
+        com.atom.chat.history.ChatHistory.markDirty();
         if (!message.isOwn() && !publicActive) {
             publicUnread++;
         }
         if (messages.size() > 500) {
             messages.remove(0);
         }
+    }
+
+    /**
+     * Bulk insert used when a world's saved history is loaded. Deliberately
+     * never bumps the unread counters: yesterday's messages are not unread.
+     */
+    public synchronized void addLoaded(List<ChatMessage> loaded) {
+        if (loaded == null || loaded.isEmpty()) {
+            return;
+        }
+        messages.addAll(loaded);
+        while (messages.size() > 500) {
+            messages.remove(0);
+        }
+    }
+
+    /** Whether any message is currently held (used by the clear-history action). */
+    public synchronized boolean isEmpty() {
+        return messages.isEmpty();
     }
 
     /** Counts an @-mention of the local player (badge on the Public card). */

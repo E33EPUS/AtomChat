@@ -61,6 +61,7 @@ public final class PrivateChatStore {
         }
         Conversation c = conversation(partner);
         c.messages.add(message);
+        com.atom.chat.history.ChatHistory.markDirty();
         if (c.messages.size() > MAX_MESSAGES_PER_CONVERSATION) {
             c.messages.remove(0);
         }
@@ -75,7 +76,23 @@ public final class PrivateChatStore {
         }
         Conversation c = conversation(partner);
         c.messages.add(message);
+        com.atom.chat.history.ChatHistory.markDirty();
         if (c.messages.size() > MAX_MESSAGES_PER_CONVERSATION) {
+            c.messages.remove(0);
+        }
+    }
+
+    /**
+     * Bulk insert used when a world's saved private history is loaded. Never
+     * bumps the unread counter — reloaded messages are not new.
+     */
+    public static synchronized void addLoaded(PlayerRef partner, List<ChatMessage> loaded) {
+        if (partner == null || loaded == null || loaded.isEmpty()) {
+            return;
+        }
+        Conversation c = conversation(partner);
+        c.messages.addAll(loaded);
+        while (c.messages.size() > MAX_MESSAGES_PER_CONVERSATION) {
             c.messages.remove(0);
         }
     }

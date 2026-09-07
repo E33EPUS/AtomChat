@@ -208,6 +208,14 @@ public final class ProfilePage {
         return false;
     }
     private boolean avatarMenuOpen;
+    /**
+     * Two-step confirm on the "restore skin" row: the first tap arms the row
+     * red ("Restore skin?"), the second tap within the window really clears.
+     * Same language as the settings page's destructive actions.
+     */
+    private static final long CLEAR_ARM_MS = 3000L;
+    private int clearArmIndex = -1;
+    private long clearArmedAt;
     /** Fade/scale progress of the avatar menu; keeps drawing while fading out. */
     private float menuAnim;
 
@@ -515,19 +523,33 @@ public final class ProfilePage {
         if (avatarMenuOpen) {
             for (int i = 0; i < 2; i++) {
                 if (menuItemRect(layout, scrollY, i).contains(vmx, vmy)) {
-                    avatarMenuOpen = false;
                     if (i == 0) {
-                        handler.openAvatarPicker();
-                    } else {
+                        clearArmIndex = -1;
                         avatarMenuOpen = false;
-                        handler.clearAvatar();
+                        handler.openAvatarPicker();
+                        return true;
                     }
+                    if (!avatarStore.isSet()) {
+                        // Disabled row: consume the click, keep the menu open.
+                        return true;
+                    }
+                    long now = System.currentTimeMillis();
+                    if (clearArmIndex != i || now - clearArmedAt > CLEAR_ARM_MS) {
+                        // Arm: the row turns red and the menu stays open.
+                        clearArmIndex = i;
+                        clearArmedAt = now;
+                        return true;
+                    }
+                    clearArmIndex = -1;
+                    avatarMenuOpen = false;
+                    handler.clearAvatar();
                     return true;
                 }
             }
             // Any click outside the menu dismisses it; the click is consumed
             // so it cannot fall through onto the rows underneath.
             avatarMenuOpen = false;
+            clearArmIndex = -1;
             return true;
         }
         if (subjectIsSelf() && badgeRect(layout, scrollY).contains(vmx, vmy)) {
@@ -535,11 +557,11 @@ public final class ProfilePage {
             return true;
         }
         if (subjectIsSelf() && avatarRect(layout, scrollY).contains(vmx, vmy)) {
-            if (avatarStore.isSet()) {
-                avatarMenuOpen = true;
-            } else {
-                handler.openAvatarPicker();
-            }
+            // The avatar tap is always the management entry: the menu opens
+            // with or without a custom avatar ("use skin" disabled without
+            // one). The badge is the shortcut straight to the picker.
+            clearArmIndex = -1;
+            avatarMenuOpen = true;
             return true;
         }
         // Copying happens on the dedicated right-edge button, not the whole row.
@@ -588,7 +610,8 @@ public final class ProfilePage {
         }
         rowHover = UiMotion.approach(rowHover, hovered >= 0 ? 1.0F : 0.0F, dt, UiMotion.HOVER_MS);
         for (int i = 0; i < menuItemHover.length; i++) {
-            boolean over = avatarMenuOpen
+            boolean enabled = i == 0 || avatarStore.isSet();
+            boolean over = avatarMenuOpen && enabled
                     && menuItemRect(layout, scrollY, i).contains(vmx, vmy);
             menuItemHover[i] = UiMotion.approach(menuItemHover[i], over ? 1.0F : 0.0F, dt, UiMotion.HOVER_MS);
         }
@@ -621,7 +644,10 @@ public final class ProfilePage {
             SkiaDraw.drawRoundedRect(canvas, avatar.x(), avatar.y(), avatar.w(), avatar.h(),
                     avatar.w() / 2.0F, Color.makeARGB(255, 120, 130, 145));
         }
-        if (avatarHover > 0.01F && subjectIsSelf() && avatarStore.isSet()) {
+        // Hover feedback regardless of whether an avatar is set: with no
+        // custom avatar the tap opens the picker directly, so the affordance
+        // must not vanish exactly when the avatar is clickable.
+        if (avatarHover > 0.01F && subjectIsSelf()) {
             SkiaDraw.drawRoundedRect(canvas, avatar.x(), avatar.y(), avatar.w(), avatar.h(),
                     avatar.w() / 2.0F, Color.makeARGB((int) (40.0F * avatarHover), 255, 255, 255));
         }
@@ -717,9 +743,12 @@ public final class ProfilePage {
         }
         UiLayout.Rect menu = menuRect(layout, scrollY);
         float rowH = UiTokens.MENU_H / 2.0F;
+        boolean clearEnabled = avatarStore.isSet();
+        boolean clearArmed = clearEnabled && clearArmIndex == 1
+                && System.currentTimeMillis() - clearArmedAt <= CLEAR_ARM_MS;
         String[] labels = {
                 tr("atomchat.profile.avatar.change"),
-                tr("atomchat.profile.avatar.clear")
+                tr(clearArmed ? "atomchat.profile.avatar.clear.confirm" : "atomchat.profile.avatar.clear")
         };
         Path[] icons = {AppIcons.ICON_EDIT_PATH, AppIcons.ICON_TAB_PROFILE_PATH};
         Font font = FontManager.font(UiTokens.FONT_BUTTON);
@@ -748,11 +777,19 @@ public final class ProfilePage {
                             s(6), Color.makeARGB((int) (55.0F * menuItemHover[i]), 255, 255, 255));
                 }
                 float cy = rowY + rowH / 2.0F;
+                boolean rowEnabled = i == 0 || clearEnabled;
+                int labelColor;
+                if (i == 1 && clearArmed) {
+                    labelColor = Color.makeARGB(255, 235, 64, 52);
+                } else if (!rowEnabled) {
+                    labelColor = Color.makeARGB(255, 130, 140, 155);
+                } else {
+                    labelColor = Color.makeARGB(255, 255, 255, 255);
+                }
                 drawIconCentered(canvas, icons[i], menu.x() + s(18), cy,
-                        UiTokens.CONTEXT_ICON_SIZE, Color.makeARGB(255, 255, 255, 255));
+                        UiTokens.CONTEXT_ICON_SIZE, labelColor);
                 SkiaFontRenderer.drawText(canvas, font, labels[i], menu.x() + s(36),
-                        SkiaFontRenderer.centerBaselineY(font, cy),
-                        Color.makeARGB(255, 255, 255, 255));
+                        SkiaFontRenderer.centerBaselineY(font, cy), labelColor);
             }
             // Close the saveLayer; the finally below closes the outer save().
             // A saveLayer per frame with no matching restore leaks one matrix

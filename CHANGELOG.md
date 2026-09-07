@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.2.3
+
+### 新增
+
+- **常用语**：输入栏新增第四个按钮（闪电图标），点开输入栏上方浮层。点选一条即插入输入框并聚焦（**不直接发送**，改完再发）；列表底部「添加常用语」行与每行铅笔进入编辑时会**借用聊天输入框**承载输入——中文输入、IME 组字、光标全部走原生链路，回车保存、Esc 放弃、点面板外自动提交，期间输入栏以强调色描边与专属占位提示；点行右侧 × 直接删除。单条 ≤256 字符（MC 消息硬上限）、上限 20 条（到顶拒绝新增）。数据存 `atomchat-client.json` 的 `quickPhrases`。与表情面板互斥。
+- **保留聊天记录（默认关）**：设置 → 聊天新增「保留聊天记录」开关。开启后按服务器/世界分别保存到 `config/atomchat/history/<键>_<哈希>.jsonl`：单人世界与局域网主机按世界名、多人按服务器列表显示名作键——**键里不含端口**，重开局域网（端口每次都变）记录不丢；同一服务器列表条目改名会换新文件（旧文件保留）。公屏与私聊都存（私聊按对象分流）；重进同一服务器自动恢复，气泡颜色与可点击事件（/tell、Xaero 坐标、FTB 按钮、链接）完整保留；写盘走 30 秒节流的单线程队列，退服/切世界立即保存。`historyRetentionDays`（默认 0 = 永久）可手改配置，进世界时清理过期文件。
+- **清空聊天记录**：设置 → 聊天「保留聊天记录」下方的卡片，复用通用两段确认（红字「确定清除？」3 秒超时）。未开启保存时只清当前会话显示；开启后同时删除本机对应文件——清空后等待中的自动保存不会把记录写回（代次守卫）。
+
+### Added
+
+- **Quick phrases**: a fourth composer button (lightning) opens a list above the input bar. Tapping a phrase inserts it into the composer and focuses it — **it never sends on its own**. Adding (the "Add a phrase" row) or editing (the pencil) <em>borrows the composer field</em> for input, so Chinese IME composition, the caret and history all work natively — Enter saves the phrase, Esc discards it, clicking elsewhere commits; the bar shows an accent ring and a dedicated hint while borrowed. Rows delete with the ×. Single phrases are capped at 256 characters and the list at 20. Stored as `quickPhrases` in `atomchat-client.json`. Mutually exclusive with the emoji panel.
+
+### 修复
+
+- **常用语面板整体错位**：面板矩形误用 LTRB 语义构建，导致整块面板反转、各元素散落到不同位置；现按 XYWH 构建。
+- **档案「恢复皮肤」无确认且易误触**：改为两段确认（首击行变红「确定恢复？」，3 秒内再击才执行）；无自定义头像时该行灰显不可点。
+- **自定义头像在「使用皮肤」后仍显示（重启也在）**：本地清除后 companion 又把服务端残留的已上传副本端了回来；现在自己的头像只由本机文件决定。
+- **档案头像 hover / 点击反馈缺失**：无自定义头像时头像直接开选择器却没有可点的视觉提示；现在 hover 恒有渐变高亮、点头像恒弹管理菜单、编辑角标直达选择器。
+- **关闭常用语面板时界面飞出屏幕**：saveLayer 未与 save 成对 restore，每帧泄漏一层矩阵栈；已补齐成对恢复。
+
+### Fixed
+
+- **Phrase panel drawn inverted/off-screen**: the panel rect used the LTRB constructor instead of `makeXYWH`, scattering every element; rebuilt as XYWH.
+- **"Use skin" ran instantly with no confirmation**: it now arms first (row turns red "Use skin?" for 3s) and only clears on the second tap; without a custom avatar the row is greyed out.
+- **Custom avatar survived "use skin" (even across restarts)**: the server companion kept serving the uploaded copy after the local clear; the local player's avatar is now decided by the local file alone.
+- **Avatar affordance on the profile page**: hover always glows, the avatar tap always opens the change/use-skin menu (greyed row excepted), and the edit badge stays the shortcut to the picker.
+- **UI flew off-screen while the phrase panel closed**: an unpaired `saveLayer` leaked one matrix level per frame; the layer now restores before the outer save.
+- **Chat history persistence (off by default)**: a "Keep chat history" switch in Settings → Chat. When on, history is saved per world to `config/atomchat/history/<key>_<hash>.jsonl`: singleplayer and LAN hosts key by world name, multiplayer by the server-list entry name — **no port in the key**, so re-opening a LAN world on a new port keeps its history; renaming a server-list entry starts a new file (the old one stays). Both public and private conversations are stored (private lines carry their partner); rejoining a world restores the feed with bubble colours and clickable spans (/tell, Xaero coordinates, FTB buttons, links) intact. Writes go through a 30-second throttled single-thread queue and flush on disconnect/world change. `historyRetentionDays` (default 0 = forever) can be hand-edited and prunes old files on world join.
+- **Clear chat history**: a card under the persistence switch, using the generic two-step confirm (red "confirm?" verb, 3s timeout). With saving off it wipes the current view; with saving on it also deletes the world's file, and an in-flight auto-save cannot resurrect it (generation guard).
+
 ## v0.2.2
 
 ### 新增

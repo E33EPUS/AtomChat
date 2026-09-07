@@ -18,6 +18,13 @@ public final class CompanionPlayerAvatarSource implements PlayerAvatarSource {
 
     @Override
     public Image face(UUID uuid, String name) {
-        return uuid != null ? com.atom.chat.net.AvatarCompanionClient.currentAvatar(uuid) : null;
+        if (uuid == null || uuid.equals(OwnPlayerAvatarSource.ownUuid())) {
+            // The local player's avatar is decided by the local file alone.
+            // Without this guard, "use skin" clears the local file but the
+            // companion hands the previously uploaded copy straight back —
+            // the avatar then survives even a game restart.
+            return null;
+        }
+        return com.atom.chat.net.AvatarCompanionClient.currentAvatar(uuid);
     }
 }

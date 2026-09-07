@@ -36,6 +36,8 @@ public final class UiLayout {
     public final Rect imageBtn;
     public final Rect emojiBtn;
     public final Rect sendBtn;
+    /** Quick-phrase toggle: fourth button between emoji and send. */
+    public final Rect phraseBtn;
     /** Vertical center of the input text's FIRST visible line. */
     public final float inputTextCenterY;
 
@@ -89,6 +91,8 @@ public final class UiLayout {
             this.imageBtn = new Rect(rowLeft, rowY, UiTokens.BUTTON_W, UiTokens.BUTTON_H);
             this.emojiBtn = new Rect(rowLeft + UiTokens.BUTTON_W + UiTokens.BUTTON_GAP, rowY, UiTokens.BUTTON_W, UiTokens.BUTTON_H);
             this.sendBtn = new Rect(rowRight - UiTokens.BUTTON_W, rowY, UiTokens.BUTTON_W, UiTokens.BUTTON_H);
+            this.phraseBtn = new Rect(rowLeft + (UiTokens.BUTTON_W + UiTokens.BUTTON_GAP) * 2.0F,
+                    rowY, UiTokens.BUTTON_W, UiTokens.BUTTON_H);
 
             float rowBottom = rowY + UiTokens.BUTTON_H;
             this.inputTextCenterY = rowBottom + UiTokens.s(20);
@@ -98,6 +102,7 @@ public final class UiLayout {
             this.imageBtn = new Rect(0, 0, 0, 0);
             this.emojiBtn = new Rect(0, 0, 0, 0);
             this.sendBtn = new Rect(0, 0, 0, 0);
+            this.phraseBtn = new Rect(0, 0, 0, 0);
             this.inputTextCenterY = 0.0F;
         }
     }

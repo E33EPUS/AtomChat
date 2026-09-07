@@ -46,6 +46,7 @@ import com.atom.chat.ui.ScrollController;
 import com.atom.chat.ui.ShellHeader;
 import com.atom.chat.ui.UiLayout;
 import com.atom.chat.ui.EmojiPanel;
+import com.atom.chat.ui.QuickPhrasePanel;
 import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
 import com.atom.chat.ui.input.InputHandler;
@@ -199,6 +200,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             boolean onModern = ThemeService.MODERN.equals(cfg.themeName);
             ThemeService.apply(cfg, onModern ? ThemeService.FROSTED : ThemeService.MODERN);
             AtomChatConfig.save(cfg);
+        } else if ("history_clear".equals(actionId)) {
+            // Wipes the current session (and the world's saved file when
+            // persistence is on). Generation bumped inside: a pending auto-save
+            // cannot resurrect what was just deleted.
+            com.atom.chat.history.ChatHistory.clearCurrent();
         }
     }
 
@@ -314,6 +320,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
     });
 
+    /**
+     * Quick phrases above the composer. Tapping one inserts it into the input
+     * and closes the panel — the phrase can still be edited before sending.
+     */
+    private final QuickPhrasePanel quickPhrasePanel = new QuickPhrasePanel(this::inputAppend, this::accent);
+
     private boolean inputFocused = true;
     /** Scroll state for the world-chat message list. */
     private final ScrollController worldScroll = new ScrollController();
@@ -398,6 +410,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_IMAGE_SVG);
     private static final io.github.humbleui.skija.Path ICON_EMOJI_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_EMOJI_SVG);
+    /** Quick-phrase button: a lightning bolt (Lucide zap). */
+    private static final String ICON_PHRASE_SVG = "M13 2 3 14h9l-1 8 10-12h-9l1-8z";
+    private static final io.github.humbleui.skija.Path ICON_PHRASE_PATH =
+            io.github.humbleui.skija.Path.makeFromSVGString(ICON_PHRASE_SVG);
     private static final io.github.humbleui.skija.Path ICON_SEND_PATH =
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_SEND_SVG);
     private static final io.github.humbleui.skija.Path ICON_COPY_PATH =
@@ -428,7 +444,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private long pressTime;
 
     // Per-frame animation state (smooth hover/popup transitions)
-    private final float[] buttonHover = new float[3];
+    private final float[] buttonHover = new float[4];
     private float contextAnim;
     private float jumpLatestAnim;
     private ChatMessage lastContextMessage;
@@ -890,6 +906,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             contextMenuHover[i] = 0.0F;
         }
         emojiPanel.resetTransient();
+        endPhraseEdit(false);
+        quickPhrasePanel.resetTransient();
         replyTarget = null;
         messageListView.clearSelection();
         pendingClickSpan = null;
@@ -1136,6 +1154,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         installDropCallback();
     }
 
+    /** Composer text saved while the quick-phrase panel borrows the field. */
+    private String phraseSavedComposer = "";
+
     private String inputGetText() {
         return chatField != null ? chatField.getText() : "";
     }
@@ -1157,6 +1178,73 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         inputFocused = true;
         setFocused(chatField);
         chatField.setFocused(true);
+    }
+
+    // ---- quick-phrase edit borrows the composer field (the IME carrier) ----
+
+    /** Begins adding ({@link QuickPhrasePanel#ADD_NEW}) or editing a phrase. */
+    private void beginPhraseEdit(int target) {
+        if (isPrivateReadOnly()) {
+            return;
+        }
+        if (quickPhrasePanel.isEditing()) {
+            endPhraseEdit(true);
+        }
+        phraseSavedComposer = inputGetText();
+        if (target == QuickPhrasePanel.ADD_NEW) {
+            inputSetText("");
+            quickPhrasePanel.startAdd();
+        } else {
+            inputSetText(quickPhrasePanel.phraseAt(target));
+            quickPhrasePanel.startEdit(target);
+        }
+        inputFocused = true;
+        setFocused(chatField);
+        chatField.setFocused(true);
+        setCaretAtEnd();
+    }
+
+    /** Ends a phrase add/edit; commit=true saves the field text as the phrase. */
+    private void endPhraseEdit(boolean commit) {
+        if (!quickPhrasePanel.isEditing()) {
+            return;
+        }
+        if (commit) {
+            quickPhrasePanel.commitText(inputGetText());
+        } else {
+            quickPhrasePanel.abortEdit();
+        }
+        inputSetText(phraseSavedComposer);
+        setCaretAtEnd();
+    }
+
+    /** Closes the phrase panel; an in-progress edit commits (blur applies). */
+    private void closePhrasePanel() {
+        if (quickPhrasePanel.isEditing()) {
+            endPhraseEdit(true);
+        }
+        quickPhrasePanel.close();
+    }
+
+    private void setCaretAtEnd() {
+        if (chatField != null) {
+            chatField.setCursor(chatField.getText().length(), false);
+        }
+    }
+
+    /** Turns a panel click into the screen-level side effects. */
+    private void handlePhraseAction(QuickPhrasePanel.Action action) {
+        switch (action.type()) {
+            case QuickPhrasePanel.Action.ADD -> beginPhraseEdit(QuickPhrasePanel.ADD_NEW);
+            case QuickPhrasePanel.Action.EDIT -> beginPhraseEdit(action.index());
+            case QuickPhrasePanel.Action.DELETE -> quickPhrasePanel.deleteAt(action.index());
+            case QuickPhrasePanel.Action.INSERT -> {
+                endPhraseEdit(true);
+                quickPhrasePanel.pickRow(action.index());
+            }
+            default -> {
+            }
+        }
     }
 
     private void drawPhone(Canvas canvas, Image worldSnapshot, int mouseX, int mouseY, float delta) {
@@ -1275,6 +1363,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         syncScrollMotion();
         emojiPanel.update(frameDt);
+        quickPhrasePanel.update(frameDt);
         UiLayout layout = layout();
         UiLayout.Rect panel = layout.rect();
         // Phone bezel: background is inset by the full stroke width so nothing can
@@ -1480,6 +1569,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         drawChatPageBody(canvas, layout, mouseX, mouseY, topNav());
 
         emojiPanel.render(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY), frameDt);
+        quickPhrasePanel.render(canvas, layout, toVirtualX(mouseX), toVirtualY(mouseY), frameDt);
         drawContextMenu(canvas, toVirtualX(mouseX), toVirtualY(mouseY));
 
         if (navRunning) {
@@ -1534,8 +1624,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         boolean readOnly = isPrivateReadOnly();
         SkiaDraw.drawRoundedShadow(canvas, bar.x(), bar.y(), bar.w(), bar.h(), UiTokens.radius(18), s(8), UiTokens.CHROME_SHADOW);
         SkiaDraw.drawRoundedRect(canvas, bar.x(), bar.y(), bar.w(), bar.h(), UiTokens.radius(18), UiTokens.cardFill());
+        if (quickPhrasePanel.isEditing()) {
+            // The composer is borrowed as the phrase editor: ring it with the
+            // accent so the mode is unmistakable.
+            try (Paint border = new Paint().setMode(PaintMode.STROKE).setAntiAlias(true)
+                    .setColor(accent()).setStrokeWidth(s(1.5F))) {
+                canvas.drawRRect(io.github.humbleui.types.RRect.makeXYWH(
+                        bar.x(), bar.y(), bar.w(), bar.h(), UiTokens.radius(18)), border);
+            }
+        }
         if (!readOnly) {
             drawIconButton(canvas, layout.imageBtn.x(), layout.imageBtn.y(), 0, mouseX, mouseY);
+            drawIconButton(canvas, layout.phraseBtn.x(), layout.phraseBtn.y(), 3, mouseX, mouseY);
             drawIconButton(canvas, layout.emojiBtn.x(), layout.emojiBtn.y(), 1, mouseX, mouseY);
             drawSendButton(canvas, layout.sendBtn.x(), layout.sendBtn.y(), mouseX, mouseY);
         }
@@ -1571,7 +1671,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // give — GLFW reports the drop itself but has no drag-enter to react to.
             if (current.isEmpty()) {
                 String hintText;
-                if (imageUploading) {
+                if (quickPhrasePanel.isEditing()) {
+                    hintText = tr("atomchat.input.phrase_hint");
+                } else if (imageUploading) {
                     hintText = tr("atomchat.input.uploading");
                 } else if (partnerTyping()) {
                     // QQ-style: WATUT reports the partner composing a message
@@ -1898,9 +2000,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         SkiaDraw.drawRoundedRect(canvas, bx, by, UiTokens.BUTTON_W, UiTokens.BUTTON_H, UiTokens.BUTTON_RADIUS, Color.makeARGB(fill, 255, 255, 255));
         // Active states take the accent colour: the emoji button while its
         // panel is open (a toggle), any button for a moment after a press.
-        boolean activeTint = (id == 1 && emojiPanel.isOpen()) || buttonPressed(id);
-        drawIcon(canvas, id == 0 ? ICON_IMAGE_PATH : ICON_EMOJI_PATH, bx, by,
-                activeTint ? accent() : textPrimary());
+        boolean activeTint = (id == 1 && emojiPanel.isOpen()) || (id == 3 && quickPhrasePanel.isOpen())
+                || buttonPressed(id);
+        io.github.humbleui.skija.Path icon = switch (id) {
+            case 0 -> ICON_IMAGE_PATH;
+            case 3 -> ICON_PHRASE_PATH;
+            default -> ICON_EMOJI_PATH;
+        };
+        drawIcon(canvas, icon, bx, by, activeTint ? accent() : textPrimary());
     }
 
     private void drawSendButton(Canvas canvas, float bx, float by, int mouseX, int mouseY) {
@@ -3068,6 +3175,27 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 }
                 return true;
             }
+            // The quick-phrase panel borrows the composer field for text input,
+            // so its key handling is narrow: while editing, Esc cancels and
+            // Enter commits; everything else falls through to the normal
+            // composer chain (typing, IME, backspace and history keep working).
+            // Open but not editing, only Esc (close) is intercepted.
+            if (quickPhrasePanel.isOpen()) {
+                if (quickPhrasePanel.isEditing()) {
+                    if (keyCode == 256) {
+                        endPhraseEdit(false);
+                    } else if (keyCode == 257 || keyCode == 335) {
+                        endPhraseEdit(true);
+                    } else {
+                        return false;
+                    }
+                    return true;
+                }
+                if (keyCode == 256) {
+                    closePhrasePanel();
+                }
+                return keyCode == 256;
+            }
             return false;
         }
 
@@ -3348,6 +3476,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     && (layout.inputBar.contains((float) mx, (float) my)
                     || layout.imageBtn.contains((float) mx, (float) my)
                     || layout.emojiBtn.contains((float) mx, (float) my)
+                    || layout.phraseBtn.contains((float) mx, (float) my)
                     || layout.sendBtn.contains((float) mx, (float) my))) {
                 return true;
             }
@@ -3358,7 +3487,21 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if (button == 0 && layout.emojiBtn.contains((float) mx, (float) my)) {
                 pressButton(1);
                 inputFocused = true;
+                closePhrasePanel();
                 emojiPanel.toggle();
+                return true;
+            }
+
+            // Quick-phrase toggle: same pre-dismiss ordering as the emoji button.
+            if (button == 0 && layout.phraseBtn.contains((float) mx, (float) my)) {
+                pressButton(3);
+                inputFocused = true;
+                emojiPanel.close();
+                if (quickPhrasePanel.isOpen()) {
+                    closePhrasePanel();
+                } else {
+                    quickPhrasePanel.open();
+                }
                 return true;
             }
 
@@ -3372,6 +3515,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     return true;
                 }
                 emojiPanel.close();
+            }
+
+            // Quick-phrase panel: every action is settled by the screen so an
+            // in-progress composer edit is committed/cancelled in the right
+            // order; an outside click closes (and thus commits) the panel.
+            if (quickPhrasePanel.isOpen()) {
+                if (quickPhrasePanel.overPanel(layout, mx, my)) {
+                    handlePhraseAction(quickPhrasePanel.click(layout, mx, my));
+                    return true;
+                }
+                closePhrasePanel();
             }
 
             // Context menu click. Remember the target before dismissing so a
@@ -3430,6 +3584,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // in a row. The panel still closes on any outside click or the toggle button.
             if (button == 0 && layout.sendBtn.contains((float) mx, (float) my)) {
                 pressButton(2);
+                if (quickPhrasePanel.isEditing()) {
+                    // In phrase-edit mode the send button commits the phrase.
+                    endPhraseEdit(true);
+                    return true;
+                }
                 sendMessage(inputGetText());
                 return true;
             }
@@ -3636,6 +3795,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             }
             if (emojiPanel.isOpen() && emojiPanel.overPanel(layout(), mx, my)) {
                 emojiPanel.scroll(layout(), verticalAmount);
+                return true;
+            }
+            if (quickPhrasePanel.isOpen() && quickPhrasePanel.overPanel(layout(), mx, my)) {
+                quickPhrasePanel.scroll(layout(), verticalAmount);
                 return true;
             }
             UiLayout.Rect list = layout().list;

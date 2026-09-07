@@ -70,7 +70,12 @@ public final class SettingsCatalog {
                             "atomchat.settings.chat.images",
                             "atomchat.settings.chat.images.desc",
                             () -> AtomChatConfig.get().imageMessagesEnabled,
-                            v -> AtomChatConfig.get().imageMessagesEnabled = v));
+                            v -> AtomChatConfig.get().imageMessagesEnabled = v),
+                    new SettingsItem("history",
+                            "atomchat.settings.chat.history",
+                            "atomchat.settings.chat.history.desc",
+                            () -> AtomChatConfig.get().chatHistoryEnabled,
+                            v -> AtomChatConfig.get().chatHistoryEnabled = v));
             case PRIVACY -> List.of(
                     new SettingsItem("hideBlocked",
                             "atomchat.settings.privacy.hide",

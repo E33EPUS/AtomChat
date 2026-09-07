@@ -35,16 +35,31 @@ public class ChatMessage {
     public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText) {
         this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
+                System.currentTimeMillis());
+    }
+
+    /** Variant used when rehydrating persisted history: keeps the original time. */
+    public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
+                       UUID senderUuid, String senderName, String profileName, String contentText, long timestamp) {
+        this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
                 legacySenderRich(system, senderName, profileName),
-                RichText.literal(legacyDisplayText(component.getString(), quoteName, contentText)).linkifyUrls());
+                RichText.literal(legacyDisplayText(component.getString(), quoteName, contentText)).linkifyUrls(),
+                timestamp);
     }
 
     public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText,
                        RichText senderRich, RichText contentRich) {
+        this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
+                senderRich, contentRich, System.currentTimeMillis());
+    }
+
+    public ChatMessage(Text component, boolean own, boolean system, String quoteName, String quoteText,
+                       UUID senderUuid, String senderName, String profileName, String contentText,
+                       RichText senderRich, RichText contentRich, long timestamp) {
         this.component = component;
         this.rawText = component.getString();
-        this.timestamp = System.currentTimeMillis();
+        this.timestamp = timestamp > 0 ? timestamp : System.currentTimeMillis();
         this.own = own;
         this.system = system;
         this.quoteName = quoteName;

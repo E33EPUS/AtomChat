@@ -41,6 +41,9 @@ public class AtomChatClient implements ClientModInitializer {
                 net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
                         .resolve("atomchat/image-cache"));
         com.atom.chat.net.AvatarCompanionClient.init();
+        com.atom.chat.history.ChatHistory.init(
+                net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                        .resolve("atomchat/history"));
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
             @Override
             public Identifier getFabricId() {
@@ -55,17 +58,23 @@ public class AtomChatClient implements ClientModInitializer {
         AtomChat.LOGGER.info("AtomChat client initialized");
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            // Adopt the world key first so a saved history can be loaded before
+            // join-time system lines start arriving.
+            com.atom.chat.history.ChatHistory.onJoin(client);
             com.atom.chat.page.ProfilePage.noteJoin();
             com.atom.chat.net.AvatarCompanionClient.onJoin();
             com.atom.chat.chat.TeleportCommands.reset();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            // Save before the stores are cleared, then drop the world key.
+            com.atom.chat.history.ChatHistory.onDisconnect(client);
             PrivateChatStore.reset();
             PrivateEchoTracker.clear();
             ChatStore.reset();
             com.atom.chat.chat.SeenPlayers.clear();
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            com.atom.chat.history.ChatHistory.tick(client);
             while (OPEN_ATOMCHAT_KEY.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new AtomChatScreen("", AtomChatOpenMode.RESTORE));

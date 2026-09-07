@@ -125,6 +125,7 @@ public final class SettingsSectionPage {
     private static final String ACTION_WALLPAPER_CLEAR = "wallpaper_clear";
     private static final String ACTION_TELEPORT_MODE = "teleport_mode";
     private static final String ACTION_THEME = "theme_cycle";
+    private static final String ACTION_HISTORY_CLEAR = "history_clear";
 
     /** Per-section heading for the leading switch/action group. */
     private static String groupKey(SettingsSection section) {
@@ -162,6 +163,19 @@ public final class SettingsSectionPage {
         });
     }
 
+    /**
+     * "Clear chat history" card. Always offered: with persistence off it still
+     * wipes the current session's bubbles, with persistence on it also deletes
+     * the world's saved file.
+     */
+    private SettingsItem historyClearItem() {
+        return new SettingsItem("history_clear",
+                "atomchat.settings.chat.history.clear",
+                "atomchat.settings.chat.history.clear.desc",
+                () -> true, v -> {
+        });
+    }
+
     /** Two-step confirm for destructive actions: first tap arms a red
      *  "确定清除？", second tap within the window really fires. Guards against
      *  accidental wipes; any click that is not the armed button disarms. */
@@ -184,7 +198,7 @@ public final class SettingsSectionPage {
 
     /** Destructive actions that must pass through the two-step confirm. */
     private static boolean needsConfirm(String actionId) {
-        return ACTION_WALLPAPER_CLEAR.equals(actionId);
+        return ACTION_WALLPAPER_CLEAR.equals(actionId) || ACTION_HISTORY_CLEAR.equals(actionId);
     }
 
     /** The colour group folded/unfolded by a label row, or null for plain labels. */
@@ -276,6 +290,7 @@ public final class SettingsSectionPage {
         }
         if (section == SettingsSection.CHAT) {
             rows.add(Row.ofAction(ACTION_TELEPORT_MODE, teleportModeItem()));
+            rows.add(Row.ofAction(ACTION_HISTORY_CLEAR, historyClearItem()));
         }
         if (section == SettingsSection.APPEARANCE) {
             rows.add(Row.ofLabel(LABEL_ADJUST));
@@ -631,6 +646,12 @@ public final class SettingsSectionPage {
             subtitle = tr("atomchat.settings.theme."
                     + (theme == null || theme.isBlank() ? "none" : theme));
             verb = tr("atomchat.settings.action.cycle");
+        } else if (ACTION_HISTORY_CLEAR.equals(row.actionId())) {
+            // The scope depends on the persistence switch, so say which one it is.
+            subtitle = tr(AtomChatConfig.get().chatHistoryEnabled
+                    ? "atomchat.settings.chat.history.clear.desc.saved"
+                    : "atomchat.settings.chat.history.clear.desc.memory");
+            verb = tr("atomchat.settings.action.clear");
         } else {
             subtitle = tr(row.item().subtitleKey());
             verb = tr("atomchat.settings.action.clear");

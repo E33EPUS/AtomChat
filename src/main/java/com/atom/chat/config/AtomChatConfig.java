@@ -140,6 +140,30 @@ public class AtomChatConfig {
      * have passed since the previous one.
      */
     public int timestampIntervalMinutes = 5;
+    /**
+     * User-defined quick phrases, shown in the chat composer's phrase panel.
+     * Clicking one inserts it into the input box (never sends it straight
+     * away), so it can still be edited before hitting enter. Managed in-game
+     * from the panel; hand-editing this array works too.
+     */
+    public java.util.List<String> quickPhrases = new java.util.ArrayList<>();
+    /** Hard cap for {@link #quickPhrases}; the panel refuses additions past it. */
+    public static final int MAX_QUICK_PHRASES = 20;
+    /** Matches Minecraft's chat limit — a longer phrase could never be sent. */
+    public static final int MAX_QUICK_PHRASE_LENGTH = 256;
+
+    /**
+     * Whether chat history is kept per world on disk under
+     * {@code <config>/atomchat/history/} and restored when you rejoin that
+     * world. Off by default: chat (including private conversations) is written
+     * as plain JSONL, so this is an explicit opt-in rather than a surprise.
+     */
+    public boolean chatHistoryEnabled = false;
+    /**
+     * Deletes history files older than this many days when a world is joined.
+     * 0 keeps them forever (default). No settings UI in v0.2.3 — hand-edit.
+     */
+    public int historyRetentionDays = 0;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AtomChatConfig instance;
