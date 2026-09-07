@@ -2,7 +2,10 @@ package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
 import io.github.humbleui.skija.Image;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
 
 import java.util.Map;
 import java.util.UUID;
@@ -22,10 +25,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the server keeps no per-viewer state. No disk layer — with a wipe-on-join
  * policy it could never serve a hit.
  *
- * <p>Companion presence: the client never knows up front. The first request
- * doubles as a probe — if no answer arrives within {@link #PROBE_TIMEOUT_MS}
- * the server is marked companion-less for the rest of the session and all
- * traffic stops (silent degradation to skins).
+ * <p>Companion presence: the client checks the negotiated network channels
+ * before sending anything. When the server did not register AtomChat's avatar
+ * channels it is marked companion-less and all traffic stops (silent
+ * degradation to skins).
  */
 public final class AvatarCompanionClient {
     private AvatarCompanionClient() {
@@ -96,9 +99,29 @@ public final class AvatarCompanionClient {
             }
             return null;
         }
+        if (!serverSupportsCompanion()) {
+            // The server did not negotiate AtomChat's avatar channels. Do not
+            // send an unknown C2S payload; mark the server companion-less so
+            // the rest of the session silently degrades to skins.
+            presence = Presence.NO;
+            requestedAt.clear();
+            return null;
+        }
         requestedAt.put(uuid, now);
         PacketDistributor.sendToServer(new AvatarPayloads.AvatarRequestPayload(uuid));
         return null;
+    }
+
+    /** True when the connected server actually registered the avatar C2S channel. */
+    private static boolean serverSupportsCompanion() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            ClientPacketListener connection = mc.getConnection();
+            return connection != null && NetworkRegistry.hasChannel(
+                    connection, AvatarPayloads.AvatarRequestPayload.TYPE.id());
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Pushes the local avatar to the server; a no-op without a companion. */
