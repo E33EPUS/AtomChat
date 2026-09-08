@@ -152,6 +152,20 @@ public class AtomChatConfig {
      */
     public boolean compactMessagesEnabled = false;
     /**
+     * Skia banner when someone @mentions or quotes you. Banners are drawn inside
+     * the AtomChat panel only, so with the panel closed this has no visual
+     * effect and the sound is the only in-game signal.
+     */
+    public boolean mentionBannerEnabled = true;
+    /** Sound when someone @mentions or quotes you. */
+    public boolean mentionSoundEnabled = true;
+    /** Skia banner when someone sends you a private / whisper message. */
+    public boolean whisperBannerEnabled = true;
+    /** Sound when someone sends you a private / whisper message. */
+    public boolean whisperSoundEnabled = true;
+    /** Master volume multiplier for all AtomChat notification sounds (0..1). */
+    public float notifyVolume = 1.0F;
+    /**
      * User-defined quick phrases, shown in the chat composer's phrase panel.
      * Clicking one inserts it into the input box (never sends it straight
      * away), so it can still be edited before hitting enter. Managed in-game

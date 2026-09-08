@@ -50,6 +50,7 @@ import com.atom.chat.ui.EmojiPanel;
 import com.atom.chat.ui.QuickPhrasePanel;
 import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
+import com.atom.chat.notification.NotificationBanner;
 import com.atom.chat.ui.input.InputHandler;
 import com.atom.chat.ui.input.InputRouter;
 import com.atom.chat.wallpaper.WallpaperImage;
@@ -183,6 +184,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         } else if ("wallpaper_clear".equals(actionId)) {
             WallpaperStore.clear();
             WallpaperImage.release();
+        } else if ("test_sound".equals(actionId)) {
+            com.atom.chat.notification.NotificationController.playTestSound();
         } else if ("teleport_mode".equals(actionId)) {
             AtomChatConfig cfg = AtomChatConfig.get();
             String current = cfg.teleportCommandMode == null ? "auto" : cfg.teleportCommandMode;
@@ -273,6 +276,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             .add(new ClosingStateInput())
             .add(new ModalInput())
             .add(new NumberEditInput())
+            .add(new BannerInput())
             .add(new ScreenEscInput())
             .add(new RootPageInput())
             .add(new WorldChatInput());
@@ -1255,6 +1259,159 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
     }
 
+    /**
+     * Notification banners, painted after every page body so they sit on top
+     * regardless of which page is showing (the settings and profile branches
+     * return early from drawPanel). They live inside the panel layer, so they
+     * fade and slide with the panel instead of floating outside it.
+     */
+    private static int leakProbeCount;
+
+    private static void probeCanvasLeak(String where, int before, Canvas canvas) {
+        int leaked = canvas.getSaveCount() - before;
+        if (leaked == 0 || !AtomChatConfig.get().debug) {
+            return;
+        }
+        leakProbeCount++;
+        if (leakProbeCount == 1 || leakProbeCount % 200 == 0) {
+            AtomChat.LOGGER.warn("Leak probe: {} leaked {} stack entries (occurrence {})",
+                    where, leaked, leakProbeCount);
+        }
+    }
+
+    private void drawNotificationBanners(Canvas canvas, int mouseX, int mouseY) {
+        // Modals own the top layer; a banner painted over them would be visible
+        // but unclickable (ModalInput swallows the click), so hide it until the
+        // modal closes. The 4s queue lifetime still lets it reappear.
+        if (imageCropper.isActive() || colorPicker.isActive()) {
+            return;
+        }
+        if (!NotificationBanner.INSTANCE.hasActive()) {
+            return;
+        }
+        UiLayout.Rect panel = layout().rect();
+        float vmx = toVirtualX(mouseX);
+        float vmy = toVirtualY(mouseY);
+        int probeBefore = canvas.getSaveCount();
+        NotificationBanner.INSTANCE.renderInPanel(canvas, panel.x(), panel.y(), panel.w(), panel.h(),
+                vmx, vmy);
+        probeCanvasLeak("banner render", probeBefore, canvas);
+    }
+
+    /**
+     * Banner clicks jump to the message behind the notification. Registered
+     * after the modals, so a cropper or colour picker still swallows the click
+     * while it is open.
+     */
+    private final class BannerInput implements InputHandler {
+        @Override
+        public boolean onClick(double mouseX, double mouseY, int button) {
+            if (button != 0 || !NotificationBanner.INSTANCE.hasActive()) {
+                return false;
+            }
+            float vmx = toVirtualX(mouseX);
+            float vmy = toVirtualY(mouseY);
+            // The send-style round button means "reply now": same jump plus
+            // composer focus. The rest of the banner just navigates.
+            NotificationBanner.Active sendButton = NotificationBanner.INSTANCE.buttonHit(vmx, vmy);
+            if (sendButton != null) {
+                NotificationBanner.INSTANCE.dismiss(sendButton);
+                jumpToNotification(sendButton);
+                focusComposerForReply();
+                return true;
+            }
+            NotificationBanner.Active hit = NotificationBanner.INSTANCE.hitTest(vmx, vmy);
+            if (hit == null) {
+                return false;
+            }
+            NotificationBanner.INSTANCE.dismiss(hit);
+            jumpToNotification(hit);
+            return true;
+        }
+    }
+
+    /** Composer focus for the banner send-button: one click from banner to typing. */
+    private void focusComposerForReply() {
+        if (chatField != null && !isPrivateReadOnly()) {
+            inputFocused = true;
+            setFocused(chatField);
+            chatField.setFocused(true);
+        }
+    }
+
+    /** Opens whatever page holds this notification and scrolls the message in. */
+    private void jumpToNotification(NotificationBanner.Active banner) {
+        ChatMessage msg = banner.message();
+        if (msg == null) {
+            return;
+        }
+        if (banner.type() == NotificationBanner.Type.WHISPER) {
+            PlayerRef target = PlayerRef.of(msg.getSenderUuid(), msg.getProfileName());
+            if (target != null && !target.equals(activePrivateTarget())) {
+                openPrivateChat(target);
+            }
+        } else if (topPage() != AppPage.WORLD_CHAT) {
+            openWorldChat();
+        }
+        scrollToMessage(msg);
+    }
+
+    /**
+     * Scrolls the current page's list so the message sits a third of the way
+     * down the viewport, then leaves a fading highlight on it. Anti-spam merges
+     * mean the target can be a merged bubble — that one is still the right
+     * destination, so merged messages are never un-merged here.
+     */
+    private void scrollToMessage(ChatMessage msg) {
+        NavPage page = topNav();
+        List<ChatMessage> messages = messagesForNav(page);
+        int index = findMessageIndex(messages, msg);
+        if (index < 0) {
+            return;
+        }
+        ScrollController scroll = scrollForNav(page);
+        UiLayout.Rect list = layout().list;
+        float offset = messageListView.offsetOf(messages, index, list.w());
+        // The page may have just been opened (fresh controller, maxScroll still
+        // zero). Feed it the real content height before the jump or the clamp
+        // inside scrollTo collapses the target to 0.
+        scroll.setContent(messageListView.offsetOf(messages, messages.size(), list.w()), list.h());
+        scroll.scrollTo(offset - list.h() / 3.0F, true);
+        messageListView.highlight(messages.get(index));
+    }
+
+    /**
+     * Resolves the banner's message to its current list slot. Anti-spam can
+     * replace the original object with a merged {@code xN} copy after the banner
+     * was queued, so fall back to the last same-content/sender row instead of
+     * giving up on an identity miss.
+     */
+    private static int findMessageIndex(List<ChatMessage> messages, ChatMessage target) {
+        int exact = messages.indexOf(target);
+        if (exact >= 0) {
+            return exact;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage candidate = messages.get(i);
+            if (candidate.isOwn() != target.isOwn()
+                    || candidate.isSystem() != target.isSystem()
+                    || !java.util.Objects.equals(candidate.getQuoteName(), target.getQuoteName())
+                    || !java.util.Objects.equals(candidate.getQuoteText(), target.getQuoteText())
+                    || !java.util.Objects.equals(candidate.getContentText(), target.getContentText())) {
+                continue;
+            }
+            UUID a = candidate.getSenderUuid();
+            UUID b = target.getSenderUuid();
+            boolean sameSender = a != null && b != null
+                    ? a.equals(b)
+                    : java.util.Objects.equals(candidate.getProfileName(), target.getProfileName());
+            if (sameSender) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private void drawPhone(Canvas canvas, Image worldSnapshot, int mouseX, int mouseY, float delta) {
         float x = panelX();
         float y = panelY();
@@ -1266,7 +1423,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             canvas.translate((progress - 1.0F) * 36.0F, 0.0F);
             // The world snapshot sits inside the saveLayer/translate stack so it
             // fades in with the panel and slides with it — no special handling.
+            int probeBefore = canvas.getSaveCount();
             drawPanel(canvas, x, y, worldSnapshot, mouseX, mouseY, delta);
+            drawNotificationBanners(canvas, mouseX, mouseY);
+            probeCanvasLeak("drawPanel+banners", probeBefore, canvas);
             canvas.restore();
         }
         canvas.restore();
@@ -1609,8 +1769,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
      * the overlays belong to the screen, not the sliding page.
      */
     private void drawChatPageBody(Canvas canvas, UiLayout layout, int mouseX, int mouseY, NavPage page) {
+        int probeBefore = canvas.getSaveCount();
         messageListView.draw(canvas, layout.list.x(), layout.list.y(), layout.list.w(), layout.list.h(),
                 messagesForNav(page), scrollForNav(page));
+        probeCanvasLeak("messageListView.draw", probeBefore, canvas);
 
         // Reply bar floats above the input bar. It is drawn after the message
         // list so it always sits on top; the layout keeps an 8px gap below it.

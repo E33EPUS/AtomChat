@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.2.5
+
+### 新增
+
+- **通知横幅**：被 @、被回复、收到私聊时，若 AtomChat 面板处于打开状态（或 4 秒内打开），面板顶部会弹出横幅（发送者头像 + 类型 + 名字 + 内容预览）。点击横幅跳转到那条消息并短暂高亮；最多同时显示 3 条，4 秒后淡出。面板关闭时不绘制 HUD，仅播放音效并累积 `@N` 未读角标。
+- **通知音效**：上述三类事件播放同一个内置气泡提示音；面板关闭时同样生效（2 秒去重，避免刷屏时连续响）。
+- **通知设置**：设置 → 聊天 →「通知」分组，含提及横幅、提及音效、私聊横幅、私聊音效四个开关、通知音量滑条与「测试音效」卡片。
+
+### 修复
+
+- **0.2.4 的通知横幅会把整个界面推出屏幕**（回退项重做）：横幅绘制时 `saveLayer` 缺少配对的 `restore`，每帧泄漏一层画布变换；叠加逐帧的密度缩放后变换指数级放大，面板向右下飞出屏幕并表现为"无法再打开面板/按键无响应"。已改为两段 restore，并移除 HUD 绘制路径——横幅只在面板画布内绘制。
+
+### 更改
+
+- **Skia 画布护栏**：每帧绘制结束后强制回退到进入时的画布栈基线。今后任何地方再漏 restore，后果最多影响一帧，不可能再累积成界面飞出。
+- **会话列表只保留在线玩家**：离线私聊卡不再常驻列表，避免每次重建都做皮肤解析和排序；离线期间该会话不在列表里（无法从列表打开），对方重新上线时卡片自动恢复，磁盘里的私聊记录不受影响。
+- **别人资料页不再显示会话时长**：本地会话计时只对自己有意义，不再把它显示在对方资料下。
+- **标题与标签使用真实粗体**：新增 `bundled-bold.otf`（Noto Sans CJK SC Bold），不再用描边伪粗体。
+
+### Added
+
+- **Notification banners**: when you are @mentioned, quoted or sent a private message while the AtomChat panel is open (or within the next 4 seconds), a banner drops in at the top of the panel (sender avatar + type + name + content preview). Clicking it jumps to that message and highlights it briefly; up to three stack at once and each fades out after 4 seconds. With the panel closed no HUD is drawn — only the sound plays and the `@N` unread badge accumulates.
+- **Notification sounds**: the three events above share one bundled pop cue; it also fires while the panel is closed (2s de-duplication keeps spam quiet).
+- **Notification settings**: Settings → Chat → Notifications, with four switches (mention banner/sound, whisper banner/sound), a notification volume slider, and a Test sound card.
+
+### Fixed
+
+- **0.2.4 banners flung the whole UI off screen** (the rolled-back feature, rebuilt): `drawBanner` pushed a `saveLayer` without a matching `restore`, leaking one canvas transform per frame; combined with the per-frame density scale the transform compounded exponentially until the panel flew off screen, which also surfaced as "cannot reopen the panel" and unresponsive keys. Fixed with paired restores, and the HUD draw path is gone — banners render on the panel canvas only.
+
+### Changed
+
+- **Skia canvas guard rail**: every frame now rewinds to the canvas stack baseline it entered with. A future unbalanced save/restore can corrupt at most one frame instead of compounding into a runaway transform.
+- **Online-only conversation cards**: offline private-chat cards no longer stay in the list (no per-rebuild skin resolve/sort for players you cannot message); while they are offline the conversation cannot be opened from the list, the card returns when they join, and the on-disk history is untouched.
+- **Other players' profiles no longer show the session timer**: the local session timer is only meaningful for yourself, so it is hidden on other profiles.
+- **Real bold headings and labels**: added `bundled-bold.otf` (Noto Sans CJK SC Bold) instead of stroke-smeared faux bold.
+
 ## v0.2.4
 
 ### 新增

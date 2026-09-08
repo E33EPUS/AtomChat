@@ -124,6 +124,7 @@ public final class SettingsSectionPage {
     private static final String LABEL_UI_COLORS = "atomchat.settings.group.uicolors";
     private static final String LABEL_CHAT_MESSAGES = "atomchat.settings.group.chat.messages";
     private static final String LABEL_CHAT_HISTORY = "atomchat.settings.group.chat.history";
+    private static final String LABEL_CHAT_NOTIFY = "atomchat.settings.group.chat.notify";
     private static final String LABEL_CHAT_TELEPORT = "atomchat.settings.group.chat.teleport";
     private static final String ACTION_WALLPAPER_PICK = "wallpaper_pick";
     private static final String ACTION_WALLPAPER_CLEAR = "wallpaper_clear";
@@ -131,6 +132,7 @@ public final class SettingsSectionPage {
     private static final String ACTION_THEME = "theme_cycle";
     private static final String ACTION_HISTORY_CLEAR = "history_clear";
     private static final String ACTION_CACHE_CLEAR = "cache_clear";
+    private static final String ACTION_TEST_SOUND = "test_sound";
 
     /** Per-section heading for the leading switch/action group. */
     private static String groupKey(SettingsSection section) {
@@ -155,6 +157,15 @@ public final class SettingsSectionPage {
         return new SettingsItem("wallpaper_clear",
                 "atomchat.settings.appearance.wallpaper.clear",
                 "atomchat.settings.appearance.wallpaper.clear.desc",
+                () -> true, v -> {
+        });
+    }
+
+    /** "Test sound" card: fires the notification cue right away, no message needed. */
+    private SettingsItem testSoundItem() {
+        return new SettingsItem("test_sound",
+                "atomchat.settings.chat.test_sound",
+                "atomchat.settings.chat.test_sound.desc",
                 () -> true, v -> {
         });
     }
@@ -395,6 +406,9 @@ public final class SettingsSectionPage {
             long bytes = ImageLoader.get().diskCacheBytes();
             subtitle = humanBytes(bytes) + " · " + tr(item.subtitleKey());
             verb = tr("atomchat.settings.action.clear");
+        } else if (ACTION_TEST_SOUND.equals(row.actionId())) {
+            subtitle = tr(item.subtitleKey());
+            verb = tr("atomchat.settings.action.play");
         } else {
             subtitle = tr(item.subtitleKey());
             verb = tr("atomchat.settings.action.clear");
@@ -505,6 +519,12 @@ public final class SettingsSectionPage {
             addSwitches(rows, SettingsSection.CHAT, "history");
             addSliders(rows, SettingsSection.CHAT, "history_retention");
             rows.add(Row.ofAction(ACTION_HISTORY_CLEAR, historyClearItem()));
+        });
+        addGroup(rows, LABEL_CHAT_NOTIFY, () -> {
+            addSwitches(rows, SettingsSection.CHAT,
+                    "mention_banner", "mention_sound", "whisper_banner", "whisper_sound");
+            addSliders(rows, SettingsSection.CHAT, "notify_volume");
+            rows.add(Row.ofAction(ACTION_TEST_SOUND, testSoundItem()));
         });
         addGroup(rows, LABEL_CHAT_TELEPORT, () ->
                 rows.add(Row.ofAction(ACTION_TELEPORT_MODE, teleportModeItem())));

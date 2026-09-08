@@ -2,6 +2,8 @@ package com.atom.chat;
 
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageLoader;
+import com.atom.chat.notification.NotificationBanner;
+import com.atom.chat.notification.NotificationController;
 import com.atom.chat.render.PanelBlurRenderer;
 import com.atom.chat.util.CacheDirs;
 import com.atom.chat.wallpaper.WallpaperStore;
@@ -73,8 +75,13 @@ public class AtomChatClient implements ClientModInitializer {
             ChatStore.reset();
             com.atom.chat.chat.SeenPlayers.clear();
         });
+        NotificationController.registerSound();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             com.atom.chat.history.ChatHistory.tick(client);
+            // Expires banners regardless of whether the panel is open: their 4s
+            // lifetime starts at enqueue, so a banner queued while the panel was
+            // closed is already gone if you open the panel later than that.
+            NotificationBanner.INSTANCE.tick();
             while (OPEN_ATOMCHAT_KEY.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new AtomChatScreen("", AtomChatOpenMode.RESTORE));
