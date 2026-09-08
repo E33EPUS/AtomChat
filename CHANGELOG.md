@@ -10,6 +10,7 @@
 
 ### 修复
 
+- **通知设置分组无法折叠**：0.2.5 新增的「通知」分组漏了折叠白名单登记，和其它分组不同，它一直保持展开无法收起。
 - **0.2.4 的通知横幅会把整个界面推出屏幕**（回退项重做）：横幅绘制时 `saveLayer` 缺少配对的 `restore`，每帧泄漏一层画布变换；叠加逐帧的密度缩放后变换指数级放大，面板向右下飞出屏幕并表现为"无法再打开面板/按键无响应"。已改为两段 restore，并移除 HUD 绘制路径——横幅只在面板画布内绘制。
 
 ### 更改
@@ -27,6 +28,7 @@
 
 ### Fixed
 
+- **The notification settings group could not be folded**: the 0.2.5 "Notifications" group was missing from the foldable-group whitelist, so unlike every other settings group it stayed permanently expanded.
 - **0.2.4 banners flung the whole UI off screen** (the rolled-back feature, rebuilt): `drawBanner` pushed a `saveLayer` without a matching `restore`, leaking one canvas transform per frame; combined with the per-frame density scale the transform compounded exponentially until the panel flew off screen, which also surfaced as "cannot reopen the panel" and unresponsive keys. Fixed with paired restores, and the HUD draw path is gone — banners render on the panel canvas only.
 
 ### Changed
