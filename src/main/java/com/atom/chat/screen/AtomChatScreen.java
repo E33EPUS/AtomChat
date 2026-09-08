@@ -124,8 +124,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             if ("avatar".equals(targetId)) {
                 if (avatarStore.setPng(pngBytes)) {
                     AvatarImage.release();
-                    // Companion push: silently skipped when the server has no
-                    // companion (presence is only YES after a data response).
+                    // Companion push: skipped only when the server has no
+                    // companion channels at all (negotiation, not a timeout).
                     if (client.player != null) {
                         com.atom.chat.net.AvatarCompanionClient.uploadOwnAvatar(
                                 client.player.getUUID(), pngBytes);
