@@ -89,8 +89,15 @@ public final class MessageListView {
     private final Set<ChatMessage> messageEnterSettled = new HashSet<>();
     private long lastEntrancePrune;
 
+    /** Fade duration of the wash left on a message after a banner jump. */
+    private static final long HIGHLIGHT_MS = 1200L;
+
     private int pokeIndex = -1;
     private long pokeStartTime;
+
+    /** Message highlighted by a notification jump, and when it stops. */
+    private ChatMessage highlightMessage;
+    private long highlightUntil;
 
     public MessageListView(Host host) {
         this.host = host;
@@ -98,11 +105,65 @@ public final class MessageListView {
 
     // ------------------------------------------------------------------ public api
 
+    /**
+     * Arms (or clears) the jump-to-message highlight: a white wash that fades
+     * out over {@link #HIGHLIGHT_MS}, so a banner click visibly lands on the
+     * message it pointed at.
+     */
+    public void highlight(ChatMessage message) {
+        highlightMessage = message;
+        highlightUntil = message == null ? 0L : System.currentTimeMillis() + HIGHLIGHT_MS;
+    }
+
+    /**
+     * Content-space Y offset of a message inside the list. Mirrors the cursor
+     * arithmetic of {@link #draw} exactly (time dividers, per-message heights,
+     * grouped gaps) so a jump can place any message in the viewport without
+     * re-measuring by hand.
+     */
+    public float offsetOf(List<ChatMessage> messages, int index, float width) {
+        float cursor = 0.0F;
+        int limit = Math.min(index, messages.size());
+        for (int i = 0; i < limit; i++) {
+            if (dividerBefore(messages, i)) {
+                cursor += TIME_DIVIDER_H + UiTokens.LIST_GAP;
+            }
+            cursor += messageHeight(messages.get(i), width, isCompactGrouped(messages, i));
+            cursor += isCompactGrouped(messages, i + 1)
+                    ? MessageGrouping.groupedGap(UiTokens.LIST_GAP, UiTokens.s(2))
+                    : UiTokens.LIST_GAP;
+        }
+        if (limit < messages.size() && dividerBefore(messages, limit)) {
+            cursor += TIME_DIVIDER_H + UiTokens.LIST_GAP;
+        }
+        return cursor;
+    }
+
+    /** White wash painted under a message while its jump highlight is armed. */
+    private void drawJumpHighlight(Canvas canvas, ChatMessage msg, float x, float y, float w, float h) {
+        if (highlightMessage != msg) {
+            return;
+        }
+        long left = highlightUntil - System.currentTimeMillis();
+        if (left <= 0L) {
+            highlightMessage = null;
+            return;
+        }
+        float t = Math.min(1.0F, left / (float) HIGHLIGHT_MS);
+        SkiaDraw.drawRoundedRect(canvas, x, y - UiTokens.s(2), w, h + UiTokens.s(4),
+                UiTokens.s(8), Color.makeARGB((int) (60.0F * t), 255, 255, 255));
+    }
+
     public void draw(Canvas canvas, float x, float y, float width, float height,
                      List<ChatMessage> messages, ScrollController scroll) {
         hits.clear();
         clickableSpans.clear();
         currentMessages = messages;
+        // Drop an expired jump highlight even when its message left the list;
+        // the per-message draw path would otherwise never reach the expiry check.
+        if (highlightMessage != null && System.currentTimeMillis() > highlightUntil) {
+            highlightMessage = null;
+        }
         // Snapshot "was at bottom" before maxScroll grows: after new messages
         // arrive the old target is no longer near the new max, so comparing after
         // recompute would make us miss the follow and leave a growing gap.
@@ -180,6 +241,7 @@ public final class MessageListView {
                             canvas.translate(dx, 0.0F);
                         }
                     }
+                    drawJumpHighlight(canvas, msg, x, cursorY, width, h);
                     int spanStart = clickableSpans.size();
                     MessageHit hit = drawMessage(canvas, msg, x, cursorY, width, hits.size(), grouped);
                     // Clickable spans are recorded in content space (like hits

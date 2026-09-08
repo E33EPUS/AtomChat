@@ -21,6 +21,7 @@ import org.lwjgl.opengl.GL33C;
  * Pattern ported from Tuui's Graphics class.
  */
 public class SkiaGraphics {
+    private static int leakLogCount;
     private Canvas canvas;
     private DirectContext context;
     private Surface surface;
@@ -124,11 +125,30 @@ public class SkiaGraphics {
         context.resetAll();
         RenderSystem.enableBlend();
 
+        // Guard rail: remember the stack baseline. A renderer that forgets a
+        // matching restore (typically saveLayer) used to leak a matrix per
+        // frame, and because the density scale is applied every frame the leak
+        // compounded into an exploding transform that flung the whole UI off
+        // screen — the 0.2.4 notification banner rollback. Rewinding to the
+        // baseline caps any future leak at a single frame.
+        int saveBase = canvas.getSaveCount();
         canvas.save();
         // Decouple from vanilla GUI scale: design density anchored at 1080p.
         canvas.scale(density, density);
-        renderer.accept(canvas, snapshot);
-        canvas.restore();
+        try {
+            renderer.accept(canvas, snapshot);
+        } finally {
+            int leaked = canvas.getSaveCount() - (saveBase + 1);
+            if (leaked != 0 && com.atom.chat.config.AtomChatConfig.get().debug) {
+                leakLogCount++;
+                // Throttled: a per-frame leak used to spam the log line-by-line.
+                if (leakLogCount == 1 || leakLogCount % 200 == 0) {
+                    AtomChat.LOGGER.warn("Skia canvas stack leak: {} unbalanced save/saveLayer (occurrence {})",
+                            leaked, leakLogCount);
+                }
+            }
+            canvas.restoreToCount(saveBase);
+        }
 
         surface.flush();
         GlStateUtil.restore();

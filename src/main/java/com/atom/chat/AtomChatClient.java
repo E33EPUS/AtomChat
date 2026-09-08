@@ -5,6 +5,8 @@ import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.PrivateEchoTracker;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.image.ImageLoader;
+import com.atom.chat.notification.NotificationBanner;
+import com.atom.chat.notification.NotificationController;
 import com.atom.chat.render.PanelBlurRenderer;
 import com.atom.chat.screen.AtomChatScreen;
 import com.atom.chat.util.CacheDirs;
@@ -43,6 +45,7 @@ public class AtomChatClient {
         modEventBus.addListener(AtomChatClient::registerKeyMappings);
         modEventBus.addListener(AtomChatClient::registerReloadListener);
 
+        NotificationController.registerSound();
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerDisconnect);
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onClientTick);
@@ -92,6 +95,10 @@ public class AtomChatClient {
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
         com.atom.chat.history.ChatHistory.tick(client);
+        // Expires banners regardless of whether the panel is open: their 4s
+        // lifetime starts at enqueue, so a banner queued while the panel was
+        // closed is already gone if you open the panel later than that.
+        NotificationBanner.INSTANCE.tick();
         while (OPEN_ATOMCHAT_KEY.consumeClick()) {
             if (client.screen == null) {
                 client.setScreen(new AtomChatScreen("", AtomChatScreen.AtomChatOpenMode.RESTORE));

@@ -17,9 +17,13 @@ import java.util.Locale;
 public final class FontManager {
     /** Drop a licensed font file here (e.g. Noto Sans SC) to bundle it. */
     private static final String BUNDLED_FONT = "/assets/atomchat/font/bundled.otf";
+    /** True-bold face (same character set as the bundled regular) for headings. */
+    private static final String BUNDLED_BOLD_FONT = "/assets/atomchat/font/bundled-bold.otf";
     /** Faux-bold for thin system fallback fonts; a real bundled font makes this redundant. */
     private static boolean usingFallbackTypeface;
     private static Typeface defaultTypeface;
+    private static boolean boldLookupDone;
+    private static Typeface boldTypeface;
     private static final java.util.Map<String, Font> CACHE = new java.util.HashMap<>();
     private static final java.util.Map<String, Font> BOLD_CACHE = new java.util.HashMap<>();
 
@@ -90,9 +94,10 @@ public final class FontManager {
     }
 
     /**
-     * A separate cached faux-bold face for headings and labels that need more
-     * weight than the regular medium body. Uses a distinct cache entry so the
-     * shared regular font is never mutated.
+     * A separate cached bold face for headings and labels that need more weight
+     * than the regular medium body. Prefers the bundled true-bold file —
+     * {@code setEmboldened(true)} is a stroke smear that looks mushy at small
+     * sizes — and only falls back to faux-bold when that file is absent.
      */
     public static Font boldFont(float size) {
         String key = size + "px-bold";
@@ -100,9 +105,32 @@ public final class FontManager {
         if (cached != null) {
             return cached;
         }
+        Typeface bold = getBoldTypeface();
+        if (bold != null) {
+            Font font = new Font(bold, size);
+            BOLD_CACHE.put(key, font);
+            return font;
+        }
         Font font = new Font(getDefaultTypeface(), size);
         font.setEmboldened(true);
         BOLD_CACHE.put(key, font);
         return font;
+    }
+
+    /** Bundled true-bold typeface, or {@code null} when the file is missing. */
+    private static Typeface getBoldTypeface() {
+        if (boldLookupDone) {
+            return boldTypeface;
+        }
+        boldLookupDone = true;
+        try (InputStream in = FontManager.class.getResourceAsStream(BUNDLED_BOLD_FONT)) {
+            if (in != null) {
+                boldTypeface = Typeface.makeFromData(Data.makeFromBytes(in.readAllBytes()));
+                AtomChat.LOGGER.info("Loaded bundled bold font {}", BUNDLED_BOLD_FONT);
+            }
+        } catch (Exception e) {
+            AtomChat.LOGGER.warn("Failed to load bundled bold font, falling back to faux bold", e);
+        }
+        return boldTypeface;
     }
 }

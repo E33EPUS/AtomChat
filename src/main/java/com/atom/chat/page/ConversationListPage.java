@@ -111,9 +111,6 @@ public final class ConversationListPage {
         return UiTokens.s(v);
     }
 
-    /** Offline conversation cards kept below the online block — a month of
-     *  chatting must not leave five hundred former teammates in the list. */
-    private static final int OFFLINE_CARD_CAP = 30;
     /**
      * The row list rebuilds at most every 250ms: render/measure/hit ask for it
      * every frame, but the underlying data (unread counts, latest messages,
@@ -146,8 +143,11 @@ public final class ConversationListPage {
         List<Row> all = new ArrayList<>();
         all.add(new Row(RowKind.PUBLIC, null, latestPublic(), ChatStore.publicUnread(), true, false));
 
+        // Only online players get a conversation card. Offline partners keep
+        // their history on disk (when persistence is on) and their card reappears
+        // the moment they join — listing every former teammate forever cost a
+        // skin resolve and a sort pass per rebuild for rows nobody can message.
         List<PlayerRef> online = onlinePlayers();
-        List<PlayerRef> known = PrivateChatStore.knownPartners();
         for (PlayerRef p : online) {
             if (p.equals(ownRef(client))) {
                 continue;
@@ -156,18 +156,10 @@ public final class ConversationListPage {
             boolean blocked = BlockList.isBlocked(p);
             all.add(new Row(RowKind.PLAYER, p, latest, PrivateChatStore.unread(p), true, blocked));
         }
-        for (PlayerRef p : known) {
-            if (isOnline(p)) {
-                continue;
-            }
-            ChatMessage latest = PrivateChatStore.latest(p);
-            boolean blocked = BlockList.isBlocked(p);
-            all.add(new Row(RowKind.PLAYER, p, latest, PrivateChatStore.unread(p), false, blocked));
-        }
 
         // Sort only player rows after Public by the agreed rules: dynamic chats
-        // first (latest activity descending), static/no-history by name; offline
-        // section after online. Public is always row 0.
+        // first (latest activity descending), static/no-history by name. Public
+        // is always row 0.
         List<Row> sortedPlayers = new ArrayList<>(all.subList(1, all.size()));
         sortedPlayers.sort(PLAYER_ORDER);
         List<Row> result = new ArrayList<>();
@@ -175,16 +167,7 @@ public final class ConversationListPage {
         if (!sortedPlayers.isEmpty()) {
             result.add(divider());
         }
-        int offlineSeen = 0;
-        for (Row row : sortedPlayers) {
-            if (!row.online()) {
-                offlineSeen++;
-                if (offlineSeen > OFFLINE_CARD_CAP) {
-                    continue;
-                }
-            }
-            result.add(row);
-        }
+        result.addAll(sortedPlayers);
         return result;
     }
 

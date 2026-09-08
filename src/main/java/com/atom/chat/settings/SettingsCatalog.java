@@ -81,6 +81,26 @@ public final class SettingsCatalog {
                             "atomchat.settings.chat.compact_messages.desc",
                             () -> AtomChatConfig.get().compactMessagesEnabled,
                             v -> AtomChatConfig.get().compactMessagesEnabled = v),
+                    new SettingsItem("mention_banner",
+                            "atomchat.settings.chat.mention_banner",
+                            "atomchat.settings.chat.mention_banner.desc",
+                            () -> AtomChatConfig.get().mentionBannerEnabled,
+                            v -> AtomChatConfig.get().mentionBannerEnabled = v),
+                    new SettingsItem("mention_sound",
+                            "atomchat.settings.chat.mention_sound",
+                            "atomchat.settings.chat.mention_sound.desc",
+                            () -> AtomChatConfig.get().mentionSoundEnabled,
+                            v -> AtomChatConfig.get().mentionSoundEnabled = v),
+                    new SettingsItem("whisper_banner",
+                            "atomchat.settings.chat.whisper_banner",
+                            "atomchat.settings.chat.whisper_banner.desc",
+                            () -> AtomChatConfig.get().whisperBannerEnabled,
+                            v -> AtomChatConfig.get().whisperBannerEnabled = v),
+                    new SettingsItem("whisper_sound",
+                            "atomchat.settings.chat.whisper_sound",
+                            "atomchat.settings.chat.whisper_sound.desc",
+                            () -> AtomChatConfig.get().whisperSoundEnabled,
+                            v -> AtomChatConfig.get().whisperSoundEnabled = v),
                     new SettingsItem("history",
                             "atomchat.settings.chat.history",
                             "atomchat.settings.chat.history.desc",
@@ -156,7 +176,13 @@ public final class SettingsCatalog {
                                 return days == 0
                                         ? Component.translatable("atomchat.settings.chat.history.retention.forever").getString()
                                         : Component.translatable("atomchat.settings.chat.history.retention.days", days).getString();
-                            }));
+                            }),
+                    new SettingsSlider("notify_volume",
+                            "atomchat.settings.chat.notify_volume",
+                            0.00F, 1.00F, 0.05F,
+                            () -> AtomChatConfig.get().notifyVolume,
+                            v -> AtomChatConfig.get().notifyVolume = v,
+                            v -> Math.round(v * 100.0F) + "%"));
             default -> List.of();
         };
     }

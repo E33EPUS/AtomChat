@@ -291,4 +291,19 @@ public final class ScrollController {
         scrollAnimMs = ms;
         scrollAnimActive = true;
     }
+
+    /**
+     * Jumps to an absolute offset — used by "jump to the message behind a
+     * notification banner". Bottom-follow is released first, otherwise
+     * {@link #updateAnimation} would retarget straight back to the bottom on the
+     * very next frame.
+     */
+    public void scrollTo(float y, boolean animate) {
+        scrollToBottom = false;
+        // A jump is authoritative: kill the fresh-controller bottom snap so the
+        // next updateAnimation cannot retarget to maxScroll behind our back.
+        firstFrameBottomSnap = false;
+        startScrollAnim(Math.max(0.0F, Math.min(y, maxScroll)),
+                animate ? UiMotion.SCROLL_SNAP_MS : 0L, true);
+    }
 }

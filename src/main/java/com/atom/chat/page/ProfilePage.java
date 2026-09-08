@@ -391,9 +391,15 @@ public final class ProfilePage {
                 : null;
         String ping = tr("atomchat.profile.ping.value", entry != null ? entry.getLatency() : -1);
         tiles.add(new StatTile(tr("atomchat.profile.ping"), ping, ping));
-        String session = sessionValue();
-        tiles.add(new StatTile(tr("atomchat.profile.session"),
-                session != null ? session : "-", session != null ? session : "-"));
+        // The session timer counts the LOCAL player's join time, so on someone
+        // else's profile it was showing your own uptime under their name. Hide it
+        // for other players instead of guessing (same rule as the OP row).
+        if (subjectIsSelf()) {
+            String session = sessionValue();
+            if (session != null) {
+                tiles.add(new StatTile(tr("atomchat.profile.session"), session, session));
+            }
+        }
         StatTotals totals = statTotals();
         if (totals != null) {
             tiles.add(new StatTile(tr("atomchat.profile.stats"),
@@ -460,10 +466,11 @@ public final class ProfilePage {
                 badge, badge);
     }
 
-    private UiLayout.Rect tileRect(UiLayout layout, int index, float scrollY) {
+    private UiLayout.Rect tileRect(UiLayout layout, int index, float scrollY, int tileCount) {
         float top = layout.list.y() + UiTokens.ROOT_CONTENT_GAP
                 + UiTokens.PROFILE_AVATAR_HERO_H + UiTokens.SETTINGS_ROW_GAP - scrollY;
-        float w = (layout.list.w() - UiTokens.PROFILE_TILE_GAP * 2.0F) / 3.0F;
+        int count = Math.max(1, tileCount);
+        float w = (layout.list.w() - UiTokens.PROFILE_TILE_GAP * (count - 1)) / count;
         return new UiLayout.Rect(
                 layout.list.x() + index * (w + UiTokens.PROFILE_TILE_GAP),
                 top, w, UiTokens.PROFILE_TILE_H);
@@ -681,7 +688,7 @@ public final class ProfilePage {
         Font valueFont = FontManager.font(UiTokens.PROFILE_TILE_VALUE_FONT);
         Font labelFont = FontManager.font(UiTokens.PROFILE_TILE_LABEL_FONT);
         for (int i = 0; i < tiles.size(); i++) {
-            UiLayout.Rect tile = tileRect(layout, i, scrollY);
+            UiLayout.Rect tile = tileRect(layout, i, scrollY, tiles.size());
             if (tile.bottom() < layout.list.y() || tile.y() > layout.list.bottom()) {
                 continue;
             }
