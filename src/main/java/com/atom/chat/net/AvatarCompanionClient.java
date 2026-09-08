@@ -1,6 +1,7 @@
 package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
+import com.atom.chat.config.AtomChatConfig;
 import io.github.humbleui.skija.Image;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 
@@ -33,6 +34,8 @@ public final class AvatarCompanionClient {
 
     private static final long PROBE_TIMEOUT_MS = 3_000L;
     private static final long NO_AVATAR_TTL_MS = 30_000L;
+    /** Cooldown before a lost request is re-sent (see {@link #currentAvatar}). */
+    private static final long RETRY_BACKOFF_MS = 5_000L;
 
     private enum Presence { UNKNOWN, YES, NO }
 
@@ -87,22 +90,31 @@ public final class AvatarCompanionClient {
         }
         Long sentAt = requestedAt.get(uuid);
         if (sentAt != null) {
-            if (presence == Presence.UNKNOWN && now - sentAt > PROBE_TIMEOUT_MS) {
-                // No answer to the probe: the server has no companion.
-                presence = Presence.NO;
-                requestedAt.clear();
+            if (now - sentAt > PROBE_TIMEOUT_MS) {
+                // Lost answer — typically the integrated server still chewing
+                // through the join of the very player whose card fired this
+                // request. Never latch "no companion" from a timeout: a busy
+                // join used to kill the whole session's sync here (0.2.5 hunt).
+                // Forget the attempt and re-send after a cooldown instead.
+                debug("request for " + uuid + " unanswered after " + PROBE_TIMEOUT_MS + "ms, retrying in " + RETRY_BACKOFF_MS + "ms");
+                requestedAt.remove(uuid);
+                noAvatarUntil.put(uuid, now + RETRY_BACKOFF_MS);
             }
             return null;
         }
         if (!serverSupportsCompanion()) {
             // The server did not negotiate AtomChat's avatar channels. Do not
             // send an unknown C2S payload; mark the server companion-less so
-            // the rest of the session silently degrades to skins.
+            // the rest of the session silently degrades to skins. This is the
+            // only authoritative "no companion" signal — negotiation, not a
+            // timeout.
             presence = Presence.NO;
             requestedAt.clear();
+            debug("server has no companion channels, degrading to skins");
             return null;
         }
         requestedAt.put(uuid, now);
+        debug("requesting avatar for " + uuid);
         ClientPlayNetworking.send(new AvatarPayloads.AvatarRequestPayload(uuid));
         return null;
     }
@@ -116,12 +128,21 @@ public final class AvatarCompanionClient {
         }
     }
 
-    /** Pushes the local avatar to the server; a no-op without a companion. */
+    /** Pushes the local avatar to the server; skipped only when the server has
+     *  no companion channels. UNKNOWN counts as supported: the negotiation is
+     *  authoritative and the very first upload of a session must go through
+     *  even before any response has come back. */
     public static void uploadOwnAvatar(UUID uuid, byte[] pngBytes) {
-        if (presence != Presence.YES || uuid == null || pngBytes == null
-                || pngBytes.length == 0 || pngBytes.length > AvatarPayloads.MAX_AVATAR_BYTES) {
+        if (presence == Presence.NO) {
+            debug("upload dropped: server has no companion channels");
             return;
         }
+        if (uuid == null || pngBytes == null
+                || pngBytes.length == 0 || pngBytes.length > AvatarPayloads.MAX_AVATAR_BYTES) {
+            debug("upload dropped: invalid payload");
+            return;
+        }
+        debug("uploading own avatar (" + pngBytes.length + " bytes)");
         ClientPlayNetworking.send(new AvatarPayloads.AvatarUploadPayload(uuid, pngBytes));
     }
 
@@ -134,12 +155,15 @@ public final class AvatarCompanionClient {
         noAvatarUntil.remove(uuid);
         if (presence == Presence.UNKNOWN) {
             presence = Presence.YES;
+            debug("companion answered, marking server as supported");
         }
         if (data == null || data.length == 0) {
             // No avatar on the server; back off before asking again.
+            debug("companion: no avatar stored for " + uuid);
             noAvatarUntil.put(uuid, System.currentTimeMillis() + NO_AVATAR_TTL_MS);
             return;
         }
+        debug("companion: decoding avatar for " + uuid + " (" + data.length + " bytes)");
         if (decoding.putIfAbsent(uuid, Boolean.TRUE) != null) {
             return;
         }
@@ -148,8 +172,11 @@ public final class AvatarCompanionClient {
                 Image image = Image.makeFromEncoded(data);
                 if (image != null && generation == GENERATION.get()) {
                     decoded.put(uuid, image);
+                    debug("companion: avatar for " + uuid + " ready (" + image.getWidth() + "x" + image.getHeight() + ")");
                 } else if (image != null) {
                     image.close();
+                } else {
+                    debug("companion: decode returned null for " + uuid + " (" + data.length + " bytes)");
                 }
             } catch (Throwable t) {
                 AtomChat.LOGGER.warn("Failed to decode companion avatar for {}", uuid, t);
@@ -159,5 +186,12 @@ public final class AvatarCompanionClient {
         }, "AtomChat-CompanionAvatarDecode");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /** Debug-only diagnostics; silent unless the About-page debug switch is on. */
+    private static void debug(String message) {
+        if (AtomChatConfig.get().debug) {
+            AtomChat.LOGGER.info("[avatar] {}", message);
+        }
     }
 }

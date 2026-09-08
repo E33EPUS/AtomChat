@@ -28,6 +28,7 @@
 
 ### Fixed
 
+- **Custom avatars failed to sync in some sessions**: if an avatar request went unanswered for 3 seconds — exactly what happens when the other player joins and the integrated server is busiest — the client latched "server has no companion" for the whole session and never synced again. The host side was the most exposed, since conversation cards fire the first request the moment the other player appears. On top of that, the first avatar upload of a session was silently dropped unless a response had already come back. Timeouts now simply retry after a 5s cooldown instead of latching; only the real channel negotiation can mark the server companion-less; uploads pass as soon as negotiation allows; and a debug-gated `[avatar]` log line was added for each step.
 - **The notification settings group could not be folded**: the 0.2.5 "Notifications" group was missing from the foldable-group whitelist, so unlike every other settings group it stayed permanently expanded.
 - **0.2.4 banners flung the whole UI off screen** (the rolled-back feature, rebuilt): `drawBanner` pushed a `saveLayer` without a matching `restore`, leaking one canvas transform per frame; combined with the per-frame density scale the transform compounded exponentially until the panel flew off screen, which also surfaced as "cannot reopen the panel" and unresponsive keys. Fixed with paired restores, and the HUD draw path is gone — banners render on the panel canvas only.
 
