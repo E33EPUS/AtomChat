@@ -267,6 +267,9 @@ public final class SettingsSectionPage {
         if (LABEL_CHAT_TELEPORT.equals(labelKey)) {
             return "chat_teleport";
         }
+        if (LABEL_CHAT_NOTIFY.equals(labelKey)) {
+            return "chat_notify";
+        }
         return null;
     }
 
