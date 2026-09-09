@@ -21,6 +21,8 @@
 
 ### 更改
 
+- **通知音效换为原创合成音**：横幅提示音替换为本仓库原创合成的气泡音（正弦滑频 + 噪声瞬态），不再使用来源受限的素材，发版无版权负担。
+- **聊天记录自动清理默认 7 天**：`historyRetentionDays` 默认值从 0（永久）改为 7；「保留聊天记录」开关本身仍默认关闭，开启后过期记录按周清理，不再无限增长。
 - **Skia 画布护栏**：每帧绘制结束后强制回退到进入时的画布栈基线。今后任何地方再漏 restore，后果最多影响一帧，不可能再累积成界面飞出。
 - **会话列表只保留在线玩家**：离线私聊卡不再常驻列表，避免每次重建都做皮肤解析和排序；离线期间该会话不在列表里（无法从列表打开），对方重新上线时卡片自动恢复，磁盘里的私聊记录不受影响。
 - **别人资料页不再显示会话时长**：本地会话计时只对自己有意义，不再把它显示在对方资料下。
@@ -45,6 +47,8 @@
 
 ### Changed
 
+- **Notification cue replaced with an original synthesized pop**: the banner sound is now a synthesized bubble pop (sine glide + noise transient) original to this repository, replacing an asset of restricted provenance — releases carry no copyright baggage.
+- **Chat history auto-clean defaults to 7 days**: `historyRetentionDays` changed from 0 (forever) to 7. The "Keep chat history" switch itself stays off by default; when enabled, expired history is pruned weekly instead of growing unbounded.
 - **Skia canvas guard rail**: every frame now rewinds to the canvas stack baseline it entered with. A future unbalanced save/restore can corrupt at most one frame instead of compounding into a runaway transform.
 - **Online-only conversation cards**: offline private-chat cards no longer stay in the list (no per-rebuild skin resolve/sort for players you cannot message); while they are offline the conversation cannot be opened from the list, the card returns when they join, and the on-disk history is untouched.
 - **Other players' profiles no longer show the session timer**: the local session timer is only meaningful for yourself, so it is hidden on other profiles.
