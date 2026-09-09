@@ -80,6 +80,21 @@ class RichChatPartsTest {
     }
 
     @Test
+    void sliceAngleLineSenderKeepsRunStyles() {
+        // The angle branch used to synthesise a literal label, dropping the
+        // line's colours — senders all rendered in the plain text colour.
+        Style green = Style.EMPTY.withColor(0x55FF55);
+        Component line = Component.literal("<")
+                .append(Component.literal("Steve").setStyle(green))
+                .append(Component.literal("> hi"));
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "Steve", "Steve", "hi", false))
+                .orElseThrow();
+        assertEquals("Steve", parts.sender().getString());
+        assertTrue(parts.sender().runs().stream().anyMatch(r -> green.equals(r.style())));
+    }
+
+    @Test
     void slicePrefixedAngleLineSenderKeepsPrefixOnly() {
         Component line = Component.literal("[VIP]<Steve> hi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,

@@ -217,6 +217,35 @@ public final class RichText {
         return new RichText(out, rootStyle);
     }
 
+    /** True when any run (or the root style) carries an explicit colour. */
+    public boolean hasColor() {
+        if (rootStyle.getColor() != null) {
+            return true;
+        }
+        for (RichRun run : runs) {
+            if (run.style().getColor() != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Returns a copy with every run's style passed through {@code mapper}. */
+    public RichText mapStyles(java.util.function.UnaryOperator<Style> mapper) {
+        List<RichRun> out = new ArrayList<>();
+        for (RichRun run : runs) {
+            out.add(new RichRun(run.text(), mapper.apply(run.style())));
+        }
+        return new RichText(out, rootStyle);
+    }
+
+    /** Run-wise concatenation; the root style comes from {@code first}. */
+    public static RichText concat(RichText first, RichText second) {
+        List<RichRun> out = new ArrayList<>(first.runs);
+        out.addAll(second.runs);
+        return new RichText(out, first.rootStyle);
+    }
+
     public Style rootStyle() {
         return rootStyle;
     }
