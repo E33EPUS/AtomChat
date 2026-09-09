@@ -29,7 +29,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija)
 
 The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **v0.2.4 implemented (Fabric / NeoForge 1.21.1)**; v0.2.3 is released. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.2.5 implemented and released (Fabric / NeoForge 1.21.1)**. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -81,6 +81,8 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 
 - 📱 **Phone-style panel** — the vanilla chat HUD is hidden while AtomChat is open; blurred background plus a translucent glass composer
 - 💬 **Bubbles & avatars** — own messages on the right, others on the left, with avatar and player name; skin faces resolve from online / offline profiles with fallbacks
+- 🖼️ **Custom avatars** — crop any local image into a square avatar shown on your profile and your own bubbles; on servers also running AtomChat it syncs to every player (changes broadcast instantly), silently falling back to skins without the companion
+- 🔔 **Notification banners & sounds** — being @mentioned, quoted or whispered drops a banner at the top of the panel (click to jump to the message) with an original synthesized pop cue; each banner/sound pair is individually switchable with a volume slider
 - 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with E33Chat / ChatImage), keeps the source aspect ratio; placeholder while loading; right-click an image bubble to save the original file
 - 📤 **Local image sending** — the FlatLaf picker defaults to Details view with inline thumbnails; supports drag & drop and Ctrl+V paste; uploads are converted into CICode automatically
 - 🔗 **Rich-text messages** — player names/bodies support colors, underlines, clicks and hover tooltips: `/tell`, coordinates, FTB accept/deny and external links are clickable; bare URLs become links automatically
@@ -98,7 +100,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 - 🎨 **SVG icons & unified motion** — image / emoji / send buttons use inline SVG line icons
 - 🌍 **Localization** — supports Simplified Chinese and English; switch the game language to apply
 - 🧠 **Message capture** — captures real player UUID / profile / decorated names from MessageHandler's three channels, with nick-server support and conservative system-gray fallback
-- 🎨 **Themes & full colour control** — one-tap theme presets (Frosted / Modern); the settings page exposes every interface colour (bubbles / secondary capsules / text / cards / outline / accent), with foldable colour groups and a live preview square on each row
+- 🎨 **Themes & full colour control** — one-tap theme presets (Frosted / Modern); the settings page exposes every interface colour (panel background / bubbles / secondary capsules / text / cards / outline / accent), with foldable colour groups and a live preview square on each row
 - ⏱️ **Time dividers** — the first message of a list always shows a timestamp capsule; later ones follow a configurable interval
 - ✏️ **Cross-message text selection** — drag across several messages and copy them all with Ctrl+C; dragging never misfires clicks
 - 🛡️ **Anti-spam & compact groups** — consecutive identical messages merge into one with a counter; same-sender five-minute runs keep the avatar/name only on the first row and tighten the gap
@@ -165,7 +167,7 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 | `timestampIntervalMinutes` | `5` | Time divider interval (0 = off) |
 | `imageMessagesEnabled` | `true` | Image message receive toggle |
 | `antiSpamEnabled` / `compactMessagesEnabled` | `true` / `false` | Anti-spam merging / compact message groups (off by default) |
-| `chatHistoryEnabled` / `historyRetentionDays` | `false` / `0` | Keep chat history / retention days (0 = forever) |
+| `chatHistoryEnabled` / `historyRetentionDays` | `false` / `7` | Keep chat history / retention days (0 = forever, defaults to 7 days) |
 | `teleportCommandMode` | `"auto"` | Teleport command mode (auto / tp / tpa) |
 | `debug` | `false` | Debug logging / avatar sampling PNGs (written to `config/atomchat/debug/`) |
 

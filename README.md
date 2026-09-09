@@ -29,7 +29,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：**v0.2.4 已实现（Fabric / NeoForge 1.21.1）**；v0.2.3 已发布。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**v0.2.5 已实现并已发布（Fabric / NeoForge 1.21.1）**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 
@@ -81,6 +81,8 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 - 📱 **手机面板界面** — 原版聊天 HUD 打开期间隐藏，AtomChat 以独立面板呈现；面板模糊背景 + 半透明毛玻璃输入栏
 - 💬 **聊天气泡与头像** — 自己的消息靠右、他人靠左，带头像与玩家名；皮肤头像自动从正版 / 离线皮肤解析降级
+- 🖼️ **自定义头像** — 本地选图裁剪成方形头像，档案页与自己的气泡即时显示；同一服务器装了 AtomChat 时自动同步给其他玩家（换头像即时广播刷新），无伴侣环境静默降级为皮肤
+- 🔔 **通知横幅与音效** — 被 @、被引用、收到私聊时面板顶部弹出横幅（点击跳转原消息并高亮），配套原创合成的气泡提示音；设置 → 聊天 →「通知」可分别开关并调音量
 - 🖼️ **图片消息** — 原生渲染 `[[CICode]]` 图片协议（与 E33Chat / ChatImage 互通），按原图比例显示；加载中显示占位文案；右键图片可保存原图到本地
 - 📤 **本地图片发送** — FlatLaf 文件选择器默认“详细信息”视图并直接显示缩略图；支持拖放 / Ctrl+V 粘贴；上传到图床后自动生成 CICode
 - 🔗 **富文本消息** — 玩家名/正文支持颜色、下划线、点击与悬停：`/tell`、坐标、FTB 接受/拒绝、外部链接均可点；裸 URL 自动转链接
@@ -98,7 +100,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 - 🎨 **SVG 图标与统一动效** — 图片 / 表情 / 发送按钮为内嵌 SVG 线性图标
 - 🌍 **本地化** — 支持中英双语，切换MC系统语言即可生效
 - 🧠 **消息捕获** — 从 MessageHandler 三层通道捕获真实玩家 UUID / 名字 / 装饰名，支持花名服与系统灰字兜底
-- 🎨 **主题与全量配色** — 主题预设（毛玻璃 / 现代）一键切换；设置页提供全部界面配色（气泡 / 次要胶囊 / 文字 / 卡片 / 描边 / 强调色），颜色分组可折叠，每项带实时预览色块
+- 🎨 **主题与全量配色** — 主题预设（毛玻璃 / 现代）一键切换；设置页提供全部界面配色（面板背景 / 气泡 / 次要胶囊 / 文字 / 卡片 / 描边 / 强调色），颜色分组可折叠，每项带实时预览色块
 - ⏱️ **时间戳分隔** — 消息列表首条消息始终显示时间戳胶囊，之后按可配置的时间间隔显示
 - ✏️ **跨消息文字选择** — 在消息列表上跨多条消息拖选文字，Ctrl+C 一次复制多段；拖动不会误触点击
 - 🛡️ **防刷屏与紧凑分组** — 连续相同消息合并为一条并显示次数；同一发送者 5 分钟内的连续消息只保留第一条头像与名字，后续间距收紧
@@ -165,7 +167,7 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 | `timestampIntervalMinutes` | `5` | 时间戳分隔间隔（0 = 关闭） |
 | `imageMessagesEnabled` | `true` | 图片消息接收开关 |
 | `antiSpamEnabled` / `compactMessagesEnabled` | `true` / `false` | 防刷屏合并 / 紧凑消息分组（默认关） |
-| `chatHistoryEnabled` / `historyRetentionDays` | `false` / `0` | 保留聊天记录 / 历史保留天数（0 = 永久） |
+| `chatHistoryEnabled` / `historyRetentionDays` | `false` / `7` | 保留聊天记录 / 历史保留天数（0 = 永久，默认 7 天） |
 | `teleportCommandMode` | `"auto"` | 传送命令模式（auto / tp / tpa） |
 | `debug` | `false` | 调试输出 / 头像采样 PNG（写入 `config/atomchat/debug/`） |
 
