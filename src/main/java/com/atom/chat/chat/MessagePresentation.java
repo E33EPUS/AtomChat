@@ -174,6 +174,14 @@ public final class MessagePresentation {
             // the non-angle path renders from already-clean rich text.
             displayLabel = text.substring(0, idx - 1).replaceAll("§.", "")
                     + text.substring(idx, labelEnd).replaceAll("§.", "");
+        } else if (text.charAt(0) == '<' && nameEndRaw < text.length()
+                && text.charAt(nameEndRaw) == '>') {
+            // "<[Team]Steve> hi": the whole decorated name sits inside the angle
+            // brackets. e33chat's cleanNameArea strips the wrapping pair and
+            // keeps the inner decoration as the label ("<[Team]Steve>" ->
+            // "[Team]Steve"); that branch was dropped in the port (0.2.5 hunt),
+            // leaking the opening '<' onto other players' view of the name.
+            displayLabel = text.substring(1, labelEnd).replaceAll("§.", "");
         }
         return Optional.of(new PlayerLine(cleanName, displayLabel, text.substring(sep).strip(),
                 idx, after, labelEnd, sep));

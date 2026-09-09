@@ -11,6 +11,7 @@ import com.atom.chat.chat.EasyBotParser;
 import com.atom.chat.chat.MentionDetector;
 import com.atom.chat.chat.MentionObserver;
 import com.atom.chat.chat.MessageCapture;
+import com.atom.chat.chat.OwnIdentity;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatParser;
 import com.atom.chat.chat.PrivateEchoTracker;
@@ -170,6 +171,13 @@ public class ChatHudMixin {
             QuoteParser.Quote quote = atomchat$quoteOf(parsedContent);
             String body = quote != null ? quote.body() : parsedContent;
             var sliced = ChatPipeline.sliceRichText(message, parsed);
+            if (atomchat$isOwnIdentity(parsed, client)) {
+                // The channel layer had no identity for this line, but the text
+                // parse resolved it to us: keep the decorated label as the
+                // self-name cache source (e33chat caches on every own message).
+                OwnIdentity.cache(sliced.isPresent() ? sliced.get().sender()
+                        : RichText.literal(displayName != null ? displayName : ""));
+            }
             if (sliced.isPresent()) {
                 RichText richContent = quote != null
                         ? RichText.literal(body).linkifyUrls()
@@ -192,7 +200,11 @@ public class ChatHudMixin {
 
         boolean own = isOwn(meta, raw, client);
         if (own) {
-            // Own message echo: already added locally by AtomChatScreen.
+            // Own message echo: already added locally by AtomChatScreen. The
+            // server-decorated component is the best self-name source — cache
+            // it so the local echo bubbles can show "[Title]Name" too.
+            OwnIdentity.cache(meta.senderComponent() != null
+                    ? RichText.of(meta.senderComponent()) : null);
             return;
         }
         String blockName = meta.profileName() != null ? meta.profileName() : meta.senderName();
@@ -293,6 +305,23 @@ public class ChatHudMixin {
     @Unique
     private static boolean isNameCharacter(char c) {
         return Character.isLetterOrDigit(c) || c == '_';
+    }
+
+    /**
+     * Whether a text-parsed line belongs to the local player: UUID when the
+     * resolver found one, otherwise the bare profile name (the parse stores
+     * the real name, never the decorated label).
+     */
+    @Unique
+    private static boolean atomchat$isOwnIdentity(SenderMeta parsed, Minecraft client) {
+        if (client.player == null) {
+            return false;
+        }
+        if (parsed.senderUuid() != null && parsed.senderUuid().equals(client.player.getUUID())) {
+            return true;
+        }
+        return parsed.profileName() != null
+                && parsed.profileName().equals(client.player.getName().getString());
     }
 
     /**

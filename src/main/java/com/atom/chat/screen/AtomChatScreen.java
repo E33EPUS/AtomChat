@@ -14,6 +14,8 @@ import com.atom.chat.image.ImageUploader;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.PrivateEchoTracker;
+import com.atom.chat.chat.OwnIdentity;
+import com.atom.chat.text.RichText;
 import com.atom.chat.nav.AppPage;
 import com.atom.chat.nav.AtomChatState;
 import com.atom.chat.nav.NavPage;
@@ -2978,8 +2980,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (!command) {
             UUID ownUuid = this.client.player.getUUID();
             String ownProfile = this.client.player.getName().getString();
+            // Own bubbles show the decorated self name (titles/team prefix),
+            // e33chat parity — the bare profile name stays for identity fields.
             ChatStore.get().add(new ChatMessage(Component.literal(normalized), true, false, quoteName, quoteText,
-                    ownUuid, ownProfile, ownProfile, normalized));
+                    ownUuid, ownProfile, ownProfile, normalized,
+                    OwnIdentity.displayNameRich(), RichText.literal(normalized).linkifyUrls()));
         }
         inputSetText("");
         replyTarget = null;
@@ -3002,11 +3007,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         if (!command) {
             UUID ownUuid = this.client.player.getUUID();
             String ownProfile = this.client.player.getName().getString();
+            // Decorated self name on the outgoing bubble, e33chat parity.
             PrivateChatStore.addOutgoing(target,
                     new ChatMessage(Component.literal(historyText), true, false,
                             replyTarget != null ? messageSenderName(replyTarget) : null,
                             replyTarget != null ? quoteTextFor(replyTarget) : null,
-                            ownUuid, ownProfile, ownProfile, historyText));
+                            ownUuid, ownProfile, ownProfile, historyText,
+                            OwnIdentity.displayNameRich(),
+                            RichText.literal(historyText).linkifyUrls()));
             PrivateEchoTracker.markOutgoing(target);
         }
         inputSetText("");

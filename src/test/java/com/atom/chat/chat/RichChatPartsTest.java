@@ -90,6 +90,23 @@ class RichChatPartsTest {
     }
 
     @Test
+    void sliceTeamDecoratedAngleLineStripsBracketsKeepsStyles() {
+        // "<[称号]E33EPUS> 453": the wrapping pair is dropped, the inner team
+        // colour survives the slice (e33chat cleanNameArea parity).
+        Style orange = Style.EMPTY.withColor(0xFFA500);
+        Component line = Component.literal("<")
+                .append(Component.literal("[称号]").setStyle(orange))
+                .append(Component.literal("E33EPUS"))
+                .append(Component.literal("> 453"));
+        RichChatParts parts = ChatPipeline.sliceRichText(line,
+                        new SenderMeta(null, "E33EPUS", "E33EPUS", "453", false))
+                .orElseThrow();
+        assertEquals("[称号]E33EPUS", parts.sender().getString());
+        assertEquals("453", parts.content().getString());
+        assertTrue(parts.sender().runs().stream().anyMatch(r -> orange.equals(r.style())));
+    }
+
+    @Test
     void slicesLegacyFormattedAngleLineUsingVisibleOffsets() {
         Component line = Component.literal("§a<Steve> §bhi");
         RichChatParts parts = ChatPipeline.sliceRichText(line,

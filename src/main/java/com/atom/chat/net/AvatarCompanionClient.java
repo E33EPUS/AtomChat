@@ -154,6 +154,23 @@ public final class AvatarCompanionClient {
         PacketDistributor.sendToServer(new AvatarPayloads.AvatarUploadPayload(uuid, pngBytes));
     }
 
+    /** S2C push: another player's stored avatar changed mid-session; drop the
+     *  stale decoded copy (and any pending state) so the next frame re-requests
+     *  the fresh bytes. */
+    static void onAvatarChanged(UUID uuid) {
+        if (uuid == null) {
+            return;
+        }
+        int generation = GENERATION.get();
+        requestedAt.remove(uuid);
+        noAvatarUntil.remove(uuid);
+        Image stale = decoded.remove(uuid);
+        if (stale != null && generation == GENERATION.get()) {
+            stale.close();
+        }
+        debug("companion: avatar changed, cache dropped for " + uuid);
+    }
+
     /** S2C receiver; runs on the render thread via the payload context. */
     static void onAvatarData(UUID uuid, byte[] data) {
         if (uuid == null) {

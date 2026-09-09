@@ -11,6 +11,9 @@
 ### 修复
 
 - **自定义头像在部分会话中无法同步**：头像请求若在对方刚加入、服务器线程最忙的 3 秒内未得到响应，客户端会把整个会话误判为"服务器不支持头像同步"并永久停用——房主端因为会话卡片在对方加入瞬间就渲染，最容易踩中；同时首次上传头像的门控也要求先收到过一次响应，导致新会话里的第一次上传被静默丢弃。现在超时只重试（5 秒冷却）不再判死，判死仅由真实的通道协商结果触发，上传在协商通过后即刻放行，并在 debug 模式下新增 `[avatar]` 日志。
+- **装饰名在公屏气泡里泄漏尖括号**：服务器把整个装饰名包进尖括号时（如 FTB Teams 称号 `<[称号]E33EPUS> 453`），移植自 e33chat 的解析器只会剥掉名字前的 `<`，别人看到的发送者成了 `<[称号]E33EPUS` 且带着服务器的下划线/点击样式。已补回 e33chat `cleanNameArea` 的整块剥离分支：字符串标签与富文本切片都会去掉外层 `<>`，并保留内层称号颜色。
+- **自己的气泡显示裸名**：本地回显只用真实资料名，看不到自己的称号/队伍前缀。移植了 e33chat 的 `ownDisplayName()`：标签列表名 → 聊天回显中缓存到的装饰名 → 队伍前缀/颜色/后缀 → 裸名，公屏与私聊的自 bubbles 均生效；加入/断开时清空缓存。
+- **会话内换头像对方看不到**：头像缓存以会话为生命周期，上传成功后没有任何通知——已缓存旧图的（或刚拿到"无头像"负缓存的）客户端要等重进世界才能刷新。现在上传成功后服务器会向所有客户端广播 `avatar_changed`，各端丢弃该 uuid 的缓存并在下一帧重新拉取；通道为可选注册，旧客户端自动忽略。
 - **通知设置分组无法折叠**：0.2.5 新增的「通知」分组漏了折叠白名单登记，和其它分组不同，它一直保持展开无法收起。
 - **0.2.4 的通知横幅会把整个界面推出屏幕**（回退项重做）：横幅绘制时 `saveLayer` 缺少配对的 `restore`，每帧泄漏一层画布变换；叠加逐帧的密度缩放后变换指数级放大，面板向右下飞出屏幕并表现为"无法再打开面板/按键无响应"。已改为两段 restore，并移除 HUD 绘制路径——横幅只在面板画布内绘制。
 
@@ -29,6 +32,10 @@
 
 ### Fixed
 
+- **Custom avatars failed to sync in some sessions**: if an avatar request went unanswered for 3 seconds — exactly what happens when the other player joins and the integrated server is busiest — the client latched "server has no companion" for the whole session and never synced again. The host side was the most exposed, since conversation cards fire the first request the moment the other player appears. On top of that, the first avatar upload of a session was silently dropped unless a response had already come back. Timeouts now simply retry after a 5s cooldown instead of latching; only the real channel negotiation can mark the server companion-less; uploads pass as soon as negotiation allows; and a debug-gated `[avatar]` log line was added for each step.
+- **Decorated names leaked the angle brackets on public bubbles**: when the server wraps the whole decorated name in angle brackets (FTB Teams titles, `<[称号]E33EPUS> 453`), the e33chat-derived parser only stripped the `<` before the name, so other players saw `<[称号]E33EPUS` with the server's underline/click styling still attached. The `cleanNameArea` whole-wrap branch that was dropped in the port is restored: both the string label and the rich-text slice drop the wrapping pair while keeping the inner title colours.
+- **Own bubbles showed a bare name**: the local echo only used the real profile name, so your own title/team prefix never showed. Ported e33chat's `ownDisplayName()`: tab-list name → decorated name cached from own chat echoes → team prefix/colour/suffix → bare name, applied to both public and private own bubbles; the cache clears on join/disconnect.
+- **Avatar changes never reached the other side mid-session**: the avatar cache lives for one session and uploads triggered no notification, so a client that had already cached the old image (or negative-cached "no avatar") kept it until the next join. A successful upload now broadcasts `avatar_changed` to all clients, which drop that uuid's cache and re-request on the next frame; the channel is optional, so older clients simply ignore it.
 - **The notification settings group could not be folded**: the 0.2.5 "Notifications" group was missing from the foldable-group whitelist, so unlike every other settings group it stayed permanently expanded.
 - **0.2.4 banners flung the whole UI off screen** (the rolled-back feature, rebuilt): `drawBanner` pushed a `saveLayer` without a matching `restore`, leaking one canvas transform per frame; combined with the per-frame density scale the transform compounded exponentially until the panel flew off screen, which also surfaced as "cannot reopen the panel" and unresponsive keys. Fixed with paired restores, and the HUD draw path is gone — banners render on the panel canvas only.
 

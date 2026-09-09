@@ -171,4 +171,34 @@ class MessagePresentationTest {
         assertEquals("Steve", line.get().displayLabel());
         assertEquals("hi", line.get().content());
     }
+
+    // ---- e33chat cleanNameArea parity: whole decorated name inside <> ----
+
+    @Test
+    void teamDecoratedNameInsideAngleBracketsDropsWrappingPair() {
+        // FTB Teams-style titles wrap the decorated name: "<[称号]E33EPUS> 453"
+        // must read "[称号]E33EPUS", not "<[称号]E33EPUS" (0.2.5 hunt).
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("<[称号]E33EPUS> 453", List.of("E33EPUS"));
+        assertTrue(line.isPresent());
+        assertEquals("[称号]E33EPUS", line.get().displayLabel());
+        assertEquals("453", line.get().content());
+    }
+
+    @Test
+    void latinDecoratedNameInsideAngleBracketsDropsWrappingPair() {
+        Optional<MessagePresentation.PlayerLine> line =
+                MessagePresentation.parseDecoratedPlayerLine("<[VIP]Steve> hi", List.of("Steve"));
+        assertTrue(line.isPresent());
+        assertEquals("[VIP]Steve", line.get().displayLabel());
+        assertEquals("hi", line.get().content());
+    }
+
+    @Test
+    void fakeSeparatorPrefixInsideAnglesIsStillRejected() {
+        // Broadcast-spoof guard wins: "<sys>E33EPUS: hi" (a separator before the
+        // name) is not claimed as E33EPUS's line even though the angle shape fits.
+        assertTrue(MessagePresentation.parseDecoratedPlayerLine(
+                "<sys>E33EPUS: hi", List.of("E33EPUS")).isEmpty());
+    }
 }

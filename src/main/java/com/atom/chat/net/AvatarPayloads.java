@@ -105,6 +105,35 @@ public final class AvatarPayloads {
         }
     }
 
+    /**
+     * S2C notification that {@code uuid}'s stored avatar just changed. A
+     * session-wide cache has no rejoin to lean on (0.2.5 hunt: an uploaded
+     * avatar never reached players who had already negative-cached or decoded
+     * the older copy), so every successful upload is announced and receivers
+     * drop that uuid's cache before the next frame re-requests it.
+     */
+    public record AvatarChangedPayload(UUID uuid) implements CustomPacketPayload {
+        public static final Type<AvatarChangedPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_changed"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarChangedPayload> STREAM_CODEC =
+                new StreamCodec<>() {
+                    @Override
+                    public AvatarChangedPayload decode(RegistryFriendlyByteBuf buf) {
+                        return new AvatarChangedPayload(buf.readUUID());
+                    }
+
+                    @Override
+                    public void encode(RegistryFriendlyByteBuf buf, AvatarChangedPayload payload) {
+                        buf.writeUUID(payload.uuid());
+                    }
+                };
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     /** Registers every payload on the NeoForge payload bus (common entry). */
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1").optional();
@@ -112,12 +141,18 @@ public final class AvatarPayloads {
                 AvatarCompanionServer::handleUpload);
         registrar.playToServer(AvatarRequestPayload.TYPE, AvatarRequestPayload.STREAM_CODEC,
                 AvatarCompanionServer::handleRequest);
-        // The S2C receiver touches client-only rendering classes; keep it in a
-        // dist-guarded lambda so a dedicated server never loads them.
+        // The S2C receivers touch client-only rendering classes; keep them in
+        // dist-guarded lambdas so a dedicated server never loads them.
         registrar.playToClient(AvatarDataPayload.TYPE, AvatarDataPayload.STREAM_CODEC,
                 (payload, ctx) -> {
                     if (net.neoforged.fml.loading.FMLEnvironment.dist == net.neoforged.api.distmarker.Dist.CLIENT) {
                         ctx.enqueueWork(() -> AvatarCompanionClient.onAvatarData(payload.uuid(), payload.data()));
+                    }
+                });
+        registrar.playToClient(AvatarChangedPayload.TYPE, AvatarChangedPayload.STREAM_CODEC,
+                (payload, ctx) -> {
+                    if (net.neoforged.fml.loading.FMLEnvironment.dist == net.neoforged.api.distmarker.Dist.CLIENT) {
+                        ctx.enqueueWork(() -> AvatarCompanionClient.onAvatarChanged(payload.uuid()));
                     }
                 });
     }

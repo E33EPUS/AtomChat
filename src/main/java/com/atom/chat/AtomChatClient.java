@@ -79,6 +79,7 @@ public class AtomChatClient {
         com.atom.chat.history.ChatHistory.onJoin(client);
         com.atom.chat.page.ProfilePage.noteJoin();
         com.atom.chat.net.AvatarCompanionClient.onJoin();
+        com.atom.chat.chat.OwnIdentity.reset();
         com.atom.chat.chat.TeleportCommands.reset();
     }
 
@@ -90,6 +91,7 @@ public class AtomChatClient {
         PrivateEchoTracker.clear();
         ChatStore.reset();
         com.atom.chat.chat.SeenPlayers.clear();
+        com.atom.chat.chat.OwnIdentity.reset();
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {

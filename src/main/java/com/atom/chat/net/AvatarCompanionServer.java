@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -86,8 +87,32 @@ public final class AvatarCompanionServer {
             Files.write(tmp, data);
             Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             AtomChat.LOGGER.info("Stored avatar for {} ({} bytes)", player.getName().getString(), data.length);
+            broadcastChanged(player, uuid);
         } catch (IOException e) {
             AtomChat.LOGGER.warn("Failed to store avatar for {}", uuid, e);
+        }
+    }
+
+    /**
+     * Announces the new avatar to every companion-capable client so their
+     * cached (or negative-cached) copy is dropped and re-requested this
+     * session — a cache wipe otherwise waits for the next join.
+     */
+    private static void broadcastChanged(ServerPlayer uploader, UUID uuid) {
+        var server = uploader.getServer();
+        if (server == null) {
+            return;
+        }
+        AvatarPayloads.AvatarChangedPayload payload = new AvatarPayloads.AvatarChangedPayload(uuid);
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            try {
+                if (NetworkRegistry.hasChannel(p.connection,
+                        AvatarPayloads.AvatarChangedPayload.TYPE.id())) {
+                    PacketDistributor.sendToPlayer(p, payload);
+                }
+            } catch (Throwable t) {
+                // A player that cannot accept the notification keeps the old copy.
+            }
         }
     }
 
