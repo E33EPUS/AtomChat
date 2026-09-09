@@ -93,6 +93,7 @@
   "atomchat.settings.appearance.secondarycapsuletext": "次要胶囊文字色",
   "atomchat.settings.appearance.cardcolor": "卡片颜色",
   "atomchat.settings.appearance.textsecondary": "副文字颜色",
+  "atomchat.settings.appearance.panelbg": "背景颜色",
   "atomchat.settings.appearance.textprimary": "界面文字颜色",
   "atomchat.settings.appearance.theme": "主题",
   "atomchat.settings.appearance.theme.desc": "一键套用整套界面风格",

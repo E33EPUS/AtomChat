@@ -171,12 +171,16 @@ public class ChatHudMixin {
             QuoteParser.Quote quote = atomchat$quoteOf(parsedContent);
             String body = quote != null ? quote.body() : parsedContent;
             var sliced = ChatPipeline.sliceRichText(message, parsed);
+            RichText senderRichParsed = sliced.isPresent()
+                    ? atomchat$ensureSenderColor(sliced.get().sender(), parsed.profileName())
+                    : atomchat$ensureSenderColor(
+                            displayName != null ? RichText.literal(displayName) : RichText.empty(),
+                            parsed.profileName());
             if (atomchat$isOwnIdentity(parsed, client)) {
                 // The channel layer had no identity for this line, but the text
                 // parse resolved it to us: keep the decorated label as the
                 // self-name cache source (e33chat caches on every own message).
-                OwnIdentity.cache(sliced.isPresent() ? sliced.get().sender()
-                        : RichText.literal(displayName != null ? displayName : ""));
+                OwnIdentity.cache(senderRichParsed);
             }
             if (sliced.isPresent()) {
                 RichText richContent = quote != null
@@ -186,13 +190,13 @@ public class ChatHudMixin {
                         quote != null ? quote.quoteName() : null,
                         quote != null ? quote.quoteText() : null,
                         parsed.senderUuid(), displayName, parsed.profileName(), body,
-                        sliced.get().sender(), richContent), body, parsed.system());
+                        senderRichParsed, richContent), body, parsed.system());
             } else {
                 atomchat$addPublic(new ChatMessage(message, false, parsed.system(),
                         quote != null ? quote.quoteName() : null,
                         quote != null ? quote.quoteText() : null,
                         parsed.senderUuid(), displayName, parsed.profileName(), body,
-                        RichText.empty(), RichText.literal(body).linkifyUrls()), body, parsed.system());
+                        senderRichParsed, RichText.literal(body).linkifyUrls()), body, parsed.system());
             }
             SeenPlayers.remember(parsed.senderUuid(), parsed.profileName(), displayName);
             return;
@@ -244,6 +248,7 @@ public class ChatHudMixin {
         if (quote != null) {
             contentRich = RichText.literal(body).linkifyUrls();
         }
+        senderRich = atomchat$ensureSenderColor(senderRich, meta.profileName());
         atomchat$addPublic(new ChatMessage(message, false, meta.system(),
                 quote != null ? quote.quoteName() : null,
                 quote != null ? quote.quoteText() : null,
@@ -322,6 +327,37 @@ public class ChatHudMixin {
         }
         return parsed.profileName() != null
                 && parsed.profileName().equals(client.player.getName().getString());
+    }
+
+    /**
+     * Team-colour fallback for sender names: when a captured/sliced sender
+     * carries no colour at all — the server stripped the run styles, or the
+     * label only exists as text — recolour it with the sender's scoreboard
+     * team colour so titled/coloured names don't collapse into the plain text
+     * colour. Senders that already have colour are left untouched.
+     */
+    @Unique
+    private static RichText atomchat$ensureSenderColor(RichText sender, String profileName) {
+        if (sender == null || sender.isEmpty() || sender.hasColor()) {
+            return sender;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.world == null) {
+            return sender;
+        }
+        var team = client.world.getScoreboard().getTeam(
+                profileName != null ? profileName : "");
+        if (team == null || team.getColor() == null) {
+            return sender;
+        }
+        var color = net.minecraft.text.TextColor.fromFormatting(team.getColor());
+        if (color == null) {
+            return sender;
+        }
+        if (AtomChatConfig.get().debug) {
+            AtomChat.LOGGER.info("[sender] team colour fallback applied ({})", team.getName());
+        }
+        return sender.mapStyles(style -> style.getColor() != null ? style : style.withColor(color));
     }
 
     /**

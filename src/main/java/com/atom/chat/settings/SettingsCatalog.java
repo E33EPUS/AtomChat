@@ -258,6 +258,16 @@ public final class SettingsCatalog {
                                     Color.makeARGB(255, 20, 22, 27)},    // near-black
                             () -> AtomChatConfig.get().secondaryCapsuleText,
                             v -> AtomChatConfig.get().secondaryCapsuleText = v),
+                    new SettingsColor("panel_bg",
+                            "atomchat.settings.appearance.panelbg",
+                            "ui",
+                            new int[]{
+                                    0xEE16191F,                          // shipped default (translucent dark slate)
+                                    Color.makeARGB(255, 16, 20, 24),     // opaque near-black
+                                    Color.makeARGB(255, 245, 247, 250),  // opaque white
+                                    Color.makeARGB(238, 255, 255, 255)}, // translucent white
+                            () -> AtomChatConfig.get().panelBgColor,
+                            v -> AtomChatConfig.get().panelBgColor = v),
                     new SettingsColor("text_primary",
                             "atomchat.settings.appearance.textprimary",
                             "ui",

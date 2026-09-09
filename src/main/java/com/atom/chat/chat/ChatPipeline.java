@@ -168,8 +168,12 @@ public final class ChatPipeline {
         if (pl.nameStart() > 0 && text.charAt(pl.nameStart() - 1) == '<') {
             // Vanilla angle decoration is not part of the displayed sender:
             // "<Steve> hi" and "[VIP]<Steve> hi" must render as "Steve" and
-            // "[VIP]Steve", not as a rich slice that keeps the opening '<'.
-            sender = RichText.literal(pl.displayLabel());
+            // "[VIP]Steve". Slice around the opening '<' (prefix decoration +
+            // bare name) instead of synthesising a literal — the literal branch
+            // dropped the line's run colours, rendering every sender in the
+            // plain text colour (0.2.5 hunt).
+            sender = RichText.concat(full.slice(0, pl.nameStart() - 1),
+                    full.slice(pl.nameStart(), pl.labelEnd()));
         } else if (text.charAt(0) == '<' && pl.nameEnd() < text.length()
                 && text.charAt(pl.nameEnd()) == '>') {
             // "<[Team]Steve> hi": slice out the wrapping brackets but keep the

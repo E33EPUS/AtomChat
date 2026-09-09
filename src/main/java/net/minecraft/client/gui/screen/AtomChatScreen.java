@@ -1578,8 +1578,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // The raw-GL blur pre-pass already painted the rounded blurred image
             // on the main framebuffer. When it is available we only add the
             // translucent tint; otherwise panelBg() stays as the safe fallback.
+            // Both paths tint with the configured panel colour — the blur branch
+            // used to hardcode 0xFF16191F, which made the background impossible
+            // to recolour with blur enabled (0.2.5 report).
             boolean blurred = AtomChatConfig.get().blurEnabled && blurDrawnThisFrame;
-            int tint = blurred ? applyOpacity(0xFF16191F) : panelBg();
+            int tint = blurred
+                    ? applyOpacity(0xFF000000 | (AtomChatConfig.get().panelBgColor & 0x00FFFFFF))
+                    : panelBg();
             try (Paint bg = new Paint().setColor(tint)) {
                 canvas.drawRRect(RRect.makeXYWH(innerX, innerY, innerW, innerH, innerRadius), bg);
             }

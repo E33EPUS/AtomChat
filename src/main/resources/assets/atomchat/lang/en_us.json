@@ -93,6 +93,7 @@
   "atomchat.settings.appearance.secondarycapsuletext": "Capsule text color",
   "atomchat.settings.appearance.cardcolor": "Card color",
   "atomchat.settings.appearance.textsecondary": "Secondary text color",
+  "atomchat.settings.appearance.panelbg": "Panel background color",
   "atomchat.settings.appearance.textprimary": "Interface text color",
   "atomchat.settings.appearance.theme": "Theme",
   "atomchat.settings.appearance.theme.desc": "Apply a full look in one tap",
