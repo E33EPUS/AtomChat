@@ -185,9 +185,11 @@ public class AtomChatConfig {
     public boolean chatHistoryEnabled = false;
     /**
      * Deletes history files older than this many days when a world is joined.
-     * 0 keeps them forever (default). The Settings → Chat slider controls this.
+     * 0 keeps them forever. Defaults to a week — history is an opt-in feature,
+     * and when it is on the JSONL files should not grow unbounded.
+     * The Settings → Chat slider controls this.
      */
-    public int historyRetentionDays = 0;
+    public int historyRetentionDays = 7;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AtomChatConfig instance;
