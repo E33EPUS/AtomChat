@@ -170,6 +170,12 @@ public final class ChatPipeline {
             // "<Steve> hi" and "[VIP]<Steve> hi" must render as "Steve" and
             // "[VIP]Steve", not as a rich slice that keeps the opening '<'.
             sender = RichText.literal(pl.displayLabel());
+        } else if (text.charAt(0) == '<' && pl.nameEnd() < text.length()
+                && text.charAt(pl.nameEnd()) == '>') {
+            // "<[Team]Steve> hi": slice out the wrapping brackets but keep the
+            // inner runs' styles so team colours survive — e33chat's
+            // cleanNameArea sliceStyled(1, len-1) parity (0.2.5 hunt).
+            sender = full.slice(1, pl.labelEnd());
         } else {
             sender = full.slice(0, pl.labelEnd());
         }

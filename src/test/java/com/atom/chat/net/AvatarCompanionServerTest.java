@@ -38,6 +38,7 @@ class AvatarCompanionServerTest {
         assertTrue(AvatarPayloads.AvatarUploadPayload.ID.id().getPath().equals("avatar_upload"));
         assertTrue(AvatarPayloads.AvatarRequestPayload.ID.id().getPath().equals("avatar_request"));
         assertTrue(AvatarPayloads.AvatarDataPayload.ID.id().getPath().equals("avatar_data"));
+        assertTrue(AvatarPayloads.AvatarChangedPayload.ID.id().getPath().equals("avatar_changed"));
         assertTrue(AvatarPayloads.AvatarUploadPayload.ID.id().getNamespace().equals("atomchat"));
     }
 

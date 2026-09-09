@@ -97,10 +97,38 @@ public final class AvatarPayloads {
         }
     }
 
+    /**
+     * S2C notification that {@code uuid}'s stored avatar just changed. A
+     * session-wide cache has no rejoin to lean on (0.2.5 hunt: an uploaded
+     * avatar never reached players who had already negative-cached or decoded
+     * the older copy), so every successful upload is announced and receivers
+     * drop that uuid's cache before the next frame re-requests it.
+     */
+    public record AvatarChangedPayload(UUID uuid) implements CustomPayload {
+        public static final CustomPayload.Id<AvatarChangedPayload> ID =
+                new CustomPayload.Id<>(Identifier.of(AtomChat.MOD_ID, "avatar_changed"));
+        public static final PacketCodec<RegistryByteBuf, AvatarChangedPayload> CODEC =
+                PacketCodec.of(AvatarChangedPayload::write, AvatarChangedPayload::read);
+
+        private static void write(AvatarChangedPayload payload, RegistryByteBuf buf) {
+            buf.writeUuid(payload.uuid());
+        }
+
+        private static AvatarChangedPayload read(RegistryByteBuf buf) {
+            return new AvatarChangedPayload(buf.readUuid());
+        }
+
+        @Override
+        public CustomPayload.Id<? extends CustomPayload> getId() {
+            return ID;
+        }
+    }
+
     /** Registers every codec; must run on both logical sides (common init). */
     public static void register() {
         PayloadTypeRegistry.playC2S().register(AvatarUploadPayload.ID, AvatarUploadPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AvatarRequestPayload.ID, AvatarRequestPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AvatarDataPayload.ID, AvatarDataPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(AvatarChangedPayload.ID, AvatarChangedPayload.CODEC);
     }
 }

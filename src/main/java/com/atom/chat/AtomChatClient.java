@@ -65,6 +65,7 @@ public class AtomChatClient implements ClientModInitializer {
             com.atom.chat.history.ChatHistory.onJoin(client);
             com.atom.chat.page.ProfilePage.noteJoin();
             com.atom.chat.net.AvatarCompanionClient.onJoin();
+            com.atom.chat.chat.OwnIdentity.reset();
             com.atom.chat.chat.TeleportCommands.reset();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
@@ -74,6 +75,7 @@ public class AtomChatClient implements ClientModInitializer {
             PrivateEchoTracker.clear();
             ChatStore.reset();
             com.atom.chat.chat.SeenPlayers.clear();
+            com.atom.chat.chat.OwnIdentity.reset();
         });
         NotificationController.registerSound();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

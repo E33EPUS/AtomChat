@@ -48,10 +48,12 @@ public final class AvatarCompanionClient {
     private static final Map<UUID, Long> noAvatarUntil = new ConcurrentHashMap<>();
     private static final Map<UUID, Boolean> decoding = new ConcurrentHashMap<>();
 
-    /** Client init: registers the S2C receiver. */
+    /** Client init: registers the S2C receivers. */
     public static void init() {
         ClientPlayNetworking.registerGlobalReceiver(AvatarPayloads.AvatarDataPayload.ID, (payload, context) ->
                 context.client().execute(() -> onAvatarData(payload.uuid(), payload.data())));
+        ClientPlayNetworking.registerGlobalReceiver(AvatarPayloads.AvatarChangedPayload.ID, (payload, context) ->
+                context.client().execute(() -> onAvatarChanged(payload.uuid())));
     }
 
     /** Reset on join: avatars are re-fetched lazily after the join. */
@@ -144,6 +146,23 @@ public final class AvatarCompanionClient {
         }
         debug("uploading own avatar (" + pngBytes.length + " bytes)");
         ClientPlayNetworking.send(new AvatarPayloads.AvatarUploadPayload(uuid, pngBytes));
+    }
+
+    /** S2C push: another player's stored avatar changed mid-session; drop the
+     *  stale decoded copy (and any pending state) so the next frame re-requests
+     *  the fresh bytes. */
+    private static void onAvatarChanged(UUID uuid) {
+        if (uuid == null) {
+            return;
+        }
+        int generation = GENERATION.get();
+        requestedAt.remove(uuid);
+        noAvatarUntil.remove(uuid);
+        Image stale = decoded.remove(uuid);
+        if (stale != null && generation == GENERATION.get()) {
+            stale.close();
+        }
+        debug("companion: avatar changed, cache dropped for " + uuid);
     }
 
     private static void onAvatarData(UUID uuid, byte[] data) {

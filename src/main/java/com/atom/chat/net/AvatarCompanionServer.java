@@ -82,10 +82,27 @@ public final class AvatarCompanionServer {
                 Files.write(tmp, data);
                 Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 AtomChat.LOGGER.info("Stored avatar for {} ({} bytes)", player.getName().getString(), data.length);
+                broadcastChanged(player, uuid);
             } catch (IOException e) {
                 AtomChat.LOGGER.warn("Failed to store avatar for {}", uuid, e);
             }
         });
+    }
+
+    /**
+     * Announces the new avatar to every client so their cached (or
+     * negative-cached) copy is dropped and re-requested this session — a cache
+     * wipe otherwise waits for the next join. Fabric's {@code send} silently
+     * skips receivers that did not register the channel.
+     */
+    private static void broadcastChanged(ServerPlayerEntity uploader, UUID uuid) {
+        var server = uploader.getServer();
+        if (server == null) {
+            return;
+        }
+        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+            ServerPlayNetworking.send(p, new AvatarPayloads.AvatarChangedPayload(uuid));
+        }
     }
 
     private static void handleRequest(ServerPlayerEntity player, UUID uuid) {
