@@ -23,7 +23,7 @@
   <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="NeoForge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=NeoForge-1.21.1"></a>
 </p>
 
-AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发的全新聊天美化mod，旨在把原版聊天屏改造成「手机 App」风格的独立聊天面板，元素包括：圆角气泡、头像、真实玩家名、表情 / 颜文字 / 表情包、图片消息、复制引用、多行输入与 QQ 式动效。
+AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发的全新聊天美化mod，旨在把原版聊天屏改造成「手机 App」风格的独立聊天面板，元素包括：圆角气泡、头像、真实玩家名、表情 / 颜文字 / 表情包、图片消息、复制引用、多行输入与 QQ 式动效，以及除聊天界面外的更多界面。
 
 渲染层使用 [Skija](https://github.com/HumbleUI/skija)
 
@@ -69,11 +69,11 @@ AtomChat是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发�
 
 ## 快速开始
 
-1. 打开聊天即可看到手机面板：顶部为「世界频道」与系统时间，中部为消息列表，底部为输入栏
+1. 打开聊天即可看到手机面板：顶部为「公屏」与系统时间，中部为消息列表，底部为输入栏
 2. 输入文字回车发送；文字超过一行时输入栏会自动长高，仍可上下移动光标
 3. 点 **图片图标** 选择本地图片，或直接 **拖图片进窗口 / Ctrl+V 粘贴**，上传后自动插入草稿
 4. 点 **表情图标** 打开面板：`表情` / `颜文字` / `表情包` 三个标签页
-5. 右键任意消息可 **复制** 或 **引用回复**；单击头像打开玩家档案页，双击头像触发 QQ 式戳一戳动画
+5. 右键任意消息可 **复制** 或 **引用回复**；单击头像打开玩家档案页，双击头像触发 QQ 式戳一戳动画，右键头像则呼出菜单，选择 @，个人档案，tp/tpa 与屏蔽
 
 ---
 
