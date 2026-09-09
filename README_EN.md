@@ -23,11 +23,9 @@
   <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="NeoForge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=NeoForge-1.21.1"></a>
 </p>
 
-AtomChat is a brand-new chat beautification mod developed in the spirit of [E33Chat](https://github.com/E33EPUS/E33Chat). It turns the vanilla chat screen into a standalone "phone app" style chat panel: rounded bubbles, avatars, real player names, emoji / kaomoji / sticker packs, image messages, copy and quote, multi-line input, and QQ-style motion.
+AtomChat is a brand-new chat beautification mod developed in the spirit of [E33Chat](https://github.com/E33EPUS/E33Chat). It turns the vanilla chat screen into a standalone "phone app" style chat panel: rounded bubbles, custom avatars, real player names, emoji / kaomoji / sticker packs, image messages, copy and quote, multi-line input, QQ-style motion, and more screens beyond chat.
 
-Rendering uses [Skija](https://github.com/HumbleUI/skija)
-
-The whole UI is vector-drawn instead of using vanilla chat textures.
+Rendering uses [Skija](https://github.com/HumbleUI/skija). The whole UI is vector-drawn instead of using vanilla chat textures.
 
 > Status: **v0.2.5 implemented and released (Fabric / NeoForge 1.21.1)**. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
@@ -37,13 +35,15 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Vanilla Improvements](#vanilla-improvements)
 - [Features](#features)
 - [Usage](#usage)
-- [Configuration](#configuration)
+- [Configuration & Storage](#configuration--storage)
 - [Compatibility](#compatibility)
 - [Known Limitations](#known-limitations)
 - [Privacy & Data](#privacy--data)
 - [FAQ](#faq)
+- [Feedback](#feedback)
 - [Development & Building](#development--building)
 - [Changelog](#changelog)
 - [Third-Party Licenses](#third-party-licenses)
@@ -69,47 +69,49 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 
 ## Quick Start
 
-1. Open chat to see the phone panel: "World Channel" and the system time at the top, the message list in the middle, and the composer at the bottom
-2. Type text and press Enter to send; the composer grows when the text wraps and supports Up/Down caret movement
+1. Open chat to see the phone panel: "Public" and the system time at the top, the message list in the middle, and the composer at the bottom
+2. Type text and press Enter to send; the composer grows when the text wraps and still supports Up/Down caret movement
 3. Click the **image icon** to pick a local image, or **drag an image into the window / Ctrl+V** to paste it; the upload is inserted into the draft automatically
 4. Click the **emoji icon** to open the panel with `Emoji` / `Kaomoji` / `Stickers` tabs
-5. Right-click any message to **Copy** or **Quote**; single-click an avatar to open the player's profile page, double-click it for a QQ-style poke shake
+5. Right-click any message to **Copy** or **Quote**; single-click an avatar to open the player's profile page, double-click it for a QQ-style poke shake, and right-click it for the menu (@ mention / whisper / teleport / block)
+
+---
+
+## Vanilla Improvements
+
+- 💬 **Chat bubbles & avatars** — your messages sit on the right, everyone else's on the left, with real player names and round skin avatars
+- 🧹 **Compact vanilla HUD placeholders** — outside the panel, image codes show as green `[Image]` and quotes as blue `[Quote]`
+- 📝 **Multi-line input** — the composer shows up to two lines, then scrolls internally; Up/Down move between lines while single-line drafts keep the vanilla chat history
+- 🧠 **Message capture** — real player identity is captured from MessageHandler's three channels; unknown messages degrade to system text
+- 📑 **Chat history** — when enabled, history is saved per server/world on disk, restored on rejoin, and pruned automatically
 
 ---
 
 ## Features
 
-- 📱 **Phone-style panel** — the vanilla chat HUD is hidden while AtomChat is open; blurred background plus a translucent glass composer
-- 💬 **Bubbles & avatars** — own messages on the right, others on the left, with avatar and player name; skin faces resolve from online / offline profiles with fallbacks
-- 🖼️ **Custom avatars** — crop any local image into a square avatar shown on your profile and your own bubbles; on servers also running AtomChat it syncs to every player (changes broadcast instantly), silently falling back to skins without the companion
-- 🔔 **Notification banners & sounds** — being @mentioned, quoted or whispered drops a banner at the top of the panel (click to jump to the message) with an original synthesized pop cue; each banner/sound pair is individually switchable with a volume slider
-- 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with E33Chat / ChatImage), keeps the source aspect ratio; placeholder while loading; right-click an image bubble to save the original file
-- 📤 **Local image sending** — the FlatLaf picker defaults to Details view with inline thumbnails; supports drag & drop and Ctrl+V paste; uploads are converted into CICode automatically
-- 🔗 **Rich-text messages** — player names/bodies support colors, underlines, clicks and hover tooltips: `/tell`, coordinates, FTB accept/deny and external links are clickable; bare URLs become links automatically
-- 🧹 **Compact vanilla HUD placeholders** — outside the panel, the vanilla chat shows image codes as green `[Image]` and quotes as blue `[Quote]` instead of raw long codes
-- 😀 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist in `<config>/atomchat/emotes/` (png/jpg/jpeg, max 10), added through the `+` cell and deleted by hovering `×`
+- 🔔 **Notification banners & sounds** — being @mentioned, quoted or whispered drops a banner at the top of the panel (sender avatar + type + name + content preview); clicking it jumps to that message and highlights it. An original synthesized pop cue plays alongside, and Settings → Chat → Notifications switches each banner/sound pair independently with a volume slider
+- 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with the E33Chat / ChatImage family), keeps the source aspect ratio, and supports right-click saving
+- 📤 **Local image sending** — pick an image with the image button, drag one into the window, or press Ctrl+V; the picker opens in Details view with inline thumbnails
+- 😊 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist locally (png/jpg/jpeg, up to 10)
 - ⚡ **Quick phrases** — a lightning button opens a phrase list above the composer; tapping inserts into the input (never sends on its own), with add / inline-edit / delete, capped at 256 characters and 20 entries
-- 📋 **Copy / Quote / Save** — right-click to copy or quote; image messages can be saved; the context menu uses 20×20 SVG line icons
+- 🔗 **Rich-text messages** — colours, underlines, clicks and hover tooltips: `/tell`, coordinates, FTB accept/deny and external links are all clickable; bare URLs become links automatically
+- 📋 **Copy / Quote / Save** — right-click a bubble for the menu; image bubbles additionally offer Save
+- 🧭 **@ / whisper / teleport / block** — right-click an avatar for @ mention, whisper, quick teleport and block; a single click opens the player's profile
+- 🪢 **Private chat** — the chat list shows currently online players; click one to open the conversation, right-click for its menu (profile / teleport / block)
+- 👥 **Online players & conversation list** — ordered Public → online players → recent offline, with real IDs, skin avatars, online/offline dots and unread badges; private chat uses `/msg`, keeps per-conversation drafts and scroll state, and is read-only for offline or blocked players
+- 🖥️ **Player profile page** — push into a player's profile from chat or the conversation list: stat overview, copy buttons, role tag, with a full-width push transition
+- 🎨 **Skia vector UI & motion** — rounded bubbles, blurred backgrounds, scrolling and QQ-style slide-in animations are all vector-drawn
 - 🧭 **Phone-style navigation** — three bottom tabs (Chats / You / Settings) with page-level push/pop transitions; the same animation carries public ↔ private switches
-- 👥 **Online players & private chat** — the conversation list orders Public → online players → recent offline, with real IDs, skin avatars, online/offline dots and unread badges; private chat uses `/msg`, keeps per-conversation drafts and scroll state, and is read-only for offline or blocked players
-- ⚙️ **Settings page** — a Windows 11 style 2×2 tile grid (Appearance / Chat / Privacy & blocking / About) opening into sub-pages; switches use an iOS-proportioned slide and every option **applies and persists instantly, no restart**
-- 🎛️ **Adjustable options** — background blur, interface animations (decorative-motion master), background opacity, panel width (400–600), interface scale (x0.75–x1.50, rescales the whole UI live), message entrance animation, double-tap avatar poke
-- 🖼️ **Custom wallpaper** — pick a local image as the panel background, downsampled automatically (long edge ≤1024, decoded off-thread); mutually exclusive with blur, and the opacity slider darkens it for readability
+- 📱 **Custom wallpaper / avatar** — upload a local image, crop it, and use it as the panel background or your avatar; on servers also running AtomChat your avatar syncs to every player automatically
 - 🚫 **Block management** — a visual block list in settings (avatar + name + one-tap unblock); "Hide blocked players' messages" can be turned off so they stay visible in public chat while private stays blocked
-- ✏️ **Multi-line input** — up to two visible lines, then internal scrolling; Up/Down move between lines, single-line drafts keep vanilla history cycling
-- 🎨 **SVG icons & unified motion** — image / emoji / send buttons use inline SVG line icons
-- 🌍 **Localization** — supports Simplified Chinese and English; switch the game language to apply
-- 🧠 **Message capture** — captures real player UUID / profile / decorated names from MessageHandler's three channels, with nick-server support and conservative system-gray fallback
+- ⚙️ **Highly configurable** — the in-game settings page (tile home: Appearance / Chat / Privacy & blocking / About) covers appearance, colours and preferences, all applying and persisting instantly
+- 🎛️ **Adjustable options** — background blur, interface animations (decorative-motion master), background opacity, panel width (400–600), interface scale (x0.75–x1.50, rescales the whole UI live), message entrance animation, double-tap avatar poke
 - 🎨 **Themes & full colour control** — one-tap theme presets (Frosted / Modern); the settings page exposes every interface colour (panel background / bubbles / secondary capsules / text / cards / outline / accent), with foldable colour groups and a live preview square on each row
-- ⏱️ **Time dividers** — the first message of a list always shows a timestamp capsule; later ones follow a configurable interval
-- ✏️ **Cross-message text selection** — drag across several messages and copy them all with Ctrl+C; dragging never misfires clicks
+- 🌍 **Localization** — supports Simplified Chinese and English; switch the game language to apply
 - 🛡️ **Anti-spam & compact groups** — consecutive identical messages merge into one with a counter; same-sender five-minute runs keep the avatar/name only on the first row and tighten the gap
-- 💾 **Chat history** — Settings → Chat can keep history per server/world on disk, restore it on rejoin, clear it in one tap, and prune old files by retention days
-- 🖥️ **Profile detail page** — push into a player's profile from chat or the conversation list: stat overview, copy buttons, role tag, with a full-width push transition
-- 🌐 **Image receive toggle** — when off, nothing is downloaded or cached and a green `[Image]` placeholder is shown
-- 🔄 **Teleport mode cycle** — one tap cycles `/tp` / `/tpa` / `auto`
-- ⌨️ **IME & multiplayer touches** — IMBlocker command-mode bridge, WATUT "partner is typing" indicator
-- 🛠️ **Pure Skia rendering** — rounded corners, shadows, scrolling, and text are vector-drawn; pure animation / layout / token classes ship with JUnit tests
+- ⏱️ **Time dividers & cross-message selection** — the first message of a list always shows a timestamp capsule, later ones follow a configurable interval; drag across several messages to copy them all with Ctrl+C
+- 🌐 **Other toggles** — image receive toggle (off shows a green `[Image]` placeholder), teleport mode cycle (`/tp` / `/tpa` / `auto`), IMBlocker command-mode bridge and WATUT "partner is typing" indicator
+- 🛠️ **Pure Skia rendering** — rounded corners, shadows, scrolling and text are vector-drawn; pure animation / layout / token classes ship with JUnit tests
 
 ---
 
@@ -125,7 +127,7 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 
 ### Sending Images
 
-- Click the image button → FlatLaf picker (opens `Pictures` / localized Pictures folder by default, with a thumbnail preview)
+- Click the image button → FlatLaf picker (opens the `Pictures` folder by default, with a thumbnail preview)
 - Drag an image file into the game window, or copy an image and press `Ctrl+V`: it uploads and inserts into the draft
 - While uploading, the composer placeholder reads "Uploading image…"; press Enter to send after it finishes
 - The default image host is uguu.se; links expire after about 3 hours. There is no server-side media hosting yet
@@ -140,15 +142,28 @@ The whole UI is vector-drawn instead of using vanilla chat textures.
 ### Language
 
 - AtomChat uses Minecraft language files: `assets/atomchat/lang/zh_cn.json` and `en_us.json`
-- After switching the game language, the title, tabs, context menu, input placeholder, and file-picker text follow automatically
+- After switching the game language, the title, tabs, context menu, input placeholder and file-picker text follow automatically
 
 ---
 
-## Configuration
+## Configuration & Storage
+
+**Path** — `.minecraft/config/atomchat/` holds `atomchat-client.json` plus the data folders:
+
+| Path | Contents |
+|---|---|
+| `atomchat-client.json` | Main config file (generated on first launch) |
+| `avatar/` | Custom avatars (256px PNG) |
+| `emotes/` | Sticker packs (png / jpg / jpeg, up to 10) |
+| `wallpaper/` | Custom wallpaper |
+| `history/` | Chat history (per world / server) |
+| `debug/` | Avatar sampling PNGs written in debug mode |
+
+Auto-downloaded chat images and companion avatar data live under `<gameDir>/atomchat-data/` (capped at 500 files / 100 MB, viewable and clearable from Settings → About).
 
 **Recommended**: the in-game `Settings` page (a Windows 11 style tile grid: Appearance / Chat / Privacy & blocking / About). Every option **applies and persists instantly, no restart**; colour rows ship with preset palettes, a `+` custom picker and live previews.
 
-Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated on first launch; restart the game after manual edits). Common keys:
+**Advanced**: edit `atomchat-client.json` directly (restart the game after manual edits). Common keys:
 
 | Key | Default | Description |
 |---|---|---|
@@ -180,18 +195,22 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 | Fabric 1.21.1 | ✅ Supported |
 | NeoForge 1.21.1 | ✅ Supported |
 | Java 21+ | ✅ Required |
+| Server | ✅ Not required (client-only); installing it enables custom-avatar sync |
 | `[[CICode]]` image protocol | ✅ Interoperable with E33Chat / ChatImage family |
 | Nickname / display-name plugins | 🟡 Best effort (tell-click / Tab names / decorated-name structure); unknown formats fall back to gray system text |
-| Server | ✅ Not required (client-only) |
+| ChatHeads | ✅ Compatible |
+| Chat Animation / similar animation mods | ✅ Compatible |
+| EasyBot | 🟡 Best effort (QQ message type parsing); unparseable lines fall back to gray text |
+| Quark | 🚫 Emote menu is not shown; compatibility work in progress |
 | Other loaders / versions | ❌ Fabric / NeoForge 1.21.1 only for now |
 
 ---
 
 ## Known Limitations
 
-1. Fabric / NeoForge 1.21.1 supported so far; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet
-2. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet
-3. No E33Chat server templates, whisper sidebar, or search; per-world chat-history persistence is built in (off by default)
+1. Fabric / NeoForge 1.21.1 supported so far; the Skija Windows x64 native is bundled. Linux / macOS packages are not built yet (the mod cannot run there)
+2. Images upload to the third-party host uguu.se by default (~3 hour expiry); no server-side media hosting yet (planned)
+3. No E33Chat whisper sidebar or search yet; server-format templates are supported (hand-edit `chatTemplates` / `whisperTemplates`), and per-world chat-history persistence is built in (off by default)
 4. Player identity is best effort: tell-click structured capture, offline seen cache, and multi-tier ownDisplayName fallbacks; extreme unknown formats fall back to gray system text
 5. Chat-history persistence is off by default; when enabled, history is stored per server/world on disk and restored on rejoin, without leaking across worlds/servers
 
@@ -200,7 +219,7 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 ## Privacy & Data
 
 > [!WARNING]
-> Local images you send are uploaded to a third-party image host (uguu.se by default). Do not send sensitive or private content.
+> Local images you send are uploaded to a third-party image host (uguu.se by default) and can be saved by others. Your messages can also be saved by players who enabled chat history. Do not send sensitive or private content.
 
 - The mod uploads no telemetry or personal information
 - Image uploads happen only when you explicitly pick, paste, or drop an image
@@ -211,7 +230,7 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 
 ## FAQ
 
-**Do I need a server mod?** No. AtomChat is client-only.
+**Do I need a server mod?** No. AtomChat is client-only, but installing it server-side enables custom avatar syncing.
 
 **How do I send an image?** Click the image button to choose a local file, or drag an image into the window / Ctrl+V paste. After the upload finishes it is inserted into the draft; press Enter to send.
 
@@ -222,6 +241,12 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 **How do I change colors / sizes?** Adjust them live in `Settings → Appearance` (colour rows include presets and a custom picker); alternatively edit `config/atomchat/atomchat-client.json` and restart the game.
 
 **Can I include this in a modpack?** Yes. AtomChat's code is MIT and needs no extra permission; if your modpack redistributes the JAR, keep the third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+---
+
+## Feedback
+
+Found a bug or have a suggestion? Open an [issue](https://github.com/E33EPUS/AtomChat/issues), or leave a comment on the mod listing pages.
 
 ---
 
@@ -251,7 +276,7 @@ Main modules:
 
 ## Changelog
 
-See [Fabric-1.21.1/CHANGELOG.md](https://github.com/E33EPUS/atomchat/blob/Fabric-1.21.1/CHANGELOG.md) for the full history.
+See [Fabric-1.21.1/CHANGELOG.md](https://github.com/E33EPUS/AtomChat/blob/Fabric-1.21.1/CHANGELOG.md) for the full history.
 
 ---
 
