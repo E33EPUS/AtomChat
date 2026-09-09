@@ -44,8 +44,11 @@ public class AtomChatClient {
         modEventBus.addListener(AtomChatClient::onClientSetup);
         modEventBus.addListener(AtomChatClient::registerKeyMappings);
         modEventBus.addListener(AtomChatClient::registerReloadListener);
+        // Sound events must go through RegisterEvent: constructing the mod can
+        // happen after the registries are already frozen (see
+        // NotificationController#registerSound).
+        modEventBus.addListener(NotificationController::registerSound);
 
-        NotificationController.registerSound();
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerDisconnect);
         NeoForge.EVENT_BUS.addListener(AtomChatClient::onClientTick);

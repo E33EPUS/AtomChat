@@ -5,10 +5,10 @@ import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.config.AtomChatConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
+import net.neoforged.neoforge.registries.RegisterEvent;
 
 /**
  * Turns capture-side events (mentions, quote replies, incoming whispers) into
@@ -31,14 +31,21 @@ public final class NotificationController {
     }
 
     /**
-     * Direct registry registration during client construction — without it the
-     * event is an unregistered instance whose behaviour across the sound engine
-     * is undefined. Call once during client init, before the registry freezes
-     * and before any resource reload.
+     * Registers the bundled cue through the mod-bus {@link RegisterEvent}, which
+     * fires inside NeoForge's unfreeze/re-freeze window. Registering straight
+     * from the client constructor instead throws "Registry is already frozen"
+     * whenever another mod (or a loader-version quirk) has already frozen the
+     * registries by the time we are constructed.
      */
-    public static void registerSound() {
-        Registry.register(BuiltInRegistries.SOUND_EVENT,
-                NOTIFICATION_SOUND.getLocation(), NOTIFICATION_SOUND);
+    public static void registerSound(RegisterEvent event) {
+        try {
+            event.register(Registries.SOUND_EVENT, NOTIFICATION_SOUND.getLocation(), () -> NOTIFICATION_SOUND);
+        } catch (RuntimeException e) {
+            // A missing registration only costs us Holder/network lookups; the
+            // cue still resolves by location for client-side playback. Losing
+            // the sound must never take the whole panel down.
+            AtomChat.LOGGER.warn("Failed to register notification sound, continuing without it", e);
+        }
     }
 
     /** Plays the cue directly, bypassing the gate — the settings "test sound" card. */

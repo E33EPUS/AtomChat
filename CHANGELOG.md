@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.5-hotfix
+
+### 修复
+
+- **在部分 NeoForge 整合包里整个 mod 加载失败**：通知音效原本在客户端构造函数里直接调用 `Registry.register` 写入原版 `sound_event` 注册表。某些整合包（实测 NeoForge 21.1.243 + Forgified Fabric API）里 mod 构造时注册表已经冻结，这一步会抛 `Registry is already frozen`，导致 AtomChat 整个客户端初始化失败；更严重的是 FML 会因此进入 broken mod state，跳过所有 mod 的配置加载并向全包拒绝派发事件，表现为游戏内其它 mod（如 MineMenu、Sus_InstantSwap）读取配置时崩溃。现在改为通过 mod 事件总线的 `RegisterEvent` 注册（NeoForge 官方路径，跑在注册表解冻窗口内），并额外捕获异常降级为警告——即使音效注册失败也只损失提示音，面板与消息功能不受影响。
+
+### Fixed
+
+- **The whole mod failed to load in some NeoForge modpacks**: the notification cue registered itself by calling `Registry.register` on vanilla's `sound_event` registry straight from the client constructor. In some packs (observed with NeoForge 21.1.243 + Forgified Fabric API) the registries are already frozen by the time the mod is constructed, so this threw `Registry is already frozen` and took AtomChat's entire client init down. Worse, FML then entered a broken mod state: config loading was skipped for every mod and all subsequent events were refused, which surfaced as *other* mods (MineMenu, Sus_InstantSwap) crashing when they read their own config in-game. Registration now goes through the mod event bus `RegisterEvent` (NeoForge's official path, which runs inside the registry unfreeze window), with the failure additionally caught and downgraded to a warning — a missing cue now costs only the sound, never the panel.
+
 ## v0.2.5
 
 ### 新增
