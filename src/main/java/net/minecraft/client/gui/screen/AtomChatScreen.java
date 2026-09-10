@@ -109,6 +109,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** How this screen was opened: from the vanilla chat box or from the AtomChat key. */
     public enum AtomChatOpenMode { DIRECT_WORLD, RESTORE }
 
+    /**
+     * Our own client handle. Deliberately shadows the inherited protected
+     * {@code Screen.client}: nested/anonymous classes in this file may not read
+     * the inherited field at runtime. In dev the Yarn package of Screen matches
+     * this class's package, so javac emits a direct getfield with no synthetic
+     * accessor; Fabric then remaps Screen to {@code net.minecraft.class_437},
+     * and the JVM rejects the protected read with IllegalAccessError. Owning the
+     * field (Neo parity) avoids that entirely.
+     */
+    private final MinecraftClient client = MinecraftClient.getInstance();
+
     private final NavigationStack<NavPage> navigation;
 
     private final ConversationListPage conversationListPage = new ConversationListPage(this);
