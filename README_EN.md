@@ -27,7 +27,7 @@ AtomChat is a brand-new chat beautification mod developed in the spirit of [E33C
 
 Rendering uses [Skija](https://github.com/HumbleUI/skija). The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **v0.2.5 implemented and released (Fabric / NeoForge 1.21.1)**. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.2.6 implemented and released (Fabric / NeoForge 1.21.1)**. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -85,6 +85,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija). The whole UI is vecto
 - 📝 **Multi-line input** — the composer shows up to two lines, then scrolls internally; Up/Down move between lines while single-line drafts keep the vanilla chat history
 - 🧠 **Message capture** — real player identity is captured from MessageHandler's three channels, with nick-server support; unknown messages degrade to system text
 - 📑 **Chat history** — when enabled, history is saved per server/world on disk, restored on rejoin, and pruned automatically
+- 🔃 **Public feed filter** — a button beside the header back arrow cycles all / system-only / players-only; the icon changes per state and tints with the accent colour while filtering. View-only: unread badges and previews still count every message
 
 ### Highlights
 
