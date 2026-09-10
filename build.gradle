@@ -81,14 +81,20 @@ loom {
 def storeVersion = "Fabric-${project.minecraft_version}-${project.mod_version}"
 
 def changelogFor(version) {
-    def text = rootProject.file('CHANGELOG.md').getText('UTF-8')
+    def text = rootProject.file('RELEASE_NOTES.md').getText('UTF-8')
     def start = text.indexOf("## v${version}")
     if (start < 0) {
         return "AtomChat ${version}"
     }
     def end = text.indexOf('\n## ', start + 1)
     def section = end > start ? text.substring(start, end) : text.substring(start)
-    return section.trim()
+    // Store changelog convention: the **English** block of the version section
+    // in RELEASE_NOTES.md (the bilingual section is for the GitHub release body).
+    def en = section.indexOf('**English**')
+    if (en < 0) {
+        return section.trim()
+    }
+    return section.substring(en + '**English**'.length()).trim()
 }
 
 modrinth {
