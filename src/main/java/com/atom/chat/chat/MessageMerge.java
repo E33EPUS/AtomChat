@@ -20,6 +20,13 @@ public final class MessageMerge {
      */
     public static volatile BooleanSupplier antiSpamEnabledSupplier = () -> false;
 
+    /**
+     * Repeats older than this window open a fresh row instead of growing the
+     * count: "gg" three hours after the last "gg" is a new message, not a
+     * duplicate. Same window as the compact visual grouping.
+     */
+    public static final long MERGE_WINDOW_MS = MessageGrouping.GROUP_TIME_MS;
+
     private MessageMerge() {
     }
 
@@ -35,7 +42,11 @@ public final class MessageMerge {
         if (last.isSystem() || next.isSystem()) {
             return false;
         }
-        if (last.isOwn() != next.isOwn()) {
+        if (next.isOwn() != last.isOwn()) {
+            return false;
+        }
+        long dt = next.getTimestamp() - last.getTimestamp();
+        if (dt < 0L || dt > MERGE_WINDOW_MS) {
             return false;
         }
         if (!Objects.equals(last.getQuoteName(), next.getQuoteName())

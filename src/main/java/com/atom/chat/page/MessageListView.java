@@ -28,6 +28,7 @@ import io.github.humbleui.types.Rect;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,6 +74,22 @@ public final class MessageListView {
 
     private final List<MessageHit> hits = new ArrayList<>();
     private final List<ClickableSpan> clickableSpans = new ArrayList<>();
+
+    /**
+     * Wrapped content lines keyed by (message id, wrap width). Measure, draw
+     * and drag otherwise re-wrap the whole history every frame. A wrap depends
+     * only on the message's immutable content and the available width, so the
+     * result is reusable across all three paths; merge copies share the id and
+     * never change the text, so entries stay valid until evicted (LRU).
+     */
+    private static final int LAYOUT_CACHE_MAX = 512;
+    private final Map<Long, List<RichLine>> layoutCache =
+            new LinkedHashMap<>(128, 0.75F, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Long, List<RichLine>> eldest) {
+                    return size() > LAYOUT_CACHE_MAX;
+                }
+            };
 
     private ChatMessage selectionAnchorMessage;
     private ChatMessage selectionFocusMessage;
@@ -141,7 +158,7 @@ public final class MessageListView {
 
     /** White wash painted under a message while its jump highlight is armed. */
     private void drawJumpHighlight(Canvas canvas, ChatMessage msg, float x, float y, float w, float h) {
-        if (highlightMessage != msg) {
+        if (!msg.sameAs(highlightMessage)) {
             return;
         }
         long left = highlightUntil - System.currentTimeMillis();
@@ -277,6 +294,19 @@ public final class MessageListView {
         }
     }
 
+    /** Cached wrap; see {@link #layoutCache}. */
+    private List<RichLine> wrappedLines(ChatMessage msg, Font font, float wrapWidth) {
+        int w = Math.max(0, Math.round(wrapWidth));
+        long key = msg.getId() * 100_000L + Math.min(w, 99_999);
+        List<RichLine> cached = layoutCache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        List<RichLine> lines = RichTextRenderer.wrapFor(msg.getContentRich(), font, wrapWidth);
+        layoutCache.put(key, lines);
+        return lines;
+    }
+
     /** Hit geometry from the most recent {@link #draw}; valid for the same frame. */
     public List<MessageHit> hits() {
         return hits;
@@ -287,7 +317,7 @@ public final class MessageListView {
                 || selectionAnchorLine < 0 || selectionFocusLine < 0) {
             return false;
         }
-        if (selectionAnchorMessage != selectionFocusMessage) {
+        if (!selectionAnchorMessage.sameAs(selectionFocusMessage)) {
             return true;
         }
         return selectionAnchorLine != selectionFocusLine || selectionAnchorChar != selectionFocusChar;
@@ -341,7 +371,7 @@ public final class MessageListView {
                         line.text());
                 if (mx >= line.x() && mx <= lineRight && my >= line.y() && my <= line.y() + line.height()) {
                     int ch = charAtLine(line, mx);
-                    boolean changed = line.message() != selectionFocusMessage
+                    boolean changed = !line.message().sameAs(selectionFocusMessage)
                             || ch != selectionFocusChar || line.line() != selectionFocusLine;
                     if (changed) {
                         selectionFocusMessage = line.message();
@@ -372,16 +402,28 @@ public final class MessageListView {
     /**
      * Copies the selected text, joining messages with a newline. The range may
      * span any number of messages in the order they appear in the current feed.
+     *
+     * <p>When an endpoint has scrolled out of the drawn window (wheel during a
+     * drag) the hit rows no longer cover it; the copy then falls back to whole
+     * messages from the feed instead of silently returning nothing.
      */
     public String copySelection() {
-        if (!hasSelection() || hits.isEmpty()) {
+        if (!hasSelection()) {
             return "";
         }
         int anchorHit = hitIndexFor(selectionAnchorMessage);
         int focusHit = hitIndexFor(selectionFocusMessage);
-        if (anchorHit < 0 || focusHit < 0) {
-            return "";
+        if (anchorHit >= 0 && focusHit >= 0) {
+            String exact = copyRangeFromHits(anchorHit, focusHit);
+            if (!exact.isEmpty()) {
+                return exact;
+            }
         }
+        return copyRangeFromFeed();
+    }
+
+    /** Exact copy with per-line cuts, requires both endpoints to be drawn. */
+    private String copyRangeFromHits(int anchorHit, int focusHit) {
         // Normalise to a start/end pair in display order.
         int startHit = anchorHit;
         int endHit = focusHit;
@@ -398,7 +440,7 @@ public final class MessageListView {
         ChatMessage startMsg = reverse ? selectionFocusMessage : selectionAnchorMessage;
         ChatMessage endMsg = reverse ? selectionAnchorMessage : selectionFocusMessage;
         int startLine = reverse ? selectionFocusLine : selectionAnchorLine;
-        int startChar = reverse ? selectionFocusChar : selectionAnchorChar;
+        int startChar = reverse ? selectionAnchorChar : selectionFocusChar;
         int endLine = reverse ? selectionAnchorLine : selectionFocusLine;
         int endChar = reverse ? selectionAnchorChar : selectionFocusChar;
 
@@ -410,8 +452,8 @@ public final class MessageListView {
             if (lines.isEmpty()) {
                 continue;
             }
-            boolean isStart = hit.message() == startMsg;
-            boolean isEnd = hit.message() == endMsg;
+            boolean isStart = hit.message().sameAs(startMsg);
+            boolean isEnd = hit.message().sameAs(endMsg);
             for (MessageTextLine line : lines) {
                 int local = line.line();
                 if (isStart && local < startLine) {
@@ -444,10 +486,35 @@ public final class MessageListView {
         return sb.toString();
     }
 
+    /**
+     * Geometry-free fallback: whole messages between the two endpoints, ordered
+     * by the feed. Per-line cuts are lost, but a selection whose end scrolled
+     * out of the drawn window still copies its full content.
+     */
+    private String copyRangeFromFeed() {
+        int ai = indexOfIdentity(currentMessages, selectionAnchorMessage);
+        int fi = indexOfIdentity(currentMessages, selectionFocusMessage);
+        if (ai < 0 || fi < 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = Math.min(ai, fi); i <= Math.max(ai, fi); i++) {
+            String text = currentMessages.get(i).getDisplayText();
+            if (text == null || text.isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(text);
+        }
+        return sb.toString();
+    }
+
     /** Index of the hit row for a message, or -1 when it is not currently drawn. */
     private int hitIndexFor(ChatMessage message) {
         for (int i = 0; i < hits.size(); i++) {
-            if (hits.get(i).message() == message) {
+            if (hits.get(i).message().sameAs(message)) {
                 return i;
             }
         }
@@ -630,9 +697,8 @@ public final class MessageListView {
             }
             return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index, grouped);
         }
-        RichText content = msg.getContentRich();
         float textMaxWidth = bubbleMaxWidth - UiTokens.BUBBLE_PAD * 2.0F;
-        List<RichLine> richLines = RichTextRenderer.wrapFor(content, font, textMaxWidth);
+        List<RichLine> richLines = wrappedLines(msg, font, textMaxWidth);
         List<String> lines = new ArrayList<>();
         for (RichLine line : richLines) {
             lines.add(line.getPlainText());
@@ -699,8 +765,7 @@ public final class MessageListView {
      */
     private MessageHit drawSystemMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index) {
         Font font = FontManager.font(UiTokens.FONT_QUOTE);
-        List<RichLine> richLines = RichTextRenderer.wrapFor(msg.getContentRich(), font,
-                maxWidth - UiTokens.BUBBLE_PAD * 2.0F);
+        List<RichLine> richLines = wrappedLines(msg, font, maxWidth - UiTokens.BUBBLE_PAD * 2.0F);
         List<String> lines = new ArrayList<>();
         for (RichLine line : richLines) {
             lines.add(line.getPlainText());
@@ -775,7 +840,9 @@ public final class MessageListView {
      */
     private void drawMessageName(Canvas canvas, ChatMessage msg, float rowY, float leftX, float rightX) {
         Font nameFont = FontManager.font(UiTokens.FONT_NAME);
-        RichText sender = msg.getSenderRich();
+        // Name rows are UI chrome: server-attached click/hover events and
+        // underlines stay only on names rendered inside system capsules.
+        RichText sender = msg.getSenderRich().stripInteractions();
         if (sender.isEmpty()) {
             sender = RichText.literal(host.senderName(msg));
         }
@@ -932,8 +999,7 @@ public final class MessageListView {
         if (msg.isSystem()) {
             Font font = FontManager.font(UiTokens.FONT_QUOTE);
             float lineHeight = SkiaFontRenderer.getHeight(font);
-            int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font,
-                    maxWidth - UiTokens.BUBBLE_PAD * 2.0F).size();
+            int lines = wrappedLines(msg, font, maxWidth - UiTokens.BUBBLE_PAD * 2.0F).size();
             return s(2) + Math.max(lineHeight, lines * lineHeight) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
         }
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
@@ -950,7 +1016,7 @@ public final class MessageListView {
         Font font = FontManager.font(UiTokens.FONT_BODY);
         float lineHeight = SkiaFontRenderer.getHeight(font);
         float wrapW = Math.max(s(20), maxWidth - UiTokens.BUBBLE_RETRACT - UiTokens.BUBBLE_PAD * 2.0F);
-        int lines = RichTextRenderer.wrapFor(msg.getContentRich(), font, wrapW).size();
+        int lines = wrappedLines(msg, font, wrapW).size();
         return band + quoteH + UiTokens.BUBBLE_PAD_Y + Math.max(lineHeight, lines * lineHeight);
     }
 
@@ -964,7 +1030,10 @@ public final class MessageListView {
         }
         Font font = FontManager.font(msg.isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);
         float textMax = Math.max(s(20), hit.bubbleWidth() - UiTokens.BUBBLE_PAD * 2.0F);
-        List<RichLine> richLines = RichTextRenderer.wrapFor(msg.getContentRich(), font, textMax);
+        // The hit bubble never wraps tighter than the draw-path width (a short
+        // bubble is at least one full line wide), so the cached draw wrap and
+        // this query produce identical line splits.
+        List<RichLine> richLines = wrappedLines(msg, font, textMax);
         List<String> lines = new ArrayList<>();
         for (RichLine line : richLines) {
             lines.add(line.getPlainText());
@@ -990,12 +1059,19 @@ public final class MessageListView {
         }
         Font font = FontManager.font(line.message().isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);
         float x = line.x();
-        for (int i = 0; i < text.length(); i++) {
-            float w = SkiaFontRenderer.getStringWidth(font, text.substring(i, i + 1));
+        // Step by code point: a char-by-char loop splits surrogate pairs, so a
+        // click near an emoji could return an index into the middle of it and
+        // later slice the copied text in half.
+        int i = 0;
+        while (i < text.length()) {
+            int cp = text.codePointAt(i);
+            int chars = Character.charCount(cp);
+            float w = SkiaFontRenderer.getStringWidth(font, text.substring(i, i + chars));
             if (mx < x + w / 2.0F) {
                 return i;
             }
             x += w;
+            i += chars;
         }
         return text.length();
     }
@@ -1108,7 +1184,7 @@ public final class MessageListView {
             return -1;
         }
         for (int i = 0; i < list.size(); i++) {
-            if (list.get(i) == target) {
+            if (list.get(i).sameAs(target)) {
                 return i;
             }
         }

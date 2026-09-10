@@ -47,6 +47,16 @@ public final class AppIcons {
             + " M2 12h20"
             + " M12 2a15.3 15.3 0 0 1 4 10a15.3 15.3 0 0 1-4 10a15.3 15.3 0 0 1-4-10a15.3 15.3 0 0 1 4-10z";
 
+    // Feed filter button, ALL state: a plain funnel — the affordance that a
+    // filter lives here while nothing is currently filtered.
+    private static final String ICON_FILTER_SVG =
+            "M4 4.6 L16 4.6 L11.6 9.8 L11.6 14.2 L8.4 16 L8.4 9.8 Z";
+    // Feed filter button, SYSTEM state: an announcement speaker with one sound
+    // arc — server broadcasts read as announcements, not as chat bubbles.
+    private static final String ICON_ANNOUNCE_SVG =
+            "M3.6 8.2 L6.2 8.2 L11.4 4.9 L11.4 15.1 L6.2 11.8 L3.6 11.8 Z"
+            + " M14.6 7.6 A3.7 3.7 0 0 1 14.6 12.4";
+
     // Settings home tiles. Same 20x20 open line language as the shell icons,
     // just rendered larger; each glyph must read at a glance behind a label.
     // Appearance: three adjustment sliders — the section is about tuning the
@@ -73,6 +83,8 @@ public final class AppIcons {
     public static final Path ICON_TAB_PROFILE_PATH = Path.makeFromSVGString(ICON_TAB_PROFILE_SVG);
     public static final Path ICON_TAB_SETTINGS_PATH = Path.makeFromSVGString(ICON_TAB_SETTINGS_SVG);
     public static final Path ICON_GLOBE_PATH = Path.makeFromSVGString(ICON_GLOBE_SVG);
+    public static final Path ICON_FILTER_PATH = Path.makeFromSVGString(ICON_FILTER_SVG);
+    public static final Path ICON_ANNOUNCE_PATH = Path.makeFromSVGString(ICON_ANNOUNCE_SVG);
     public static final Path ICON_SETTINGS_APPEARANCE_PATH = Path.makeFromSVGString(ICON_SETTINGS_APPEARANCE_SVG);
     public static final Path ICON_SETTINGS_PRIVACY_PATH = Path.makeFromSVGString(ICON_SETTINGS_PRIVACY_SVG);
     public static final Path ICON_SETTINGS_ABOUT_PATH = Path.makeFromSVGString(ICON_SETTINGS_ABOUT_SVG);

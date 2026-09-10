@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.2.6
+
+### 新增
+
+- **公屏消息分类过滤**：世界频道标题栏返回键旁新增过滤按钮，点击在三个视图间循环：全部 → 仅系统 → 仅玩家 → 全部。图标随状态切换（漏斗 = 全部，白色；喇叭 = 仅系统；人形 = 仅玩家），过滤生效时呈强调色。纯视图过滤：未读角标、会话列表预览与历史保存始终统计全部消息；关闭聊天面板重新打开后回到"全部"。按钮只在公屏页出现。
+
+### 修复
+
+- **NCR 等中继服务器上自己的气泡显示裸名**：这类服务器把玩家聊天经系统通道中继回来，捕获层拿不到发送者组件，自名装饰缓存永远不会命中。现在会从中继行切片出装饰标签（如 `[称号]名字`）并缓存，自己视角也能看到称号与颜色。
+- **发送者名字行继承服务器的下划线与点击事件**：服务器聊天格式给玩家名挂的点击交互被富文本切片原样保留，公屏名字行因此带下划线且可点。名字行现在剥离点击/悬停/下划线但保留颜色；系统消息胶囊里的名字文本不受影响，服务端交互照常。
+- **防刷屏合并没有时间窗**：几小时前的相同消息也会被新消息折叠计数，且时间戳被改写。现在只合并 5 分钟内的复读（与紧凑分组同窗），更早的重复消息开新行。
+- **复读合并会让拖选与高亮失效**：合并以替换行对象的方式实现，而按对象引用记录的文本选区锚点、横幅跳转高亮会随之丢失。消息现在携带稳定 id，合并副本继承同一 id，上述状态不再被合并打断。
+- **拖选中滚动后 Ctrl+C 复制为空**：跨消息拖选期间用滚轮滚动，端点滚出绘制窗口后复制会静默返回空串并吞掉按键。现在回退为从完整消息流复制范围内的内容；完全无可复制内容时按键放行给输入框。
+- **emoji 被从中间劈开**：消息文字选取的字符定位与输入框光标定位按 UTF-16 单字符步进，点击 emoji 附近会得到代理对中间的索引，复制或续写会产生乱码。两处均已改为按码点步进。
+
+### 更改
+
+- **消息折行布局缓存**：绘制、高度测量与拖选命中三条路径此前每帧对整个历史列表重复做富文本折行（上限 500 条时每帧上千次测量）。折行结果现在按消息与宽度缓存（LRU 512），长列表的滚动与打开面板明显更流畅。
+
+### Fixed
+
+- **Own bubbles showed a bare name on relay servers (NCR-style)**: these servers relay player chat through the system channel, so the capture layer never sees a sender component and the decorated self-name cache never hits. The styled label (e.g. `[Title]Name`) is now sliced off the relayed line and cached, so own bubbles show titles and colours too.
+- **Sender name rows inherited server click events and underlines**: click/hover interactions the server attaches to player names survived the rich-text slice, leaving public-chat name rows underlined and clickable. Name rows now strip interactions while keeping colours; names inside system capsules are untouched and keep their server behaviour.
+- **Anti-spam merging had no time window**: identical messages hours apart were folded into one counter with a rewritten timestamp. Merging now only applies within 5 minutes (the compact-grouping window); older repeats open a fresh row.
+- **Merging invalidated selections and highlights**: a merge replaces the stored row object, which silently dropped text-selection anchors and notification-jump highlights held by reference. Messages now carry a stable id that merge copies inherit, so those states survive.
+- **Ctrl+C copied nothing after scrolling during a selection**: scrolling with the wheel while dragging a cross-message selection moved an endpoint out of the drawn window, making the copy return an empty string and swallowing the key. It now falls back to copying whole messages from the feed, and a truly empty result no longer blocks the input field's own copy.
+- **Emoji could be split in half**: character mapping in message text selection and input caret placement stepped per UTF-16 char, so clicking near an emoji produced an index inside a surrogate pair and later copy/typing corrupted it. Both now step by code point.
+
+### Changed
+
+- **Layout cache for message wrapping**: drawing, height measurement and drag hit-testing each re-wrapped the entire history every frame (over a thousand measurements per frame at the 500-message cap). Wraps are now cached per message and width (LRU 512), making long-list scrolling and panel opening noticeably smoother.
+
 ## v0.2.5-hotfix
 
 ### 修复

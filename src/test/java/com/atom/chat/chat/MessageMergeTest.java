@@ -69,6 +69,20 @@ class MessageMergeTest {
     }
 
     @Test
+    void cannotMergeAcrossTimeWindow() {
+        long window = MessageMerge.MERGE_WINDOW_MS;
+        assertTrue(MessageMerge.canMerge(msg("Alice", "hi", 1000),
+                msg("Alice", "hi", 1000 + window)));
+        assertFalse(MessageMerge.canMerge(msg("Alice", "hi", 1000),
+                msg("Alice", "hi", 1000 + window + 1)));
+    }
+
+    @Test
+    void cannotMergeOutOfOrderTimestamps() {
+        assertFalse(MessageMerge.canMerge(msg("Alice", "hi", 5000), msg("Alice", "hi", 4000)));
+    }
+
+    @Test
     void mergeIncrementsCounterAndKeepsNewTimestamp() {
         ChatMessage merged = MessageMerge.merge(msg("Alice", "hi", 1000), msg("Alice", "hi", 4000));
         assertEquals(2, merged.getDuplicateCount());
