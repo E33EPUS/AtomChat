@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.6-hotfix
+
+### 修复
+
+- **Fabric 端渲染自己发送的消息时崩溃退出**（本次仅涉及 Fabric 构建；NeoForge 版功能与 0.2.6 完全一致，版本号同步仅为让两个 jar 在同一 Release 中对齐）：聊天面板里 `MessageListView.Host` 匿名内部类直接读取了父类 `Screen` 的 `protected MinecraftClient client` 字段。这是 Fabric 端长期潜伏的隐患——开发时 `Screen` 的 Yarn 包名与面板类同包（`net.minecraft.client.gui.screen`），`javac` 按"同包访问 protected"放行、直发 `getfield` 且不生成桥接方法；而 Fabric 运行时把 `Screen` 重映射到 `net.minecraft.class_437`（另一个包），JVM 便以 `IllegalAccessError` 拒绝这条访问。触发条件是列表里出现任意一条自己发送的消息——文字走 `drawMessage`、图片走 `drawImageMessage`，两条路径都会调到 `drawAvatar → ownUuid`，所以表现为"一打开面板看到自己的消息、或一发图就闪退"。修复与 NeoForge 端对齐：面板持有自己的 `client` 句柄（`MinecraftClient.getInstance()`），不再继承读取父类字段。
+
+### Fixed
+
+- **Crash on the Fabric build when rendering your own messages** (Fabric-only change; the NeoForge build is functionally identical to 0.2.6 and only carries the matching version number so both jars ship in one release): the `MessageListView.Host` anonymous inner class read the inherited `protected MinecraftClient client` field of `Screen`. This was a latent Fabric-only trap — in dev the Yarn package of `Screen` matches the panel's own package (`net.minecraft.client.gui.screen`), so `javac` allowed the same-package protected access, emitted a direct `getfield` and skipped the synthetic accessor; at runtime Fabric remaps `Screen` to `net.minecraft.class_437` in a different package and the JVM rejects the read with `IllegalAccessError`. Any own message in the list triggered it — text through `drawMessage`, images through `drawImageMessage`, both reaching `drawAvatar → ownUuid` — which is why opening the panel onto your own messages or sending an image crashed instantly. The fix mirrors the NeoForge build: the screen keeps its own `client` handle (`MinecraftClient.getInstance()`) instead of reading the inherited field.
+
 ## v0.2.6
 
 ### 新增
