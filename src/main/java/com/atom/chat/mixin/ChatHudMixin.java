@@ -206,9 +206,19 @@ public class ChatHudMixin {
         if (own) {
             // Own message echo: already added locally by AtomChatScreen. The
             // server-decorated component is the best self-name source — cache
-            // it so the local echo bubbles can show "[Title]Name" too.
-            OwnIdentity.cache(meta.senderComponent() != null
-                    ? RichText.of(meta.senderComponent()) : null);
+            // it so the local echo bubbles can show "[Title]Name" too. NCR-style
+            // relays arrive as system-channel lines parsed from text only, so
+            // meta has no sender component: slice the styled label off the
+            // final HUD line exactly like the meta==null branch above.
+            RichText decorated = meta.senderComponent() != null
+                    ? RichText.of(meta.senderComponent()) : null;
+            if (decorated == null) {
+                var sliced = ChatPipeline.sliceRichText(message, meta);
+                if (sliced.isPresent()) {
+                    decorated = sliced.get().sender();
+                }
+            }
+            OwnIdentity.cache(decorated != null ? decorated.stripInteractions() : null);
             return;
         }
         String blockName = meta.profileName() != null ? meta.profileName() : meta.senderName();

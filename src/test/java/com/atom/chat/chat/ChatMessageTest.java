@@ -5,6 +5,7 @@ import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatMessageTest {
@@ -86,5 +87,34 @@ class ChatMessageTest {
     void legacyQuotedConstructorPreservesDisplayText() {
         ChatMessage msg = new ChatMessage(Component.literal("「引用 @Alice: hi」hello"), true, "Alice", "hi");
         assertEquals("hello", msg.getDisplayText());
+    }
+
+    @Test
+    void messagesHaveDistinctIds() {
+        ChatMessage a = new ChatMessage(Component.literal("a"), false, false, null, null,
+                null, "Alice", "Alice", "a");
+        ChatMessage b = new ChatMessage(Component.literal("b"), false, false, null, null,
+                null, "Alice", "Alice", "b");
+        assertTrue(a.getId() != b.getId());
+        assertTrue(a.sameAs(a));
+        assertFalse(a.sameAs(b));
+    }
+
+    @Test
+    void mergeCopyKeepsIdentity() {
+        ChatMessage msg = new ChatMessage(Component.literal("hi"), false, false, null, null,
+                null, "Alice", "Alice", "hi");
+        ChatMessage merged = msg.withDuplicateCount(2, 999L);
+        assertTrue(merged.sameAs(msg));
+        assertTrue(msg.sameAs(merged));
+        assertEquals(2, merged.getDuplicateCount());
+        assertEquals(999L, merged.getTimestamp());
+    }
+
+    @Test
+    void sameAsRejectsNull() {
+        ChatMessage msg = new ChatMessage(Component.literal("a"), false, false, null, null,
+                null, "Alice", "Alice", "a");
+        assertFalse(msg.sameAs(null));
     }
 }

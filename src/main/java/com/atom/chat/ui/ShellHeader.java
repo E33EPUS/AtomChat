@@ -23,8 +23,27 @@ public final class ShellHeader {
     private ShellHeader() {
     }
 
+    /**
+     * An optional icon button drawn right of the back arrow (world-chat feed
+     * filter today). Geometry/hover/icon/color are all decided by the caller.
+     */
+    public record HeaderAction(UiLayout.Rect rect, float hover, io.github.humbleui.skija.Path icon, int color) {
+    }
+
     public static void render(Canvas canvas, UiLayout.Rect header, String title, boolean showBack,
                               UiLayout.Rect backButton, float backHover, int textPrimary) {
+        render(canvas, header, title, showBack, backButton, backHover, textPrimary, null, null);
+    }
+
+    public static void render(Canvas canvas, UiLayout.Rect header, String title, boolean showBack,
+                              UiLayout.Rect backButton, float backHover, int textPrimary,
+                              Boolean statusOnline) {
+        render(canvas, header, title, showBack, backButton, backHover, textPrimary, statusOnline, null);
+    }
+
+    public static void render(Canvas canvas, UiLayout.Rect header, String title, boolean showBack,
+                              UiLayout.Rect backButton, float backHover, int textPrimary,
+                              Boolean statusOnline, HeaderAction action) {
         if (header == null || header.w() <= 0.0F || header.h() <= 0.0F) {
             return;
         }
@@ -36,19 +55,11 @@ public final class ShellHeader {
                 UiTokens.headerRadius(), UiTokens.cardFill());
 
         if (showBack && backButton != null) {
-            if (backHover > 0.01F) {
-                float inset = UiTokens.s(4);
-                float x = backButton.x() + inset;
-                float y = backButton.y() + inset;
-                float w = backButton.w() - inset * 2.0F;
-                float h = backButton.h() - inset * 2.0F;
-                SkiaDraw.drawRoundedRect(canvas, x, y, w, h, UiTokens.radius(8),
-                        UiTokens.cardHover(backHover));
-            }
-            drawIconCentered(canvas, AppIcons.ICON_BACK_PATH,
-                    backButton.x() + backButton.w() / 2.0F,
-                    backButton.y() + backButton.h() / 2.0F,
-                    UiTokens.s(18), textPrimary);
+            drawIconButton(canvas, backButton, backHover,
+                    AppIcons.ICON_BACK_PATH, textPrimary);
+        }
+        if (action != null && action.rect() != null && action.icon() != null) {
+            drawIconButton(canvas, action.rect(), action.hover(), action.icon(), action.color());
         }
 
         Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
@@ -62,21 +73,34 @@ public final class ShellHeader {
         SkiaFontRenderer.drawTextRight(canvas, timeFont, time,
                 header.right() - UiTokens.HEADER_PAD_X,
                 header.y() + header.h() / 2.0F, textPrimary);
-    }
 
-    public static void render(Canvas canvas, UiLayout.Rect header, String title, boolean showBack,
-                              UiLayout.Rect backButton, float backHover, int textPrimary,
-                              Boolean statusOnline) {
-        render(canvas, header, title, showBack, backButton, backHover, textPrimary);
-        if (statusOnline != null && header != null && header.w() > 0) {
-            Font titleFont = FontManager.font(UiTokens.FONT_TITLE);
-            float titleW = SkiaFontRenderer.getStringWidth(titleFont, title);
+        if (statusOnline != null) {
+            Font dotTitleFont = FontManager.font(UiTokens.FONT_TITLE);
+            float titleW = SkiaFontRenderer.getStringWidth(dotTitleFont, title);
             float dotR = UiTokens.s(5);
             float dotX = header.x() + header.w() / 2.0F - titleW / 2.0F - UiTokens.s(12) - dotR;
             float dotY = header.y() + header.h() / 2.0F;
             int dotColor = statusOnline ? Color.makeARGB(255, 82, 196, 110) : Color.makeARGB(255, 130, 140, 150);
             SkiaDraw.drawRoundedRect(canvas, dotX - dotR, dotY - dotR, dotR * 2, dotR * 2, dotR, dotColor);
         }
+    }
+
+    /** Hover wash + centred icon, the shared header-button recipe. */
+    private static void drawIconButton(Canvas canvas, UiLayout.Rect rect, float hover,
+                                       io.github.humbleui.skija.Path icon, int color) {
+        if (hover > 0.01F) {
+            float inset = UiTokens.s(4);
+            float x = rect.x() + inset;
+            float y = rect.y() + inset;
+            float w = rect.w() - inset * 2.0F;
+            float h = rect.h() - inset * 2.0F;
+            SkiaDraw.drawRoundedRect(canvas, x, y, w, h, UiTokens.radius(8),
+                    UiTokens.cardHover(hover));
+        }
+        drawIconCentered(canvas, icon,
+                rect.x() + rect.w() / 2.0F,
+                rect.y() + rect.h() / 2.0F,
+                UiTokens.s(18), color);
     }
 
     private static void drawIconCentered(Canvas canvas, io.github.humbleui.skija.Path icon,

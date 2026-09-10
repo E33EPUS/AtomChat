@@ -4,10 +4,12 @@ import com.atom.chat.AtomChat;
 import com.atom.chat.chat.BlockList;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.Cicodes;
+import com.atom.chat.chat.MessageFilter;
 import com.atom.chat.chat.TeleportCommands;
 import com.atom.chat.chat.ChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.emote.EmoteStore;
+import com.atom.chat.ui.AppIcons;
 import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.ImageUploader;
@@ -384,6 +386,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** Hover wash behind the unified header back arrow. */
     private float backButtonHover;
+
+    /**
+     * Public-feed view filter (all / system only / players only), cycled by the
+     * header button. View-only: storage, unread counts and previews always see
+     * the unfiltered feed. A fresh screen instance starts at ALL, so closing
+     * and reopening the panel resets it by construction.
+     */
+    private MessageFilter worldFilter = MessageFilter.ALL;
+    /** Hover wash behind the header filter button (world chat only). */
+    private float filterButtonHover;
     /** Hover washes for the emoji panel tab strip (owned by {@link EmojiPanel}). */
 
     // Animation state — durations live in UiMotion so every transition is tuned
@@ -597,6 +609,41 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         UiLayout.Rect header = layout().header;
         float y = header.y() + (header.h() - size) / 2.0F;
         return new UiLayout.Rect(header.x() + s(4), y, size, size);
+    }
+
+    /** Filter button: the back button's recipe, one slot to its right. */
+    private UiLayout.Rect filterButton() {
+        UiLayout.Rect back = backButton();
+        return new UiLayout.Rect(back.x() + back.w() + s(4), back.y(), back.w(), back.h());
+    }
+
+    private boolean isFilterButtonHit(float vmx, float vmy) {
+        return filterButton().contains(vmx, vmy);
+    }
+
+    /** Cycles the feed filter and drops a selection that may span hidden rows. */
+    private void cycleWorldFilter() {
+        worldFilter = worldFilter.next();
+        messageListView.clearSelection();
+    }
+
+    /**
+     * Header action for the page a header is titled with: the feed filter on
+     * the world chat only. Funnel = nothing filtered (plain text colour);
+     * speaker/person = system/players only, tinted accent so the active filter
+     * reads at a glance (same language as the emoji button when its panel is
+     * open).
+     */
+    private ShellHeader.HeaderAction headerActionFor(NavPage page) {
+        if (page == null || page.page() != AppPage.WORLD_CHAT) {
+            return null;
+        }
+        io.github.humbleui.skija.Path icon =
+                worldFilter == MessageFilter.SYSTEM ? AppIcons.ICON_ANNOUNCE_PATH
+                        : worldFilter == MessageFilter.PLAYERS ? AppIcons.ICON_TAB_PROFILE_PATH
+                        : AppIcons.ICON_FILTER_PATH;
+        int color = worldFilter.isFiltering() ? accent() : textPrimary();
+        return new ShellHeader.HeaderAction(filterButton(), filterButtonHover, icon, color);
     }
 
     private boolean isBackButtonHit(float vmx, float vmy) {
@@ -834,7 +881,19 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return List.of();
         }
         if (page.page() == AppPage.WORLD_CHAT) {
-            return ChatStore.get().snapshot();
+            List<ChatMessage> all = ChatStore.get().snapshot();
+            if (worldFilter == MessageFilter.ALL) {
+                return all;
+            }
+            // View filter only: the store, unread counts and previews always
+            // see the full feed.
+            List<ChatMessage> out = new ArrayList<>(all.size());
+            for (ChatMessage message : all) {
+                if (worldFilter.accepts(message)) {
+                    out.add(message);
+                }
+            }
+            return out;
         }
         if (page.page() == AppPage.PRIVATE_CHAT) {
             return PrivateChatStore.messages(page.target());
@@ -1120,12 +1179,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         float dx = vmx - (layout.inputBar.x() + UiTokens.INPUT_TEXT_X);
         Font inputFont = FontManager.font(UiTokens.FONT_INPUT);
         float acc = 0.0F;
-        for (int i = 0; i < s.length(); i++) {
-            float cw = SkiaFontRenderer.getStringWidth(inputFont, String.valueOf(s.charAt(i)));
+        // Code-point steps: a per-char loop returns indices inside surrogate
+        // pairs, and typing afterwards would split an emoji in half.
+        int i = 0;
+        while (i < s.length()) {
+            int cp = s.codePointAt(i);
+            int chars = Character.charCount(cp);
+            float cw = SkiaFontRenderer.getStringWidth(inputFont, s.substring(i, i + chars));
             if (dx < acc + cw / 2.0F) {
                 return lineStart + i;
             }
             acc += cw;
+            i += chars;
         }
         return lineStart + s.length();
     }
@@ -1682,7 +1747,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 ShellHeader.render(canvas, layout.header, shellTitleFor(toPage), true,
                         backButton(), backButtonHover, textPrimary(),
                         toPage.page() == AppPage.PRIVATE_CHAT
-                                ? isOnlinePlayer(toPage.target()) : null);
+                                ? isOnlinePlayer(toPage.target()) : null,
+                        headerActionFor(toPage));
                 drawBezel(canvas, layout);
                 return;
             } else {
@@ -1745,10 +1811,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         backButtonHover = UiMotion.approach(backButtonHover,
                 isBackButtonHit(vmx, vmy) ? 1.0F : 0.0F, frameDt, UiMotion.HOVER_MS);
+        filterButtonHover = UiMotion.approach(filterButtonHover,
+                topPage() == AppPage.WORLD_CHAT && isFilterButtonHit(vmx, vmy) ? 1.0F : 0.0F,
+                frameDt, UiMotion.HOVER_MS);
         if (!suppressHeader) {
             ShellHeader.render(canvas, layout.header, shellTitleFor(topNav()), true,
                     backButton(), backButtonHover, textPrimary(),
-                    topPage() == AppPage.PRIVATE_CHAT ? isOnlinePlayer(activePrivateTarget()) : null);
+                    topPage() == AppPage.PRIVATE_CHAT ? isOnlinePlayer(activePrivateTarget()) : null,
+                    headerActionFor(topNav()));
         }
 
         // Grow the input bar before the list is measured, so the list loses
@@ -1769,7 +1839,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 ShellHeader.render(canvas, layout.header, shellTitleFor(pageNavTo), true,
                         backButton(), backButtonHover, textPrimary(),
                         pageNavTo.page() == AppPage.PRIVATE_CHAT
-                                ? isOnlinePlayer(pageNavTo.target()) : null);
+                                ? isOnlinePlayer(pageNavTo.target()) : null,
+                        headerActionFor(pageNavTo));
             } else {
                 UiLayout root = rootLayout();
                 ShellHeader.render(canvas, root.header, shellTitleFor(pageNavTo), false, null, 0.0F,
@@ -3724,6 +3795,13 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 return true;
             }
 
+            // Feed filter cycle: only on the public page (the private header
+            // has no filter slot even though the geometry exists).
+            if (button == 0 && topPage() == AppPage.WORLD_CHAT && isFilterButtonHit(mx, my)) {
+                cycleWorldFilter();
+                return true;
+            }
+
             // Private read-only pages (offline/blocked) must not let the composer
             // buttons or the text field take focus.
             if (isPrivateReadOnly()
@@ -4072,13 +4150,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 return true;
             }
             // Copy selected message text before the vanilla field/suggestion layer
-            // consumes Ctrl+C.
+            // consumes Ctrl+C. An empty result (endpoints scrolled out of the
+            // drawn window and nothing in the feed) falls through to the input
+            // field's own copy instead of swallowing the key.
             if (keyCode == 67 && (modifiers & 2) != 0 && messageListView.hasSelection()) {
                 String copied = messageListView.copySelection();
                 if (!copied.isEmpty()) {
                     client.keyboardHandler.setClipboard(copied);
+                    return true;
                 }
-                return true;
+                return false;
             }
             // Ctrl+V with a picture on the clipboard. MC's clipboard API only hands
             // out strings, so the vanilla field would paste nothing at all; that

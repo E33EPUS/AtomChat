@@ -21,6 +21,16 @@ public class ChatMessage {
     private final RichText contentRich;
     /** 1 = ordinary message; >1 = anti-spam merged consecutive identical messages. */
     private final int duplicateCount;
+    /**
+     * Stable identity for UI state (selection anchors, jump highlight). An
+     * anti-spam merge replaces the stored row object, so identity-by-reference
+     * silently drops any state held on the message; copies made for a merge
+     * carry this id over.
+     */
+    private final long id;
+
+    private static final java.util.concurrent.atomic.AtomicLong ID_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicLong();
 
     public ChatMessage(Component component, boolean own) {
         this(component, own, false);
@@ -67,6 +77,14 @@ public class ChatMessage {
     public ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
                        UUID senderUuid, String senderName, String profileName, String contentText,
                        RichText senderRich, RichText contentRich, long timestamp, int duplicateCount) {
+        this(component, own, system, quoteName, quoteText, senderUuid, senderName, profileName, contentText,
+                senderRich, contentRich, timestamp, duplicateCount, ID_SEQUENCE.incrementAndGet());
+    }
+
+    /** Private tail: {@code id} lets merge copies keep the original identity. */
+    private ChatMessage(Component component, boolean own, boolean system, String quoteName, String quoteText,
+                        UUID senderUuid, String senderName, String profileName, String contentText,
+                        RichText senderRich, RichText contentRich, long timestamp, int duplicateCount, long id) {
         this.component = component;
         this.rawText = component.getString();
         this.timestamp = timestamp > 0 ? timestamp : System.currentTimeMillis();
@@ -83,6 +101,7 @@ public class ChatMessage {
         this.contentRich = contentRich != null ? contentRich
                 : RichText.literal(legacyDisplayText(rawText, quoteName, this.contentText)).linkifyUrls();
         this.duplicateCount = Math.max(1, duplicateCount);
+        this.id = id;
     }
 
     private static String clean(String s) {
@@ -205,14 +224,23 @@ public class ChatMessage {
     public ChatMessage withDuplicateCount(int count) {
         return new ChatMessage(component, own, system, quoteName, quoteText,
                 senderUuid, senderName, profileName, contentText,
-                senderRich, contentRich, timestamp, count);
+                senderRich, contentRich, timestamp, count, id);
     }
 
     /** Copy with a different anti-spam merge count and an updated timestamp. */
     public ChatMessage withDuplicateCount(int count, long newTimestamp) {
         return new ChatMessage(component, own, system, quoteName, quoteText,
                 senderUuid, senderName, profileName, contentText,
-                senderRich, contentRich, newTimestamp, count);
+                senderRich, contentRich, newTimestamp, count, id);
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    /** Identity comparison that survives anti-spam merges replacing the row. */
+    public boolean sameAs(ChatMessage other) {
+        return other != null && (other == this || other.id == this.id);
     }
 
     public long getTimestamp() {
