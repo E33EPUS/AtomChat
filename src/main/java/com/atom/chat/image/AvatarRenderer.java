@@ -12,6 +12,7 @@ import io.github.humbleui.skija.Bitmap;
 import io.github.humbleui.skija.Image;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.resources.ResourceLocation;
 
@@ -71,8 +72,13 @@ public final class AvatarRenderer {
             ByteBuffer buf = ByteBuffer.allocateDirect(SKIN_SIZE * SKIN_SIZE * 4);
             int previous = GL11C.glGetInteger(GL11C.GL_TEXTURE_BINDING_2D);
             GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, glId);
+            // Driver write first, then mirror: GlStateManager caches the binding
+            // per unit and its setter no-ops when the cache already matches, so
+            // the raw call is what guarantees the read hits the skin texture.
+            GlStateManager._bindTexture(glId);
             GL11C.glGetTexImage(GL11C.GL_TEXTURE_2D, 0, GL11C.GL_RGBA, GL11C.GL_UNSIGNED_BYTE, buf);
             GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, previous);
+            GlStateManager._bindTexture(previous);
 
             // MC uploads skin images top-down without flipping, so buffer row v IS
             // skin row v - no GL flip here. Face blend (hat over face), then a CPU
