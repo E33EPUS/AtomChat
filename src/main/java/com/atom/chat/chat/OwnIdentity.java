@@ -72,6 +72,35 @@ public final class OwnIdentity {
         return RichText.literal(bare != null ? bare : "?");
     }
 
+    /**
+     * Every rendering of our own name a server may put on the wire: the bare
+     * profile name, the tab-list display name, a previously cached decorated
+     * name and the locally computed scoreboard-team decoration. Echo
+     * suppression compares the captured wire name against these
+     * ({@link OwnNameMatcher}) so a {@code /team} prefix cannot turn our own
+     * message into someone else's bubble.
+     */
+    public static java.util.List<String> wireNameCandidates() {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        String bare = localNameSupplier.get();
+        if (bare != null && !bare.isBlank()) {
+            out.add(bare);
+        }
+        Text tab = tabName();
+        if (tab != null) {
+            out.add(tab.getString());
+        }
+        RichText cached = cachedDecorated;
+        if (cached != null) {
+            out.add(cached.getString());
+        }
+        Text team = teamName();
+        if (team != null) {
+            out.add(team.getString());
+        }
+        return new java.util.ArrayList<>(out);
+    }
+
     private static Text tabName() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.player == null || client.getNetworkHandler() == null) {
