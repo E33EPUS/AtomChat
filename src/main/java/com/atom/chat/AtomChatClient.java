@@ -92,6 +92,7 @@ public class AtomChatClient {
         com.atom.chat.history.ChatHistory.onDisconnect(client);
         PrivateChatStore.reset();
         PrivateEchoTracker.clear();
+        com.atom.chat.chat.PublicEchoTracker.clear();
         ChatStore.reset();
         com.atom.chat.chat.SeenPlayers.clear();
         com.atom.chat.chat.OwnIdentity.reset();

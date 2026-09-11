@@ -2,6 +2,7 @@ package com.atom.chat.screen;
 import com.atom.chat.AtomChat;
 
 import com.atom.chat.chat.BlockList;
+import com.atom.chat.chat.PublicEchoTracker;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.Cicodes;
 import com.atom.chat.chat.MessageFilter;
@@ -3047,6 +3048,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 normalized = "[[CICode,url=" + normalized + ",name=图片]]";
             }
             this.client.player.connection.sendChat(normalized);
+            // Arm echo suppression: the server relays this line back through the
+            // identity-less path on NCR-style servers (e33chat parity).
+            PublicEchoTracker.markSent(normalized);
         }
         this.client.gui.getChat().addRecentChat(normalized);
         // Vanilla never echoes commands back into the chat feed as your own
