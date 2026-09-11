@@ -76,15 +76,30 @@ public final class ImageLoader {
     private static final long MAX_DISK_MB = MAX_DISK_BYTES / (1024L * 1024L);
     /** WebP quality for the processed disk cache (80 keeps photos small). */
     private static final int DISK_CACHE_QUALITY = 80;
+    /** Custom CICode scheme whose bytes come from the server media companion. */
+    public static final String MEDIA_URL_PREFIX = "atomchat-media:";
+    /** Animated frames: longest side kept (the bubble only ever shows 220x140). */
+    public static final int MAX_ANIM_DIM = 384;
+    /** Animated frames: cap on frames decoded per image; longer GIFs are trimmed. */
+    public static final int MAX_ANIM_FRAMES = 120;
+    /** Animated frames: decoded-pixel budget for one image (about 32 MB). */
+    public static final long MAX_ANIM_PIXELS_PER_IMAGE = 8L * 1024L * 1024L;
+    /** Animated frames: how many animated images the LRU keeps. */
+    public static final int MAX_ANIMATED_CACHED = 8;
+    /** Animated frames: decoded-pixel budget across the animated LRU (about 96 MB). */
+    public static final long MAX_ANIM_PIXELS_TOTAL = 24L * 1024L * 1024L;
 
     /** Byte source for a URL; HTTP by default, injected in tests. */
-    interface Fetcher {
+    public interface Fetcher {
         byte[] fetch(String url) throws Exception;
     }
 
     private static final ImageLoader INSTANCE = new ImageLoader(
             ImageLoader::httpFetch, System::currentTimeMillis,
             Executors.newFixedThreadPool(3));
+
+    /** Companion-backed byte source for {@link #MEDIA_URL_PREFIX} URLs. */
+    private static volatile Fetcher mediaFetcher;
 
     private final Fetcher fetcher;
     private final LongSupplier clock;
@@ -98,6 +113,13 @@ public final class ImageLoader {
             return size() > MAX_CACHED;
         }
     };
+    /**
+     * Animated images keyed by url. Same no-eager-close rule as the static
+     * cache; the budget only stops the map (and so future allocations) from
+     * growing without bound - evicted entries free on Skija's finalizer.
+     */
+    private final LinkedHashMap<String, AnimatedImage> animatedCache =
+            new LinkedHashMap<>(16, 0.75F, true);
     private final ConcurrentHashMap<String, Boolean> pending = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> failedUntil = new ConcurrentHashMap<>();
     private volatile Path diskDir;
@@ -119,7 +141,23 @@ public final class ImageLoader {
         trimDiskCache();
     }
 
+    /** Registers the companion-backed fetcher for {@link #MEDIA_URL_PREFIX} URLs. */
+    public static void setMediaFetcher(Fetcher fetcher) {
+        mediaFetcher = fetcher;
+    }
+
+    private static boolean isFetchable(String url) {
+        return url.startsWith("http://") || url.startsWith("https://") || url.startsWith(MEDIA_URL_PREFIX);
+    }
+
     private static byte[] httpFetch(String url) throws Exception {
+        if (url.startsWith(MEDIA_URL_PREFIX)) {
+            Fetcher companion = mediaFetcher;
+            if (companion == null) {
+                throw new IllegalStateException("No media companion fetcher registered");
+            }
+            return companion.fetch(url);
+        }
         HttpResponse<byte[]> response = HttpClientHolder.CLIENT.send(
                 HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(10)).GET().build(),
                 HttpResponse.BodyHandlers.ofByteArray()
@@ -158,13 +196,16 @@ public final class ImageLoader {
                 return cached;
             }
         }
+        Image animated = animatedFrame(url);
+        if (animated != null) {
+            return animated;
+        }
         Long failed = failedUntil.get(url);
         if (failed != null && clock.getAsLong() < failed) {
             return null;
         }
         Path disk = diskFile(url);
-        boolean isHttp = url.startsWith("http://") || url.startsWith("https://");
-        if (visible && (disk != null || isHttp)
+        if (visible && (disk != null || isFetchable(url))
                 && pending.putIfAbsent(url, Boolean.TRUE) == null) {
             executor.execute(() -> load(url, disk));
             // The executor may be direct (tests) and complete synchronously;
@@ -176,14 +217,38 @@ public final class ImageLoader {
                     return loaded;
                 }
             }
+            Image justLoaded = animatedFrame(url);
+            if (justLoaded != null) {
+                return justLoaded;
+            }
         }
         return null;
+    }
+
+    /** Current frame of a cached animation, or null when the url is not one. */
+    private Image animatedFrame(String url) {
+        synchronized (animatedCache) {
+            AnimatedImage animated = animatedCache.get(url);
+            return animated == null ? null : animated.frameAt(clock.getAsLong());
+        }
     }
 
     private void load(String url, Path disk) {
         try {
             boolean fromDisk = disk != null && Files.exists(disk);
             byte[] bytes = fromDisk ? Files.readAllBytes(disk) : fetcher.fetch(url);
+            AnimatedImage animated = GifDecoder.decode(bytes, clock.getAsLong());
+            if (animated != null) {
+                if (disk != null && !fromDisk) {
+                    // Keep the original bytes: re-encoding to WebP would flatten
+                    // the animation, so the disk layer stores GIFs verbatim and
+                    // the next load detects them by magic again.
+                    writeDiskCache(disk, bytes);
+                }
+                putAnimated(url, animated);
+                failedUntil.remove(url);
+                return;
+            }
             Image image = downscale(Image.makeFromEncoded(bytes));
             if (image != null) {
                 if (disk != null) {
@@ -205,6 +270,33 @@ public final class ImageLoader {
         } finally {
             pending.remove(url);
         }
+    }
+
+    /** Inserts an animation and trims the LRU to its count/pixel budget. */
+    private void putAnimated(String url, AnimatedImage image) {
+        synchronized (animatedCache) {
+            animatedCache.put(url, image);
+            while (animatedCache.size() > 1
+                    && (animatedCache.size() > MAX_ANIMATED_CACHED
+                        || animatedPixelsLocked() > MAX_ANIM_PIXELS_TOTAL)) {
+                java.util.Iterator<java.util.Map.Entry<String, AnimatedImage>> it =
+                        animatedCache.entrySet().iterator();
+                if (!it.hasNext()) {
+                    break;
+                }
+                it.next();
+                it.remove();
+            }
+        }
+    }
+
+    /** Caller must hold the animated cache monitor. */
+    private long animatedPixelsLocked() {
+        long pixels = 0L;
+        for (AnimatedImage image : animatedCache.values()) {
+            pixels += image.pixelCount();
+        }
+        return pixels;
     }
 
     /** Re-encodes a decoded image for disk at display size (WebP, PNG fallback). */
@@ -363,6 +455,9 @@ public final class ImageLoader {
         synchronized (cache) {
             cache.clear();
         }
+        synchronized (animatedCache) {
+            animatedCache.clear();
+        }
         failedUntil.clear();
         pending.clear();
     }
@@ -377,12 +472,17 @@ public final class ImageLoader {
 
     /** Fits the image inside {@link #MAX_DIM} without ever upscaling it. */
     static Image downscale(Image source) {
+        return downscale(source, MAX_DIM);
+    }
+
+    /** Fits the image inside {@code maxDim} without ever upscaling it. */
+    static Image downscale(Image source, int maxDim) {
         if (source == null) {
             return null;
         }
         int w = source.getWidth();
         int h = source.getHeight();
-        float scale = Math.min(1.0F, Math.min((float) MAX_DIM / w, (float) MAX_DIM / h));
+        float scale = Math.min(1.0F, Math.min((float) maxDim / w, (float) maxDim / h));
         if (scale >= 0.999F) {
             return source;
         }
