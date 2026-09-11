@@ -29,7 +29,7 @@
 
 渲染层使用 [Skija](https://github.com/HumbleUI/skija)，所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：**v0.2.7 已发布（Fabric / NeoForge 1.21.1，Forge 1.20.1）**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**v0.2.8 已发布（Fabric / NeoForge 1.21.1，Forge 1.20.1）**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 

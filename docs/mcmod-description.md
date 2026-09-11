@@ -164,7 +164,7 @@ Quark | 🚫 不显示表情菜单，正尝试兼容。
 
 [h1=更新日志]
 
-v0.2.7 及历史版本见 https://github.com/E33EPUS/AtomChat/releases
+v0.2.8 及历史版本见 https://github.com/E33EPUS/AtomChat/releases
 
 [h1=问题反馈]
 

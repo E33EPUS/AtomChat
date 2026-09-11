@@ -101,7 +101,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija). Every interface is ve
 
 ## Changelog
 
-See the [GitHub CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/Fabric-1.21.1/CHANGELOG.md) — or the [v0.2.7 release notes](https://github.com/E33EPUS/AtomChat/releases/tag/v0.2.7).
+See the [GitHub CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/Fabric-1.21.1/CHANGELOG.md) — or the [v0.2.8 release notes](https://github.com/E33EPUS/AtomChat/releases/tag/v0.2.8).
 
 ## Feedback
 
