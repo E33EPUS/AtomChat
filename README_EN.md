@@ -140,7 +140,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija). The whole UI is vecto
 - Drag an image file into the game window, or copy an image and press `Ctrl+V`: it uploads and inserts into the draft
 - While uploading, the composer placeholder reads "Uploading image…"; press Enter to send after it finishes
 - When the server runs AtomChat with `hostingEnabled`, images and GIFs upload there first (content-addressed, so an identical image is stored once) and the message carries an `atomchat-media:<id>` link that other players fetch on demand; if the server lacks the mod, hosting is off, the file exceeds `maxFileKb` or the upload fails, it falls back to the external host
-- The default external host is uguu.se and its links expire after about 3 hours; server-hosted files do not expire and are pruned by the server's `maxTotalMb` and `retentionDays`
+- The default external host is uguu.se and its links expire after about 3 hours; server-hosted media (images / GIFs / forwarded emotes) and avatars are kept for 7 days by default and pruned by the server's `maxTotalMb`, `maxAvatarTotalMb` and `retentionDays`
 
 ### Sticker Packs
 
@@ -196,7 +196,7 @@ Advanced: edit `.minecraft/config/atomchat/atomchat-client.json` (auto-generated
 | `history/` | Chat history (per world / server) |
 | `debug/` | Avatar sampling PNGs written in debug mode |
 
-Auto-downloaded chat images and companion avatar data live under `<gameDir>/atomchat-data/` (capped at 500 files / 100 MB, viewable and clearable from Settings → About). Media hosted by a server lives under that server's own `<server game dir>/atomchat-data/media/`.
+Auto-downloaded chat images and companion avatar data live under `<gameDir>/atomchat-data/` (capped at 500 files / 100 MB and dropped once unused for 7 days, viewable and clearable from Settings → About). Media and avatars hosted by a server live under that server's own `<server game dir>/atomchat-data/`.
 
 ### Server Configuration
 
@@ -207,7 +207,8 @@ When the server (or the server side of a single-player / LAN host) runs AtomChat
 | `hostingEnabled` | `true` | Master switch: does this server host chat images / GIFs and player avatars. When off, clients fall back to the external image host and to skins |
 | `maxFileKb` | `2048` | Largest single hosted file in KB; anything bigger falls back to the external host |
 | `maxTotalMb` | `512` | Total media store budget in MB; the oldest files are deleted first |
-| `retentionDays` | `30` | How long hosted files are kept; `0` keeps them forever |
+| `maxAvatarTotalMb` | `64` | Total avatar store budget in MB; the oldest files are deleted first |
+| `retentionDays` | `7` | How long hosted media and avatars are kept; `0` keeps them forever |
 | `uploadCooldownMs` | `3000` | Minimum interval between two uploads from the same player, in milliseconds |
 
 Hosted media is stored in `<server game dir>/atomchat-data/media/`, named by content hash and therefore deduplicated by content.
@@ -252,7 +253,7 @@ Hosted media is stored in `<server game dir>/atomchat-data/media/`, named by con
 - The mod uploads no telemetry or personal information
 - Image uploads happen only when you explicitly pick, paste, or drop an image
 - Server-side hosting moves bytes only over the game connection: no HTTP port is opened and nothing is exposed to players who are not connected
-- A hosting server keeps a copy of your image under `<server game dir>/atomchat-data/media/`, pruned by its `maxTotalMb` / `retentionDays` settings or deleted by the admin at any time
+- A hosting server keeps a copy of your image under `<server game dir>/atomchat-data/media/` and of your avatar under `avatars/`; both are pruned by its `maxTotalMb` / `maxAvatarTotalMb` and `retentionDays` (7 days by default) settings, or deleted by the admin at any time
 - Local config and sticker packs stay in `.minecraft/config/atomchat/` and are never synced automatically
 - Skin avatar resolution requests Minecraft skin services by player name / UUID, same as vanilla behavior
 
