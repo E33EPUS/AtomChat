@@ -11,8 +11,8 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Local emote pack: static images in {@code <configDir>/atomchat/emotes/}
- * (png/jpg/jpeg only). Adding a file copies it in (the source is kept),
+ * Local emote pack: images in {@code <configDir>/atomchat/emotes/}
+ * (png/jpg/jpeg/gif; gif plays in the grid). Adding a file copies it in (the source is kept),
  * duplicates overwrite by name, the list is sorted by file name and capped at
  * {@link #MAX} entries — mirroring e33chat's EmoteStore.
  *
@@ -24,7 +24,7 @@ import java.util.List;
 public final class EmoteStore {
     public static final int MAX = 10;
 
-    private static final String[] EXTENSIONS = {".png", ".jpg", ".jpeg"};
+    private static final String[] EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif"};
 
     private final Path dir;
     private List<File> cached = Collections.emptyList();

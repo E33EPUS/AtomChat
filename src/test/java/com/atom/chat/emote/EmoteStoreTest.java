@@ -39,7 +39,7 @@ class EmoteStoreTest {
         assertTrue(EmoteStore.isSupportedName("a.png"));
         assertTrue(EmoteStore.isSupportedName("A.JPG"));
         assertTrue(EmoteStore.isSupportedName("b.jpeg"));
-        assertFalse(EmoteStore.isSupportedName("c.gif"));
+        assertTrue(EmoteStore.isSupportedName("c.gif"));
         assertFalse(EmoteStore.isSupportedName("d.webp"));
         assertFalse(EmoteStore.isSupportedName("e.bmp"));
         assertFalse(EmoteStore.isSupportedName("readme.txt"));
@@ -61,12 +61,22 @@ class EmoteStoreTest {
     @Test
     void rejectsUnsupportedExtensions() throws IOException {
         EmoteStore store = newStore();
-        File gif = touch(tmp, "anim.gif", "gif-bytes".getBytes(StandardCharsets.UTF_8));
+        File webp = touch(tmp, "anim.webp", "webp-bytes".getBytes(StandardCharsets.UTF_8));
         File txt = touch(tmp, "notes.txt", "hi".getBytes(StandardCharsets.UTF_8));
 
-        assertFalse(store.add(gif));
+        assertFalse(store.add(webp));
         assertFalse(store.add(txt));
         assertEquals(0, store.count());
+    }
+
+    @Test
+    void acceptsAnimatedGif() throws IOException {
+        EmoteStore store = newStore();
+        File gif = touch(tmp, "anim.gif", "gif-bytes".getBytes(StandardCharsets.UTF_8));
+
+        assertTrue(store.add(gif));
+        assertEquals(1, store.count());
+        assertEquals("anim.gif", store.list().get(0).getName());
     }
 
     @Test

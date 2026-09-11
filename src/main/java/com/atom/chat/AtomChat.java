@@ -29,6 +29,9 @@ public class AtomChat {
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
         com.atom.chat.net.AvatarPayloads.register(event);
+        // Media companion: server-hosted chat images / GIFs, same dual
+        // entrypoint pattern and master hosting switch as the avatar side.
+        com.atom.chat.net.MediaPayloads.register(event);
     }
 
     /**

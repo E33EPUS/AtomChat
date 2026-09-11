@@ -25,6 +25,8 @@ import java.util.stream.Stream;
  *       cache (safe to delete, capped by {@code ImageLoader})</li>
  *   <li>{@code <gameDir>/atomchat-data/avatars/} — companion server avatar
  *       uploads (functional data, not auto-deleted)</li>
+ *   <li>{@code <gameDir>/atomchat-data/media/} — companion server hosted chat
+ *       media (content-addressed, auto-trimmed by the server config)</li>
  * </ul>
  *
  * <p>Old v0.2.3 locations under {@code config/atomchat/} are migrated once on
@@ -48,6 +50,11 @@ public final class CacheDirs {
     /** Companion server's uploaded custom-avatar PNGs. */
     public static Path avatarDataDir() {
         return dataRoot().resolve("avatars");
+    }
+
+    /** Companion server's hosted chat media (images / animated GIFs). */
+    public static Path mediaDataDir() {
+        return dataRoot().resolve("media");
     }
 
     public static void migrateFromOldConfigPaths() {
