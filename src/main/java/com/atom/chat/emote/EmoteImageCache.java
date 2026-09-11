@@ -1,24 +1,32 @@
 package com.atom.chat.emote;
 
 import com.atom.chat.AtomChat;
+import com.atom.chat.image.ImageLoader;
 import io.github.humbleui.skija.Image;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Lazily decodes emote files into Skia {@link Image}s, cached by file. Emotes
- * are small stickers so a full decode per file is fine; the cache is bounded
- * by {@link EmoteStore#MAX} plus whatever the user picks. Files that vanish
- * (removed externally) are dropped on the next lookup. Files that fail to
- * decode are remembered so we do not re-decode and re-log them every frame.
+ * Lazily decodes emote files into Skia images, cached by file.
+ *
+ * <p>The grid shows a single static frame (0.2.7 decision): an animated GIF is
+ * decoded to its first frame and every file is fitted to {@link #MAX_DIM}, so a
+ * large sticker cannot pin full-resolution pixels behind a {@code s(44)} cell.
+ * The sent message still animates — that path goes through the chat image
+ * loader, not this cache.
+ *
+ * <p>Files that vanish (removed externally) are dropped on the next lookup and
+ * files that fail to decode are remembered so we neither re-decode nor re-log
+ * them every frame.
  */
 public final class EmoteImageCache {
+    /** Longest side kept for the grid; the cell is only {@code s(44)}. */
+    public static final int MAX_DIM = 128;
+
     private final Map<File, Image> cache = new HashMap<>();
     private final Set<File> failed = new HashSet<>();
 
@@ -38,14 +46,15 @@ public final class EmoteImageCache {
             return null;
         }
         try {
-            Image decoded = Image.makeFromEncoded(Files.readAllBytes(file.toPath()));
+            Image decoded = ImageLoader.decodeStatic(
+                    java.nio.file.Files.readAllBytes(file.toPath()), MAX_DIM);
             if (decoded != null) {
                 cache.put(file, decoded);
                 return decoded;
             }
             failed.add(file);
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             failed.add(file);
             AtomChat.LOGGER.warn("Emote decode failed: {}", file.getName(), e);
             return null;

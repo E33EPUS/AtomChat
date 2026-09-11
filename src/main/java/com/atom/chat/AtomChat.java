@@ -26,8 +26,12 @@ public class AtomChat {
         // The avatar channel is common: a dedicated server and the integrated
         // server of a double-open client both need it (this event fires for
         // both logical sides).
-        modEventBus.addListener((FMLCommonSetupEvent event) ->
-                event.enqueueWork(com.atom.chat.net.AvatarPayloads::register));
+        modEventBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(() -> {
+            com.atom.chat.net.AvatarPayloads.register();
+            // Media companion: server-hosted chat images / GIFs, same dual
+            // entrypoint pattern and master hosting switch as the avatar side.
+            com.atom.chat.net.MediaPayloads.register();
+        }));
 
         if (FMLEnvironment.dist.isClient()) {
             // Client-only listeners, key mappings, shaders and the AWT setup.

@@ -13,6 +13,8 @@ import com.atom.chat.ui.AppIcons;
 import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.ImageUploader;
+import com.atom.chat.net.MediaCompanionClient;
+import com.atom.chat.chat.LocalEcho;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.PrivateEchoTracker;
@@ -2900,25 +2902,53 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private void uploadAndAppend(Path file) {
         int[] size = ImageFiles.dimensions(file);
         imageUploading = true;
-        imageUploader.upload(file, url -> {
-            StringBuilder code = new StringBuilder("[[CICode,url=").append(url)
-                    .append(",name=").append(file.getFileName());
-            // Carry the intrinsic size so any client receiving this can lay the
-            // bubble out at the right aspect ratio before the download lands —
-            // that is what keeps the height from jumping when it arrives.
-            if (size != null) {
-                code.append(",w=").append(size[0]).append(",h=").append(size[1]);
+        // The server decides: when it hosts media, upload there first; any
+        // failure (or a server without the companion) falls back to uguu.
+        if (MediaCompanionClient.hostingEnabled()) {
+            MediaCompanionClient.uploadFile(file,
+                    url -> appendImageCode(url, file, size),
+                    error -> {
+                        AtomChat.LOGGER.warn("Server media upload failed ({}), falling back to uguu", error);
+                        uploadToUguu(file, size);
+                    });
+        } else {
+            if (AtomChatConfig.get().debug) {
+                AtomChat.LOGGER.info("[media] server media hosting unavailable; using the external host");
             }
-            code.append("]]");
-            // The upload callback runs on the uploader's thread; the chat field
-            // is only safe to touch from the render thread.
-            this.client.execute(() -> {
-                imageUploading = false;
-                inputAppend(inputGetText().isEmpty() ? code.toString() : " " + code);
-            });
-        }, error -> {
-            AtomChat.LOGGER.warn("Image upload failed: {}", error);
-            this.client.execute(() -> imageUploading = false);
+            uploadToUguu(file, size);
+        }
+    }
+
+    private void uploadToUguu(Path file, int[] size) {
+        imageUploader.upload(file,
+                url -> {
+                    // Keep the choice auditable: server-hosted uploads already
+                    // log "Stored hosted media", so the external path logs too.
+                    AtomChat.LOGGER.info("Uploaded chat image to the external host: {}", url);
+                    appendImageCode(url, file, size);
+                },
+                error -> {
+                    AtomChat.LOGGER.warn("Image upload failed: {}", error);
+                    this.client.execute(() -> imageUploading = false);
+                });
+    }
+
+    private void appendImageCode(String url, Path file, int[] size) {
+        StringBuilder code = new StringBuilder("[[CICode,url=").append(url)
+                .append(",name=").append(file.getFileName());
+        // Carry the intrinsic size so any client receiving this can lay the
+        // bubble out at the right aspect ratio before the download lands —
+        // that is what keeps the height from jumping when it arrives.
+        if (size != null) {
+            code.append(",w=").append(size[0]).append(",h=").append(size[1]);
+        }
+        code.append("]]");
+        String text = code.toString();
+        // The upload callbacks run off the render thread; the chat field is
+        // only safe to touch from the render thread.
+        this.client.execute(() -> {
+            imageUploading = false;
+            inputAppend(inputGetText().isEmpty() ? text : " " + text);
         });
     }
 
@@ -3023,17 +3053,20 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         String quoteName = null;
         String quoteText = null;
+        // The typed body stays separate from the wire text: the quote prefix
+        // travels with the message, but the local bubble must not show it.
+        String body = normalized;
         if (replyTarget != null) {
             quoteName = messageSenderName(replyTarget);
             quoteText = quoteTextFor(replyTarget);
             // Quote travels with the message so other players can see it too.
-            normalized = "「引用 @" + quoteName + ": " + quoteText + "」" + normalized;
+            normalized = "「引用 @" + quoteName + ": " + quoteText + "」" + body;
         }
 
         boolean privateChat = topPage() == AppPage.PRIVATE_CHAT;
         PlayerRef privateTarget = privateChat ? activePrivateTarget() : null;
         if (privateChat) {
-            sendPrivateMessage(normalized, privateTarget);
+            sendPrivateMessage(normalized, body, privateTarget);
             return;
         }
 
@@ -3062,9 +3095,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             String ownProfile = this.client.player.getName().getString();
             // Own bubbles show the decorated self name (titles/team prefix),
             // e33chat parity — the bare profile name stays for identity fields.
-            ChatStore.get().add(new ChatMessage(Component.literal(normalized), true, false, quoteName, quoteText,
-                    ownUuid, ownProfile, ownProfile, normalized,
-                    OwnIdentity.displayNameRich(), RichText.literal(normalized).linkifyUrls()));
+            ChatStore.get().add(LocalEcho.build(normalized, body, quoteName, quoteText,
+                    ownUuid, ownProfile, OwnIdentity.displayNameRich()));
         }
         inputSetText("");
         replyTarget = null;
@@ -3072,7 +3104,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         currentScroll().stickToBottom();
     }
 
-    private void sendPrivateMessage(String normalized, PlayerRef target) {
+    private void sendPrivateMessage(String normalized, String body, PlayerRef target) {
         if (target == null || BlockList.isBlocked(target)) {
             return;
         }
@@ -3089,12 +3121,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             String ownProfile = this.client.player.getName().getString();
             // Decorated self name on the outgoing bubble, e33chat parity.
             PrivateChatStore.addOutgoing(target,
-                    new ChatMessage(Component.literal(historyText), true, false,
+                    LocalEcho.build(historyText, body,
                             replyTarget != null ? messageSenderName(replyTarget) : null,
                             replyTarget != null ? quoteTextFor(replyTarget) : null,
-                            ownUuid, ownProfile, ownProfile, historyText,
-                            OwnIdentity.displayNameRich(),
-                            RichText.literal(historyText).linkifyUrls()));
+                            ownUuid, ownProfile, OwnIdentity.displayNameRich()));
             PrivateEchoTracker.markOutgoing(target);
         }
         inputSetText("");

@@ -125,6 +125,12 @@ public final class AvatarCompanionClient {
     /** True when the connected server actually registered the avatar C2S channel. */
     private static boolean serverSupportsCompanion() {
         try {
+            // The master hosting switch also governs avatars. Unknown state
+            // keeps the legacy "assume yes" so a join that races the state
+            // reply still syncs; the server enforces the switch regardless.
+            if (!MediaCompanionClient.avatarHostingAllowed()) {
+                return false;
+            }
             if (AvatarPayloads.CHANNEL == null) {
                 return false;
             }
