@@ -35,12 +35,14 @@ import net.minecraft.client.gui.hud.ChatHud;
 import net.minecraft.client.gui.hud.MessageIndicator;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.network.message.MessageSignatureData;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.UUID;
 
@@ -51,8 +53,48 @@ public class ChatHudMixin {
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void atomchat$hideVanillaChatHud(DrawContext context, int currentTick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.currentScreen instanceof AtomChatScreen) {
+        if (atomchat$panelOwnsInput()) {
+            ci.cancel();
+        }
+    }
+
+    /** True while the AtomChat panel is the open screen. */
+    @Unique
+    private static boolean atomchat$panelOwnsInput() {
+        return MinecraftClient.getInstance().currentScreen instanceof AtomChatScreen;
+    }
+
+    /*
+     * Hiding the vanilla HUD is not enough for input: ChatScreen still counts
+     * this screen as "chat focused" (ChatHud#isChatFocused is a bare
+     * `currentScreen instanceof ChatScreen` check) and keeps hit-testing the
+     * invisible chat lines that sit underneath the panel. A click in the lower
+     * part of the panel therefore reached a hidden line: its ClickEvent could
+     * fire (open a link, suggest a tell command) or the click was swallowed to
+     * flush unprocessed messages, and a wheel over a non-list part scrolled the
+     * hidden history. All three seams are muted while our screen owns the
+     * mouse. ChatScreen's other two click steps are untouched on purpose: the
+     * chat field IS the AtomChat composer (init() lays the vanilla
+     * TextFieldWidget out inside the panel) and the suggestor is AtomChat's own.
+     */
+
+    @Inject(method = "mouseClicked(DD)Z", at = @At("HEAD"), cancellable = true)
+    private void atomchat$muteHiddenChatClick(double mouseX, double mouseY, CallbackInfoReturnable<Boolean> cir) {
+        if (atomchat$panelOwnsInput()) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(method = "getTextStyleAt(DD)Lnet/minecraft/text/Style;", at = @At("HEAD"), cancellable = true)
+    private void atomchat$muteHiddenChatStyle(double mouseX, double mouseY, CallbackInfoReturnable<Style> cir) {
+        if (atomchat$panelOwnsInput()) {
+            cir.setReturnValue(null);
+        }
+    }
+
+    @Inject(method = "scroll(I)V", at = @At("HEAD"), cancellable = true)
+    private void atomchat$muteHiddenChatScroll(int amount, CallbackInfo ci) {
+        if (atomchat$panelOwnsInput()) {
             ci.cancel();
         }
     }
