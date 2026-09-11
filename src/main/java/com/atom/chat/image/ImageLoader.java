@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -74,6 +75,13 @@ public final class ImageLoader {
     /** Disk cache: maximum total processed bytes kept (100 MB). */
     public static final long MAX_DISK_BYTES = 100L * 1024L * 1024L;
     private static final long MAX_DISK_MB = MAX_DISK_BYTES / (1024L * 1024L);
+    /**
+     * Entries that have not been used for this long are dropped even while the
+     * count and size caps have room. The cache is a convenience copy, never the
+     * only copy of anything the mod owns: the local emotes, wallpaper and avatar
+     * are user files and do not live here.
+     */
+    public static final long MAX_DISK_AGE_MS = 7L * 86_400_000L;
     /** WebP quality for the processed disk cache (80 keeps photos small). */
     private static final int DISK_CACHE_QUALITY = 80;
     /** Custom CICode scheme whose bytes come from the server media companion. */
@@ -246,6 +254,11 @@ public final class ImageLoader {
         try {
             boolean fromDisk = disk != null && Files.exists(disk);
             byte[] bytes = fromDisk ? Files.readAllBytes(disk) : fetcher.fetch(url);
+            if (fromDisk) {
+                // The stamp means "last used", not "first downloaded": a picture
+                // the player keeps scrolling past must not expire on age alone.
+                touchDiskCache(disk);
+            }
             AnimatedImage animated = GifDecoder.decode(bytes, clock.getAsLong());
             if (animated != null) {
                 if (disk != null && !fromDisk) {
@@ -356,16 +369,32 @@ public final class ImageLoader {
         failedUntil.put(url, clock.getAsLong() + FAILURE_TTL_MS);
     }
 
+    /** Refreshes a cache file's last-used stamp; failure only ages it sooner. */
+    private void touchDiskCache(Path disk) {
+        long now = clock.getAsLong();
+        if (now <= 0L) {
+            // A test clock parked at 0 would stamp the epoch and read as expired.
+            return;
+        }
+        try {
+            Files.setLastModifiedTime(disk, FileTime.fromMillis(now));
+        } catch (IOException ignored) {
+            // Nothing to do: the entry keeps its previous stamp.
+        }
+    }
+
     /**
-     * Keeps the disk cache inside the file-count / byte caps. Oldest files by
-     * last-modified time are deleted first. Cache loss is always acceptable —
-     * a deleted entry is simply downloaded again on the next visible request.
+     * Keeps the disk cache inside the file-count / byte caps and drops anything
+     * unused for {@link #MAX_DISK_AGE_MS}. Oldest files by last-modified time
+     * are deleted first. Cache loss is always acceptable — a deleted entry is
+     * simply downloaded again on the next visible request.
      */
     public void trimDiskCache() {
         Path dir = diskDir;
         if (dir == null || !Files.isDirectory(dir)) {
             return;
         }
+        long cutoff = System.currentTimeMillis() - MAX_DISK_AGE_MS;
         try (var stream = Files.list(dir)) {
             List<Path> files = new ArrayList<>();
             long total = 0L;
@@ -373,8 +402,16 @@ public final class ImageLoader {
                 if (!p.getFileName().toString().endsWith(".bin")) {
                     continue;
                 }
-                long size = sizeOrZero(p);
-                total += size;
+                long modified = modifiedOrZero(p);
+                if (modified > 0L && modified < cutoff) {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException e) {
+                        AtomChat.LOGGER.warn("Failed to expire image cache file {}", p, e);
+                    }
+                    continue;
+                }
+                total += sizeOrZero(p);
                 files.add(p);
             }
             files.sort(Comparator.comparingLong(ImageLoader::modifiedOrZero));
