@@ -55,6 +55,7 @@ import com.atom.chat.ui.ScrollController;
 import com.atom.chat.ui.ShellHeader;
 import com.atom.chat.ui.UiLayout;
 import com.atom.chat.ui.EmojiPanel;
+import com.atom.chat.ui.PanelBackground;
 import com.atom.chat.ui.QuickPhrasePanel;
 import com.atom.chat.ui.UiMotion;
 import com.atom.chat.ui.UiTokens;
@@ -467,6 +468,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             io.github.humbleui.skija.Path.makeFromSVGString(ICON_JUMP_DOWN_SVG);
 
     private static final int GLFW_KEY_V = 86;
+    /** Open-animation slide distance, in virtual px. The blur pre-pass offsets
+     * its capture rect by the same amount, so the two must stay in step. */
+    private static final float OPEN_SLIDE_PX = 36.0F;
+    /** Slack around the panel in the fade layer, so bezel/shadow are not clipped. */
+    private static final float LAYER_CHROME = 32.0F;
     private final long openStart = System.currentTimeMillis();
     private boolean closing;
     private long closeStart;
@@ -1026,7 +1032,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             preUi = () -> {
                 try {
                     float strokeWidth = s(3);
-                    float slide = (panelProgress - 1.0F) * 36.0F;
+                    float slide = (panelProgress - 1.0F) * OPEN_SLIDE_PX;
                     float vx = panelX() + strokeWidth + slide;
                     float vy = panelY() + strokeWidth;
                     float vw = panelWidth() - strokeWidth * 2.0F;
@@ -1499,11 +1505,18 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         float x = panelX();
         float y = panelY();
         float progress = panelProgress;
+        // Same offset the blur pre-pass offsets its capture rect by (render()).
+        float slide = (progress - 1.0F) * OPEN_SLIDE_PX;
         canvas.save();
         try (Paint layer = new Paint()) {
             layer.setColor(Color.makeARGB((int) (255.0F * progress), 0, 0, 0));
-            canvas.saveLayer(Rect.makeXYWH(x - 32.0F, y - 32.0F, panelWidth() + 64.0F, panelHeight() + 64.0F), layer);
-            canvas.translate((progress - 1.0F) * 36.0F, 0.0F);
+            // The layer must cover the panel at BOTH ends of the slide, otherwise
+            // the fade layer clips the bezel while the panel is still OPEN_SLIDE_PX
+            // to the left of its resting place.
+            float layerX = Math.min(x, x + slide) - LAYER_CHROME;
+            float layerW = panelWidth() + LAYER_CHROME * 2.0F + Math.abs(slide);
+            canvas.saveLayer(Rect.makeXYWH(layerX, y - LAYER_CHROME, layerW, panelHeight() + LAYER_CHROME * 2.0F), layer);
+            canvas.translate(slide, 0.0F);
             // The world snapshot sits inside the saveLayer/translate stack so it
             // fades in with the panel and slides with it — no special handling.
             int probeBefore = canvas.getSaveCount();
@@ -1634,7 +1647,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             // Solid base first, then the image on top at the configured
             // opacity — so the dark panel colour always shows through a little
             // and text stays readable over a bright photo.
-            try (Paint bg = new Paint().setColor(0xFF000000 | (AtomChatConfig.get().panelBgColor & 0x00FFFFFF))) {
+            try (Paint bg = new Paint().setColor(PanelBackground.opaque(AtomChatConfig.get().panelBgColor))) {
                 canvas.drawRRect(RRect.makeXYWH(innerX, innerY, innerW, innerH, innerRadius), bg);
             }
             canvas.save();
@@ -1657,15 +1670,15 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             }
         } else {
             // The raw-GL blur pre-pass already painted the rounded blurred image
-            // on the main framebuffer. When it is available we only add the
-            // translucent tint; otherwise panelBg() stays as the safe fallback.
-            // Both paths tint with the configured panel colour — the blur branch
-            // used to hardcode 0xFF16191F, which made the background impossible
-            // to recolour with blur enabled (0.2.5 report).
-            boolean blurred = AtomChatConfig.get().blurEnabled && blurDrawnThisFrame;
-            int tint = blurred
-                    ? applyOpacity(0xFF000000 | (AtomChatConfig.get().panelBgColor & 0x00FFFFFF))
-                    : panelBg();
+            // on the main framebuffer, so this layer is only the tint over it.
+            // Both paths use the configured panel colour — the blur branch used
+            // to hardcode 0xFF16191F, which made the background impossible to
+            // recolour with blur enabled (0.2.5 report). A blur that was asked
+            // for but did not land this frame falls back to an OPAQUE panel; see
+            // PanelBackground for why the translucent tint is only safe when the
+            // blur is deliberately off.
+            int tint = PanelBackground.tintFor(AtomChatConfig.get().blurEnabled, blurDrawnThisFrame,
+                    AtomChatConfig.get().panelBgColor, AtomChatConfig.get().panelOpacity);
             try (Paint bg = new Paint().setColor(tint)) {
                 canvas.drawRRect(RRect.makeXYWH(innerX, innerY, innerW, innerH, innerRadius), bg);
             }
@@ -3192,10 +3205,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 : AtomChatConfig.get().otherBubbleTextColor;
     }
 
-    private int panelBg() {
-        return applyOpacity(AtomChatConfig.get().panelBgColor);
-    }
-
     private float panelWidth() {
         return Math.min(UiTokens.s(AtomChatConfig.get().panelWidth), vw() - 32.0F);
     }
@@ -3215,12 +3224,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         var window = this.client.getWindow();
         float base = Math.max(1.0F, window.getHeight() / 1080.0F);
         return base * Math.max(0.5F, AtomChatConfig.get().uiScale);
-    }
-
-    /** Rewrites a colour's alpha with the configured background opacity. */
-    private int applyOpacity(int argb) {
-        float o = Math.max(0.0F, Math.min(1.0F, AtomChatConfig.get().panelOpacity));
-        return (Math.round(o * 255.0F) << 24) | (argb & 0x00FFFFFF);
     }
 
     private float vw() {
