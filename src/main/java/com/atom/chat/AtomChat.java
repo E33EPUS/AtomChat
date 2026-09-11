@@ -1,6 +1,9 @@
 package com.atom.chat;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +26,20 @@ public class AtomChat implements ModInitializer {
         // entrypoint pattern and master hosting switch as the avatar side.
         com.atom.chat.net.MediaPayloads.register();
         com.atom.chat.net.MediaCompanionServer.register();
+        // Retention and lifecycle housekeeping for the two hosted stores
+        // (atomchat-data/media and /avatars). The start and tick hooks only run
+        // for a server - a dedicated one, or the integrated one of a
+        // single-player world - so a plain client connected to someone else's
+        // server never sweeps its own game directory.
+        ServerTickEvents.END_SERVER_TICK.register(server ->
+                com.atom.chat.net.CompanionMaintenance.tick());
+        ServerLifecycleEvents.SERVER_STARTED.register(server ->
+                com.atom.chat.net.CompanionMaintenance.onServerStarted());
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            if (handler.player != null) {
+                com.atom.chat.net.CompanionMaintenance.onPlayerLogout(handler.player.getUuid());
+            }
+        });
         LOGGER.info("AtomChat initialized");
     }
 

@@ -137,6 +137,15 @@ public final class AvatarCompanionServer {
         });
     }
 
+    /** Drops the per-player rate-limit bookkeeping (called when a player leaves). */
+    static void forgetPlayer(UUID player) {
+        if (player == null) {
+            return;
+        }
+        lastUploadMs.remove(player);
+        lastRequestMs.remove(player);
+    }
+
     static boolean isPng(byte[] data) {
         if (data.length < PNG_MAGIC.length) {
             return false;

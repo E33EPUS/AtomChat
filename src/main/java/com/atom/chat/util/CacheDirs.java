@@ -24,9 +24,9 @@ import java.util.stream.Stream;
  *   <li>{@code <gameDir>/atomchat-data/image-cache/} — processed chat-image
  *       cache (safe to delete, capped by {@code ImageLoader})</li>
  *   <li>{@code <gameDir>/atomchat-data/avatars/} — companion server avatar
- *       uploads (functional data, not auto-deleted)</li>
+ *       uploads (one PNG per player, trimmed by the server config)</li>
  *   <li>{@code <gameDir>/atomchat-data/media/} — companion server hosted chat
- *       media (content-addressed, auto-trimmed by the server config)</li>
+ *       media (content-addressed, trimmed by the server config)</li>
  * </ul>
  *
  * <p>Old v0.2.3 locations under {@code config/atomchat/} are migrated once on
