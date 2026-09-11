@@ -47,8 +47,11 @@ public class ChatHudMixin {
     @Unique
     private boolean atomchat$reposting;
 
+    // 1.20.1 ChatComponent#render(GuiGraphics, int, int, int) has no trailing
+    // boolean; the extra parameter asked for in 1.21.1 makes Mixin reject the
+    // handler with InvalidInjectionException at class-load time.
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
-    private void atomchat$hideVanillaChatHud(GuiGraphics context, int currentTick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
+    private void atomchat$hideVanillaChatHud(GuiGraphics context, int currentTick, int mouseX, int mouseY, CallbackInfo ci) {
         Minecraft client = Minecraft.getInstance();
         if (client.screen instanceof AtomChatScreen) {
             ci.cancel();
