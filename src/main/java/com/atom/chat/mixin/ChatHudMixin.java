@@ -36,11 +36,13 @@ import net.minecraft.client.GuiMessageTag;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.MessageSignature;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.UUID;
 
@@ -51,8 +53,48 @@ public class ChatHudMixin {
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void atomchat$hideVanillaChatHud(GuiGraphics context, int currentTick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.screen instanceof AtomChatScreen) {
+        if (atomchat$panelOwnsInput()) {
+            ci.cancel();
+        }
+    }
+
+    /** True while the AtomChat panel is the open screen. */
+    @Unique
+    private static boolean atomchat$panelOwnsInput() {
+        return Minecraft.getInstance().screen instanceof AtomChatScreen;
+    }
+
+    /*
+     * Hiding the vanilla HUD is not enough for input: ChatScreen still counts
+     * this screen as "chat focused" (ChatComponent#isChatFocused is a bare
+     * `screen instanceof ChatScreen` check) and keeps hit-testing the invisible
+     * chat lines that sit underneath the panel. A click in the lower part of the
+     * panel therefore reached a hidden line: its ClickEvent could fire (open a
+     * link, suggest a tell command) or the click was swallowed to flush
+     * unprocessed messages, and a wheel over a non-list part scrolled the hidden
+     * history. All three seams are muted while our screen owns the mouse.
+     * ChatScreen's other two click steps are untouched on purpose: the chat field
+     * IS the AtomChat composer (init() lays the vanilla EditBox out inside the
+     * panel) and the suggestor is AtomChat's own.
+     */
+
+    @Inject(method = "handleChatQueueClicked(DD)Z", at = @At("HEAD"), cancellable = true)
+    private void atomchat$muteHiddenChatClick(double mouseX, double mouseY, CallbackInfoReturnable<Boolean> cir) {
+        if (atomchat$panelOwnsInput()) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(method = "getClickedComponentStyleAt(DD)Lnet/minecraft/network/chat/Style;", at = @At("HEAD"), cancellable = true)
+    private void atomchat$muteHiddenChatStyle(double mouseX, double mouseY, CallbackInfoReturnable<Style> cir) {
+        if (atomchat$panelOwnsInput()) {
+            cir.setReturnValue(null);
+        }
+    }
+
+    @Inject(method = "scrollChat(I)V", at = @At("HEAD"), cancellable = true)
+    private void atomchat$muteHiddenChatScroll(int amount, CallbackInfo ci) {
+        if (atomchat$panelOwnsInput()) {
             ci.cancel();
         }
     }
