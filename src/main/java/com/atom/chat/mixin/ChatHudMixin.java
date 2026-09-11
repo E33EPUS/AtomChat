@@ -12,6 +12,7 @@ import com.atom.chat.chat.MentionDetector;
 import com.atom.chat.chat.MentionObserver;
 import com.atom.chat.chat.MessageCapture;
 import com.atom.chat.chat.OwnIdentity;
+import com.atom.chat.chat.OwnNameMatcher;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatParser;
 import com.atom.chat.chat.PrivateEchoTracker;
@@ -206,6 +207,13 @@ public class ChatHudMixin {
         }
 
         boolean own = isOwn(meta, raw, client);
+        if (AtomChatConfig.get().debug) {
+            // Why a line was routed to the own-echo branch vs the public feed:
+            // the only way to tell an echo bug from a real duplicate after the
+            // fact (see the 2026-09-11 team-prefix echo).
+            AtomChat.LOGGER.info("[route] own={} uuid={} sender={} profile={} text={}",
+                    own, meta.senderUuid(), meta.senderName(), meta.profileName(), raw);
+        }
         if (own) {
             // Own message echo: already added locally by AtomChatScreen. The
             // server-decorated component is the best self-name source — cache
@@ -525,15 +533,16 @@ public class ChatHudMixin {
         if (meta.senderUuid() != null) {
             return meta.senderUuid().equals(client.player.getUUID());
         }
-        String ownProfile = client.player.getName().getString();
-        if (meta.profileName() != null && meta.profileName().equals(ownProfile)) {
-            return true;
-        }
-        if (meta.senderName() != null && meta.senderName().equals(ownProfile)) {
+        // Wire names arrive decorated (team prefix/suffix, tab display name), so a
+        // bare-name comparison misses our own echo; compare against every
+        // rendering of ourselves instead.
+        java.util.List<String> ownCandidates = OwnIdentity.wireNameCandidates();
+        if (OwnNameMatcher.matches(meta.profileName(), ownCandidates)
+                || OwnNameMatcher.matches(meta.senderName(), ownCandidates)) {
             return true;
         }
         FallbackIdentity fb = parseAngleFallback(raw);
-        return fb != null && fb.name().equals(ownProfile);
+        return fb != null && OwnNameMatcher.matches(fb.name(), ownCandidates);
     }
 
     private record FallbackIdentity(String name) {
