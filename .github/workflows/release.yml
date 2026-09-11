@@ -1,10 +1,11 @@
 name: Release
 
-# Tag push (v*) runs the full pipeline: build Fabric + NeoForge -> one GitHub
-# Release carrying both jars -> publish both to Modrinth and CurseForge.
+# Tag push (v*) runs the full pipeline: build Fabric + NeoForge + Forge -> one
+# GitHub Release carrying all three jars -> publish all three to Modrinth and
+# CurseForge.
 # workflow_dispatch allows re-running publishing alone (e.g. after fixing a
 # token or a store-side issue) without re-tagging; the target input lets you
-# republish just one loader instead of both.
+# republish just one loader at a time.
 
 on:
   push:
@@ -21,6 +22,7 @@ on:
           - all
           - fabric
           - neoforge
+          - forge
 
 permissions:
   contents: write
@@ -35,8 +37,15 @@ jobs:
         include:
           - loader: Fabric
             branch: Fabric-1.21.1
+            java: "21"
           - loader: NeoForge
             branch: NeoForge-1.21.1
+            java: "21"
+          # Forge 1.20.1 targets Java 17, so the toolchain request is satisfied
+          # by the runner JDK instead of a download.
+          - loader: Forge
+            branch: Forge-1.20.1
+            java: "17"
 
     steps:
       - name: Checkout
@@ -51,10 +60,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1
 
-      - name: Set up Java 21
+      - name: Set up Java ${{ matrix.java }}
         uses: actions/setup-java@v4
         with:
-          java-version: "21"
+          java-version: ${{ matrix.java }}
           distribution: "temurin"
 
       - name: Setup Gradle
@@ -87,7 +96,9 @@ jobs:
       - name: Stage mod jar (exclude sources jar)
         run: |
           mkdir -p release-out
-          find build/libs -name "*.jar" ! -name "*sources*" -exec cp {} release-out/ \;
+          # The Forge build also emits the un-embedded "-slim" jar; only the
+          # JarJar jar is shippable.
+          find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" -exec cp {} release-out/ \;
           ls -la release-out
 
       - name: Upload mod jar
@@ -119,7 +130,7 @@ jobs:
       - name: Flatten release jars
         run: |
           mkdir -p release-out
-          find artifacts -name "*.jar" ! -name "*sources*" -exec cp {} release-out/ \;
+          find artifacts -name "*.jar" ! -name "*sources*" ! -name "*-slim*" -exec cp {} release-out/ \;
           ls -la release-out
 
       - name: Extract version from tag
@@ -204,8 +215,15 @@ jobs:
         include:
           - loader: Fabric
             branch: Fabric-1.21.1
+            java: "21"
           - loader: NeoForge
             branch: NeoForge-1.21.1
+            java: "21"
+          # Forge 1.20.1 targets Java 17, so the toolchain request is satisfied
+          # by the runner JDK instead of a download.
+          - loader: Forge
+            branch: Forge-1.20.1
+            java: "17"
 
     steps:
       - name: Checkout
@@ -221,10 +239,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1
 
-      - name: Set up Java 21
+      - name: Set up Java ${{ matrix.java }}
         uses: actions/setup-java@v4
         with:
-          java-version: "21"
+          java-version: ${{ matrix.java }}
           distribution: "temurin"
 
       - name: Setup Gradle
@@ -244,7 +262,8 @@ jobs:
             github.event_name != 'workflow_dispatch' ||
             github.event.inputs.target == 'all' ||
             (matrix.loader == 'Fabric' && github.event.inputs.target == 'fabric') ||
-            (matrix.loader == 'NeoForge' && github.event.inputs.target == 'neoforge')
+            (matrix.loader == 'NeoForge' && github.event.inputs.target == 'neoforge') ||
+            (matrix.loader == 'Forge' && github.event.inputs.target == 'forge')
           }}
         run: ./gradlew build publishMods --no-daemon
         env:
