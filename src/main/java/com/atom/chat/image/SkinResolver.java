@@ -7,7 +7,6 @@ import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.resources.DefaultPlayerSkin;
-import net.minecraft.client.resources.PlayerSkin;
 import net.minecraft.resources.ResourceLocation;
 
 import com.mojang.authlib.GameProfile;
@@ -66,7 +65,7 @@ public final class SkinResolver {
         if (client.getConnection() != null && uuid != null && !uuid.equals(NIL_UUID)) {
             PlayerInfo info = client.getConnection().getPlayerInfo(uuid);
             if (info != null) {
-                ResourceLocation tex = info.getSkin().texture();
+                ResourceLocation tex = info.getSkinLocation();
                 rememberSkin(uuid, name, tex);
                 return tex;
             }
@@ -95,10 +94,10 @@ public final class SkinResolver {
             try {
                 GameProfile profile = new GameProfile(
                         uuid != null && !uuid.equals(NIL_UUID) ? uuid : NIL_UUID, name);
-                return client.getSkinManager().getInsecureSkin(profile).texture();
+                return client.getSkinManager().getInsecureSkinLocation(profile);
             } catch (Exception ignored) {
             }
         }
-        return DefaultPlayerSkin.getDefaultTexture();
+        return DefaultPlayerSkin.getDefaultSkin();
     }
 }

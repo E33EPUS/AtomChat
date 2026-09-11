@@ -2,7 +2,8 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.atom.chat.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "mixins.atomchat.refmap.json",
   "client": [
     "ChatInputSuggestorAccessor"
   ],

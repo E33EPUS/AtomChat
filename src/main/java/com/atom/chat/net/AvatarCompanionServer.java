@@ -2,11 +2,9 @@ package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
 import com.atom.chat.util.CacheDirs;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
+import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,11 +13,12 @@ import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Server side of the avatar companion. Stateless beyond the avatar files
  * themselves: uploads land in {@code <gameDir>/atomchat-data/avatars/<uuid>.png}
- * and requests are answered from disk. Registered through the payload event so
+ * and requests are answered from disk. Registered through the common channel so
  * a dedicated server and the integrated server of a double-open client both run
  * it.
  *
@@ -40,31 +39,33 @@ public final class AvatarCompanionServer {
     private static final Map<UUID, Long> lastRequestMs = new ConcurrentHashMap<>();
     private static volatile Path storageDir;
 
-    /** C2S upload handler; runs on the server thread through {@code ctx}. */
-    public static void handleUpload(AvatarPayloads.AvatarUploadPayload payload, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            if (!(ctx.player() instanceof ServerPlayer player)) {
-                return;
-            }
-            // Anti-spoof: a client may only push its own avatar.
-            if (payload.uuid() == null || !payload.uuid().equals(player.getUUID())) {
-                return;
-            }
-            handleUpload(player, payload.uuid(), payload.data());
-        });
+    /** C2S upload handler; runs on the server thread. */
+    public static void handleUpload(AvatarPayloads.AvatarUploadPayload payload, Supplier<NetworkEvent.Context> ctx) {
+        ServerPlayer player = ctx.get().getSender();
+        if (player != null) {
+            ctx.get().enqueueWork(() -> {
+                // Anti-spoof: a client may only push its own avatar.
+                if (payload.uuid() == null || !payload.uuid().equals(player.getUUID())) {
+                    return;
+                }
+                handleUpload(player, payload.uuid(), payload.data());
+            });
+        }
+        ctx.get().setPacketHandled(true);
     }
 
-    /** C2S request handler; runs on the server thread through {@code ctx}. */
-    public static void handleRequest(AvatarPayloads.AvatarRequestPayload payload, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            if (!(ctx.player() instanceof ServerPlayer player)) {
-                return;
-            }
-            if (payload.uuid() == null) {
-                return;
-            }
-            handleRequest(player, payload.uuid());
-        });
+    /** C2S request handler; runs on the server thread. */
+    public static void handleRequest(AvatarPayloads.AvatarRequestPayload payload, Supplier<NetworkEvent.Context> ctx) {
+        ServerPlayer player = ctx.get().getSender();
+        if (player != null) {
+            ctx.get().enqueueWork(() -> {
+                if (payload.uuid() == null) {
+                    return;
+                }
+                handleRequest(player, payload.uuid());
+            });
+        }
+        ctx.get().setPacketHandled(true);
     }
 
     private static void handleUpload(ServerPlayer player, UUID uuid, byte[] data) {
@@ -106,9 +107,9 @@ public final class AvatarCompanionServer {
         AvatarPayloads.AvatarChangedPayload payload = new AvatarPayloads.AvatarChangedPayload(uuid);
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             try {
-                if (NetworkRegistry.hasChannel(p.connection,
-                        AvatarPayloads.AvatarChangedPayload.TYPE.id())) {
-                    PacketDistributor.sendToPlayer(p, payload);
+                if (p.connection.connection != null
+                        && AvatarPayloads.CHANNEL.isRemotePresent(p.connection.connection)) {
+                    AvatarPayloads.CHANNEL.send(PacketDistributor.PLAYER.with(() -> p), payload);
                 }
             } catch (Throwable t) {
                 // A player that cannot accept the notification keeps the old copy.
@@ -134,7 +135,8 @@ public final class AvatarCompanionServer {
         } catch (IOException e) {
             AtomChat.LOGGER.warn("Failed to read avatar for {}", uuid, e);
         }
-        PacketDistributor.sendToPlayer(player, new AvatarPayloads.AvatarDataPayload(uuid, data));
+        AvatarPayloads.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                new AvatarPayloads.AvatarDataPayload(uuid, data));
     }
 
     private static Path storageDir() {

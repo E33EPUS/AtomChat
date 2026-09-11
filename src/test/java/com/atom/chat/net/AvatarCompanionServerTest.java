@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,12 +35,14 @@ class AvatarCompanionServerTest {
 
     @Test
     void payloadIdsAreStable() {
-        // Channel names are wire contracts: never rename these.
-        assertTrue(AvatarPayloads.AvatarUploadPayload.TYPE.id().getPath().equals("avatar_upload"));
-        assertTrue(AvatarPayloads.AvatarRequestPayload.TYPE.id().getPath().equals("avatar_request"));
-        assertTrue(AvatarPayloads.AvatarDataPayload.TYPE.id().getPath().equals("avatar_data"));
-        assertTrue(AvatarPayloads.AvatarChangedPayload.TYPE.id().getPath().equals("avatar_changed"));
-        assertTrue(AvatarPayloads.AvatarUploadPayload.TYPE.id().getNamespace().equals("atomchat"));
+        // Forge packs every packet into one SimpleChannel, so the wire contract is
+        // the channel name plus the packet ids: never rename or reorder these.
+        assertTrue(AvatarPayloads.CHANNEL_NAME.getNamespace().equals("atomchat"));
+        assertTrue(AvatarPayloads.CHANNEL_NAME.getPath().equals("avatar"));
+        assertEquals(0, AvatarPayloads.ID_UPLOAD);
+        assertEquals(1, AvatarPayloads.ID_REQUEST);
+        assertEquals(2, AvatarPayloads.ID_DATA);
+        assertEquals(3, AvatarPayloads.ID_CHANGED);
     }
 
     @Test

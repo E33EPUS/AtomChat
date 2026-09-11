@@ -5,8 +5,6 @@ import com.atom.chat.config.AtomChatConfig;
 import io.github.humbleui.skija.Image;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
 
 import java.util.Map;
 import java.util.UUID;
@@ -17,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Client side of the avatar companion: lazy loading with a memory cache.
  *
  * <p>Flow: rendering asks {@link #currentAvatar(UUID)} for a player with no
- * cached avatar → a request payload goes out (deduplicated) → the companion
+ * cached avatar → a request packet goes out (deduplicated) → the companion
  * answers with the PNG bytes (or an empty array = no avatar) → the image is
  * decoded on a daemon thread and cached by uuid.
  *
@@ -26,10 +24,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the server keeps no per-viewer state. No disk layer — with a wipe-on-join
  * policy it could never serve a hit.
  *
- * <p>Companion presence: the client checks the negotiated network channels
- * before sending anything. When the server did not register AtomChat's avatar
- * channels it is marked companion-less and all traffic stops (silent
- * degradation to skins).
+ * <p>Companion presence: the client checks the negotiated channel before
+ * sending anything. When the server did not register AtomChat's avatar channel
+ * it is marked companion-less and all traffic stops (silent degradation to
+ * skins).
  */
 public final class AvatarCompanionClient {
     private AvatarCompanionClient() {
@@ -52,7 +50,7 @@ public final class AvatarCompanionClient {
     private static final Map<UUID, Boolean> decoding = new ConcurrentHashMap<>();
 
     /**
-     * Client init hook. NeoForge registers the S2C receiver centrally in
+     * Client init hook. The channel registers the S2C receivers centrally in
      * {@link AvatarPayloads#register}; this only keeps the same call shape as
      * the Fabric client entrypoint.
      */
@@ -108,41 +106,44 @@ public final class AvatarCompanionClient {
             return null;
         }
         if (!serverSupportsCompanion()) {
-            // The server did not negotiate AtomChat's avatar channels. Do not
-            // send an unknown C2S payload; mark the server companion-less so
+            // The server did not negotiate AtomChat's avatar channel. Do not
+            // send an unknown C2S packet; mark the server companion-less so
             // the rest of the session silently degrades to skins. This is the
             // only authoritative "no companion" signal — negotiation, not a
             // timeout.
             presence = Presence.NO;
             requestedAt.clear();
-            debug("server has no companion channels, degrading to skins");
+            debug("server has no companion channel, degrading to skins");
             return null;
         }
         requestedAt.put(uuid, now);
         debug("requesting avatar for " + uuid);
-        PacketDistributor.sendToServer(new AvatarPayloads.AvatarRequestPayload(uuid));
+        AvatarPayloads.CHANNEL.sendToServer(new AvatarPayloads.AvatarRequestPayload(uuid));
         return null;
     }
 
     /** True when the connected server actually registered the avatar C2S channel. */
     private static boolean serverSupportsCompanion() {
         try {
+            if (AvatarPayloads.CHANNEL == null) {
+                return false;
+            }
             Minecraft mc = Minecraft.getInstance();
             ClientPacketListener connection = mc.getConnection();
-            return connection != null && NetworkRegistry.hasChannel(
-                    connection, AvatarPayloads.AvatarRequestPayload.TYPE.id());
+            return connection != null && connection.getConnection() != null
+                    && AvatarPayloads.CHANNEL.isRemotePresent(connection.getConnection());
         } catch (Throwable t) {
             return false;
         }
     }
 
     /** Pushes the local avatar to the server; skipped only when the server has
-     *  no companion channels. UNKNOWN counts as supported: the negotiation is
+     *  no companion channel. UNKNOWN counts as supported: the negotiation is
      *  authoritative and the very first upload of a session must go through
      *  even before any response has come back. */
     public static void uploadOwnAvatar(UUID uuid, byte[] pngBytes) {
         if (presence == Presence.NO) {
-            debug("upload dropped: server has no companion channels");
+            debug("upload dropped: server has no companion channel");
             return;
         }
         if (uuid == null || pngBytes == null
@@ -151,7 +152,7 @@ public final class AvatarCompanionClient {
             return;
         }
         debug("uploading own avatar (" + pngBytes.length + " bytes)");
-        PacketDistributor.sendToServer(new AvatarPayloads.AvatarUploadPayload(uuid, pngBytes));
+        AvatarPayloads.CHANNEL.sendToServer(new AvatarPayloads.AvatarUploadPayload(uuid, pngBytes));
     }
 
     /** S2C push: another player's stored avatar changed mid-session; drop the
@@ -171,7 +172,7 @@ public final class AvatarCompanionClient {
         debug("companion: avatar changed, cache dropped for " + uuid);
     }
 
-    /** S2C receiver; runs on the render thread via the payload context. */
+    /** S2C receiver; runs on the render thread via the packet context. */
     static void onAvatarData(UUID uuid, byte[] data) {
         if (uuid == null) {
             return;

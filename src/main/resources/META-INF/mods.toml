@@ -8,28 +8,19 @@ version="${mod_version}"
 displayName="${mod_name}"
 displayTest="IGNORE_ALL_VERSION"
 authors="${mod_authors}"
-description="${mod_description}"
+description='''${mod_description}'''
 logoFile="assets/atomchat/logo.png"
 
-[[mixins]]
-config="atomchat.screen.mixins.json"
-
-[[mixins]]
-config="atomchat.client.mixins.json"
-
-[[accessTransformers]]
-file="META-INF/accesstransformer.cfg"
-
 [[dependencies.${mod_id}]]
-    modId="neoforge"
-    type="required"
-    versionRange="${neo_version_range}"
+    modId="forge"
+    mandatory=true
+    versionRange="${forge_version_range}"
     ordering="NONE"
     side="BOTH"
 
 [[dependencies.${mod_id}]]
     modId="minecraft"
-    type="required"
+    mandatory=true
     versionRange="${minecraft_version_range}"
     ordering="NONE"
     side="BOTH"

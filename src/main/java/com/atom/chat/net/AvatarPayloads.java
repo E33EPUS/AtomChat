@@ -1,18 +1,18 @@
 package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.loading.FMLEnvironment;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.simple.SimpleChannel;
 
 import java.util.UUID;
 
 /**
- * Avatar-companion payloads (0.1.10). Same-jar dual entrypoint: the records
- * and codecs are registered from the common @Mod constructor so both the
+ * Avatar-companion packets (0.1.10). Same-jar dual entrypoint: the channel and
+ * its handlers are registered from the common mod constructor so both the
  * integrated server of a double-open client and a dedicated server speak the
  * protocol.
  *
@@ -24,11 +24,13 @@ import java.util.UUID;
  *       (lazy loading; the server keeps no state).</li>
  *   <li>S2C {@code data} — the requested avatar's PNG bytes, or an empty
  *       array when the uuid has no custom avatar (negative answer).</li>
+ *   <li>S2C {@code changed} — a stored avatar was replaced mid-session.</li>
  * </ul>
  *
- * <p>The client only sends on channels the server actually negotiated; servers
- * without this companion therefore never receive an unknown payload and the
- * client silently degrades to skins (e33chat philosophy).
+ * <p>The channel accepts connections that never negotiated it
+ * ({@link NetworkRegistry#acceptMissingOr}), so a vanilla or non-mod server
+ * simply ignores the unknown payloads and the client silently degrades to
+ * skins (e33chat philosophy).
  */
 public final class AvatarPayloads {
     private AvatarPayloads() {
@@ -36,72 +38,96 @@ public final class AvatarPayloads {
 
     public static final int MAX_AVATAR_BYTES = 256 * 1024;
 
-    public record AvatarUploadPayload(UUID uuid, byte[] data) implements CustomPacketPayload {
-        public static final Type<AvatarUploadPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_upload"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarUploadPayload> STREAM_CODEC =
-                new StreamCodec<>() {
-                    @Override
-                    public AvatarUploadPayload decode(RegistryFriendlyByteBuf buf) {
-                        return new AvatarUploadPayload(buf.readUUID(), buf.readByteArray());
-                    }
+    /** Bumped when the packet layout changes; the channel rejects mismatches. */
+    private static final String PROTOCOL = "1";
 
-                    @Override
-                    public void encode(RegistryFriendlyByteBuf buf, AvatarUploadPayload payload) {
-                        buf.writeUUID(payload.uuid());
-                        buf.writeByteArray(payload.data());
-                    }
-                };
+    /** Wire contract: the channel name and packet ids must never be renamed or reordered. */
+    public static final ResourceLocation CHANNEL_NAME =
+            ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar");
+    public static final int ID_UPLOAD = 0;
+    public static final int ID_REQUEST = 1;
+    public static final int ID_DATA = 2;
+    public static final int ID_CHANGED = 3;
 
-        @Override
-        public Type<? extends CustomPacketPayload> type() {
-            return TYPE;
+    public static SimpleChannel CHANNEL;
+
+    /** Builds the channel and registers every packet id. Common setup. */
+    public static void register() {
+        CHANNEL = NetworkRegistry.newSimpleChannel(
+                CHANNEL_NAME,
+                () -> PROTOCOL,
+                NetworkRegistry.acceptMissingOr(PROTOCOL),
+                NetworkRegistry.acceptMissingOr(PROTOCOL));
+
+        CHANNEL.messageBuilder(AvatarUploadPayload.class, ID_UPLOAD)
+                .encoder(AvatarUploadPayload::encode)
+                .decoder(AvatarUploadPayload::decode)
+                .consumerMainThread(AvatarCompanionServer::handleUpload)
+                .add();
+
+        CHANNEL.messageBuilder(AvatarRequestPayload.class, ID_REQUEST)
+                .encoder(AvatarRequestPayload::encode)
+                .decoder(AvatarRequestPayload::decode)
+                .consumerMainThread(AvatarCompanionServer::handleRequest)
+                .add();
+
+        // The S2C handlers touch client-only rendering classes; the body only
+        // runs on a client, but the dist guard keeps class loading explicit.
+        CHANNEL.messageBuilder(AvatarDataPayload.class, ID_DATA)
+                .encoder(AvatarDataPayload::encode)
+                .decoder(AvatarDataPayload::decode)
+                .consumerMainThread((payload, ctx) -> {
+                    if (FMLEnvironment.dist == Dist.CLIENT) {
+                        ctx.get().enqueueWork(() ->
+                                AvatarCompanionClient.onAvatarData(payload.uuid(), payload.data()));
+                    }
+                    ctx.get().setPacketHandled(true);
+                })
+                .add();
+
+        CHANNEL.messageBuilder(AvatarChangedPayload.class, ID_CHANGED)
+                .encoder(AvatarChangedPayload::encode)
+                .decoder(AvatarChangedPayload::decode)
+                .consumerMainThread((payload, ctx) -> {
+                    if (FMLEnvironment.dist == Dist.CLIENT) {
+                        ctx.get().enqueueWork(() ->
+                                AvatarCompanionClient.onAvatarChanged(payload.uuid()));
+                    }
+                    ctx.get().setPacketHandled(true);
+                })
+                .add();
+    }
+
+    public record AvatarUploadPayload(UUID uuid, byte[] data) {
+        public static void encode(AvatarUploadPayload payload, FriendlyByteBuf buf) {
+            buf.writeUUID(payload.uuid());
+            buf.writeByteArray(payload.data());
+        }
+
+        public static AvatarUploadPayload decode(FriendlyByteBuf buf) {
+            return new AvatarUploadPayload(buf.readUUID(), buf.readByteArray());
         }
     }
 
-    public record AvatarRequestPayload(UUID uuid) implements CustomPacketPayload {
-        public static final Type<AvatarRequestPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_request"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarRequestPayload> STREAM_CODEC =
-                new StreamCodec<>() {
-                    @Override
-                    public AvatarRequestPayload decode(RegistryFriendlyByteBuf buf) {
-                        return new AvatarRequestPayload(buf.readUUID());
-                    }
+    public record AvatarRequestPayload(UUID uuid) {
+        public static void encode(AvatarRequestPayload payload, FriendlyByteBuf buf) {
+            buf.writeUUID(payload.uuid());
+        }
 
-                    @Override
-                    public void encode(RegistryFriendlyByteBuf buf, AvatarRequestPayload payload) {
-                        buf.writeUUID(payload.uuid());
-                    }
-                };
-
-        @Override
-        public Type<? extends CustomPacketPayload> type() {
-            return TYPE;
+        public static AvatarRequestPayload decode(FriendlyByteBuf buf) {
+            return new AvatarRequestPayload(buf.readUUID());
         }
     }
 
     /** Empty {@code data} = the uuid has no custom avatar. */
-    public record AvatarDataPayload(UUID uuid, byte[] data) implements CustomPacketPayload {
-        public static final Type<AvatarDataPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_data"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarDataPayload> STREAM_CODEC =
-                new StreamCodec<>() {
-                    @Override
-                    public AvatarDataPayload decode(RegistryFriendlyByteBuf buf) {
-                        return new AvatarDataPayload(buf.readUUID(), buf.readByteArray());
-                    }
+    public record AvatarDataPayload(UUID uuid, byte[] data) {
+        public static void encode(AvatarDataPayload payload, FriendlyByteBuf buf) {
+            buf.writeUUID(payload.uuid());
+            buf.writeByteArray(payload.data());
+        }
 
-                    @Override
-                    public void encode(RegistryFriendlyByteBuf buf, AvatarDataPayload payload) {
-                        buf.writeUUID(payload.uuid());
-                        buf.writeByteArray(payload.data());
-                    }
-                };
-
-        @Override
-        public Type<? extends CustomPacketPayload> type() {
-            return TYPE;
+        public static AvatarDataPayload decode(FriendlyByteBuf buf) {
+            return new AvatarDataPayload(buf.readUUID(), buf.readByteArray());
         }
     }
 
@@ -112,48 +138,13 @@ public final class AvatarPayloads {
      * the older copy), so every successful upload is announced and receivers
      * drop that uuid's cache before the next frame re-requests it.
      */
-    public record AvatarChangedPayload(UUID uuid) implements CustomPacketPayload {
-        public static final Type<AvatarChangedPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(AtomChat.MOD_ID, "avatar_changed"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, AvatarChangedPayload> STREAM_CODEC =
-                new StreamCodec<>() {
-                    @Override
-                    public AvatarChangedPayload decode(RegistryFriendlyByteBuf buf) {
-                        return new AvatarChangedPayload(buf.readUUID());
-                    }
-
-                    @Override
-                    public void encode(RegistryFriendlyByteBuf buf, AvatarChangedPayload payload) {
-                        buf.writeUUID(payload.uuid());
-                    }
-                };
-
-        @Override
-        public Type<? extends CustomPacketPayload> type() {
-            return TYPE;
+    public record AvatarChangedPayload(UUID uuid) {
+        public static void encode(AvatarChangedPayload payload, FriendlyByteBuf buf) {
+            buf.writeUUID(payload.uuid());
         }
-    }
 
-    /** Registers every payload on the NeoForge payload bus (common entry). */
-    public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("1").optional();
-        registrar.playToServer(AvatarUploadPayload.TYPE, AvatarUploadPayload.STREAM_CODEC,
-                AvatarCompanionServer::handleUpload);
-        registrar.playToServer(AvatarRequestPayload.TYPE, AvatarRequestPayload.STREAM_CODEC,
-                AvatarCompanionServer::handleRequest);
-        // The S2C receivers touch client-only rendering classes; keep them in
-        // dist-guarded lambdas so a dedicated server never loads them.
-        registrar.playToClient(AvatarDataPayload.TYPE, AvatarDataPayload.STREAM_CODEC,
-                (payload, ctx) -> {
-                    if (net.neoforged.fml.loading.FMLEnvironment.dist == net.neoforged.api.distmarker.Dist.CLIENT) {
-                        ctx.enqueueWork(() -> AvatarCompanionClient.onAvatarData(payload.uuid(), payload.data()));
-                    }
-                });
-        registrar.playToClient(AvatarChangedPayload.TYPE, AvatarChangedPayload.STREAM_CODEC,
-                (payload, ctx) -> {
-                    if (net.neoforged.fml.loading.FMLEnvironment.dist == net.neoforged.api.distmarker.Dist.CLIENT) {
-                        ctx.enqueueWork(() -> AvatarCompanionClient.onAvatarChanged(payload.uuid()));
-                    }
-                });
+        public static AvatarChangedPayload decode(FriendlyByteBuf buf) {
+            return new AvatarChangedPayload(buf.readUUID());
+        }
     }
 }

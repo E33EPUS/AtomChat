@@ -8,7 +8,6 @@ import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.history.HistoryStore.Entry;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
@@ -148,10 +147,9 @@ public final class ChatHistory {
         if (key == null) {
             return;
         }
-        net.minecraft.core.HolderLookup.Provider lookup = lookup(client);
         List<String> lines = new ArrayList<>();
         for (ChatMessage m : ChatStore.get().snapshot()) {
-            String line = HistoryStore.toLine(toEntry(m, lookup, null));
+            String line = HistoryStore.toLine(toEntry(m, null));
             if (line != null) {
                 lines.add(line);
             }
@@ -159,7 +157,7 @@ public final class ChatHistory {
         for (PlayerRef partner : PrivateChatStore.knownPartners()) {
             String peer = peerKey(partner);
             for (ChatMessage m : PrivateChatStore.messages(partner)) {
-                String line = HistoryStore.toLine(toEntry(m, lookup, peer));
+                String line = HistoryStore.toLine(toEntry(m, peer));
                 if (line != null) {
                     lines.add(line);
                 }
@@ -198,7 +196,6 @@ public final class ChatHistory {
             AtomChat.LOGGER.warn("Failed to read chat history {}", file, e);
             return;
         }
-        net.minecraft.core.HolderLookup.Provider lookup = lookup(client);
         List<ChatMessage> loadedPublic = new ArrayList<>();
         List<Loaded> loadedPrivate = new ArrayList<>();
         for (String line : raw) {
@@ -206,7 +203,7 @@ public final class ChatHistory {
             if (e == null) {
                 continue;
             }
-            ChatMessage m = fromEntry(e, lookup);
+            ChatMessage m = fromEntry(e);
             if (m == null) {
                 continue;
             }
@@ -267,11 +264,11 @@ public final class ChatHistory {
         }
     }
 
-    private static Entry toEntry(ChatMessage m, net.minecraft.core.HolderLookup.Provider lookup, String peer) {
+    private static Entry toEntry(ChatMessage m, String peer) {
         String comp = null;
-        if (lookup != null && m.getComponent() != null) {
+        if (m.getComponent() != null) {
             try {
-                comp = Component.Serializer.toJson(m.getComponent(), lookup);
+                comp = Component.Serializer.toJson(m.getComponent());
             } catch (Exception e) {
                 comp = null;
             }
@@ -283,11 +280,11 @@ public final class ChatHistory {
                 m.getSenderName(), m.getProfileName(), m.getContentText(), comp);
     }
 
-    private static ChatMessage fromEntry(Entry e, net.minecraft.core.HolderLookup.Provider lookup) {
+    private static ChatMessage fromEntry(Entry e) {
         Component component = null;
-        if (e.componentJson != null && lookup != null) {
+        if (e.componentJson != null) {
             try {
-                component = Component.Serializer.fromJson(e.componentJson, lookup);
+                component = Component.Serializer.fromJson(e.componentJson);
             } catch (Exception ignored) {
                 component = null;
             }
@@ -352,19 +349,5 @@ public final class ChatHistory {
             serverName = client.getCurrentServer().name;
         }
         return HistoryStore.keyFor(singleplayer, levelName, serverName);
-    }
-
-    private static net.minecraft.core.HolderLookup.Provider lookup(Minecraft client) {
-        if (client == null) {
-            return null;
-        }
-        try {
-            if (client.level != null) {
-                return client.level.registryAccess();
-            }
-        } catch (Exception ignored) {
-            // fall through
-        }
-        return null;
     }
 }

@@ -120,7 +120,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private final ConversationListPage conversationListPage = new ConversationListPage(this);
     /** Local custom avatar for the profile page and own bubbles. */
     private final AvatarStore avatarStore = new AvatarStore(
-            net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/avatar"));
+            net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/avatar"));
     /** QQ-style crop overlay for avatar and wallpaper picks. */
     private final ImageCropper imageCropper = new ImageCropper(new ImageCropper.Callback() {
         @Override
@@ -957,14 +957,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         String draft = privateDrafts.getOrDefault(target.key(), "");
         if (input != null) {
             input.setValue(draft);
-            input.moveCursorToStart(false);
+            input.moveCursorToStart();
         }
     }
 
     private void loadWorldDraft() {
         if (input != null) {
             input.setValue(worldDraft);
-            input.moveCursorToStart(false);
+            input.moveCursorToStart();
         }
     }
 
@@ -1221,7 +1221,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     @Override
-    public void renderBackground(GuiGraphics context, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphics context) {
         // World stays fully visible, same as vanilla chat; the panel provides its own background.
     }
 
@@ -1233,7 +1233,6 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         this.chatInputSuggestor = new AtomChatSuggestor(this.client, this, this.input,
                 this.client.font, false, false, 1, 10, true, -805306368,
                 this::anchorInputTopY, this::anchorInputLeftX);
-        this.chatInputSuggestor.setAllowHiding(false);
         this.chatInputSuggestor.hide();
         // Drive our anchored suggestor from the same EditBox responder vanilla
         // ChatScreen would use for its package-private commandSuggestions.
@@ -1321,7 +1320,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     private void setCaretAtEnd() {
         if (input != null) {
-            input.moveCursorTo(input.getValue().length(), false);
+            input.moveCursorTo(input.getValue().length());
         }
     }
 
@@ -2766,11 +2765,12 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (inputRouter.scroll(mouseX, mouseY, horizontalAmount, verticalAmount)) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
+        // 1.20.1 has no horizontal scroll delta; the router only reads vertical.
+        if (inputRouter.scroll(mouseX, mouseY, 0.0, verticalAmount)) {
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        return super.mouseScrolled(mouseX, mouseY, verticalAmount);
     }
 
     @Override
@@ -3940,7 +3940,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                     input.setHighlightPos(idx);
                 } else {
                     inputDragAnchor = idx;
-                    input.moveCursorTo(idx, false);
+                    input.moveCursorTo(idx);
                 }
                 inputDragging = true;
                 return true;
@@ -4203,7 +4203,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                         // the target line's length (standard text-editor behaviour).
                         int col = Mth.clamp(caret - rowStart, 0, lines.get(row).length());
                         int pos = targetStart + Math.min(col, lines.get(target).length());
-                        input.moveCursorTo(pos, false);
+                        input.moveCursorTo(pos);
                     }
                     return true;
                 }

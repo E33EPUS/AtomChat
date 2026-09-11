@@ -210,7 +210,7 @@ public class AtomChatConfig {
     }
 
     private static AtomChatConfig load() {
-        Path path = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/atomchat-client.json");
+        Path path = net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/atomchat-client.json");
         if (Files.exists(path)) {
             try {
                 String json = Files.readString(path, StandardCharsets.UTF_8);
@@ -237,7 +237,7 @@ public class AtomChatConfig {
     }
 
     public static void save(AtomChatConfig config) {
-        Path path = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/atomchat-client.json");
+        Path path = net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/atomchat-client.json");
         try {
             Files.createDirectories(path.getParent());
             Files.writeString(path, GSON.toJson(config), StandardCharsets.UTF_8);

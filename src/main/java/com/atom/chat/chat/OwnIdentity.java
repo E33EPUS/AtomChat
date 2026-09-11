@@ -6,6 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.scores.PlayerTeam;
 
 import java.util.function.Supplier;
 
@@ -87,8 +88,11 @@ public final class OwnIdentity {
             return null;
         }
         var team = client.player.getTeam();
-        Component prefix = team.getPlayerPrefix();
-        Component suffix = team.getPlayerSuffix();
+        // 1.20.1 keeps prefix/suffix on PlayerTeam only; the Team interface
+        // gained them in 1.21.
+        PlayerTeam playerTeam = team instanceof PlayerTeam pt ? pt : null;
+        Component prefix = playerTeam != null ? playerTeam.getPlayerPrefix() : null;
+        Component suffix = playerTeam != null ? playerTeam.getPlayerSuffix() : null;
         ChatFormatting color = team.getColor();
         boolean hasPrefix = prefix != null && !prefix.getString().isEmpty();
         boolean hasSuffix = suffix != null && !suffix.getString().isEmpty();

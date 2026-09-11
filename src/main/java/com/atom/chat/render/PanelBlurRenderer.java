@@ -11,7 +11,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.client.event.RegisterShadersEvent;
+import net.minecraftforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL30;
@@ -50,7 +50,7 @@ public final class PanelBlurRenderer {
     private PanelBlurRenderer() {
     }
 
-    /** NeoForge shader registration; fired from the mod event bus. */
+    /** Forge shader registration; fired from the mod event bus. */
     public static void registerShaders(RegisterShadersEvent event) {
         try {
             event.registerShader(new ShaderInstance(event.getResourceProvider(),
@@ -114,7 +114,7 @@ public final class PanelBlurRenderer {
     }
 
     public static void resetShader() {
-        // NeoForge re-registers shaders through RegisterShadersEvent; this hook
+        // Forge re-registers shaders through RegisterShadersEvent; this hook
         // exists for parity with the Fabric reload listener and is intentionally
         // a no-op here (a null shader would not be lazily re-created).
     }
@@ -141,12 +141,13 @@ public final class PanelBlurRenderer {
         RenderSystem.setShaderTexture(0, texture);
         RenderSystem.setShader(() -> sh);
 
-        BufferBuilder bb = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-        bb.addVertex(pose, x, y, 0).setUv(0.0F, 0.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
-        bb.addVertex(pose, x, y + h, 0).setUv(0.0F, 1.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
-        bb.addVertex(pose, x + w, y + h, 0).setUv(1.0F, 1.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
-        bb.addVertex(pose, x + w, y, 0).setUv(1.0F, 0.0F).setColor(1.0F, 1.0F, 1.0F, alpha);
-        BufferUploader.drawWithShader(bb.buildOrThrow());
+        BufferBuilder bb = Tesselator.getInstance().getBuilder();
+        bb.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+        bb.vertex(pose, x, y, 0).uv(0.0F, 0.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
+        bb.vertex(pose, x, y + h, 0).uv(0.0F, 1.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
+        bb.vertex(pose, x + w, y + h, 0).uv(1.0F, 1.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
+        bb.vertex(pose, x + w, y, 0).uv(1.0F, 0.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
+        BufferUploader.drawWithShader(bb.end());
 
         RenderSystem.disableBlend();
         return true;
@@ -273,12 +274,13 @@ public final class PanelBlurRenderer {
         uSpacing.set(spacing);
         RenderSystem.setShader(() -> sh);
 
-        BufferBuilder bb = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
-        bb.addVertex(-1.0F, -1.0F, 0.0F);
-        bb.addVertex(1.0F, -1.0F, 0.0F);
-        bb.addVertex(1.0F, 1.0F, 0.0F);
-        bb.addVertex(-1.0F, 1.0F, 0.0F);
-        BufferUploader.drawWithShader(bb.buildOrThrow());
+        BufferBuilder bb = Tesselator.getInstance().getBuilder();
+        bb.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
+        bb.vertex(-1.0F, -1.0F, 0.0F).endVertex();
+        bb.vertex(1.0F, -1.0F, 0.0F).endVertex();
+        bb.vertex(1.0F, 1.0F, 0.0F).endVertex();
+        bb.vertex(-1.0F, 1.0F, 0.0F).endVertex();
+        BufferUploader.drawWithShader(bb.end());
 
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, oldFbo);
         GL30.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);

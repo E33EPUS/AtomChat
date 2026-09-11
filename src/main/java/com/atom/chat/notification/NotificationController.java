@@ -8,7 +8,7 @@ import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
-import net.neoforged.neoforge.registries.RegisterEvent;
+import net.minecraftforge.registries.RegisterEvent;
 
 /**
  * Turns capture-side events (mentions, quote replies, incoming whispers) into
@@ -32,7 +32,7 @@ public final class NotificationController {
 
     /**
      * Registers the bundled cue through the mod-bus {@link RegisterEvent}, which
-     * fires inside NeoForge's unfreeze/re-freeze window. Registering straight
+     * fires inside Forge's unfreeze/re-freeze window. Registering straight
      * from the client constructor instead throws "Registry is already frozen"
      * whenever another mod (or a loader-version quirk) has already frozen the
      * registries by the time we are constructed.

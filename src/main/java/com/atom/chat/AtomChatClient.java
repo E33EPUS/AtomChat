@@ -15,26 +15,32 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.fml.loading.FMLPaths;
 import org.lwjgl.glfw.GLFW;
 
-@Mod(value = AtomChat.MOD_ID, dist = Dist.CLIENT)
-public class AtomChatClient {
+/**
+ * Client-only entrypoint. Nothing references this class except the dist-guarded
+ * branch in {@link AtomChat}'s constructor, so a dedicated server never loads it.
+ */
+public final class AtomChatClient {
+    private AtomChatClient() {
+    }
+
     public static final KeyMapping OPEN_ATOMCHAT_KEY = new KeyMapping(
             "key.atomchat.open",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_Y,
             "key.atomchat.category");
 
-    public AtomChatClient(ModContainer container, IEventBus modEventBus) {
+    /** Called from the common mod constructor on the client only. */
+    public static void init(IEventBus modEventBus) {
         // The AWT/Swing image picker needs a real toolkit, not the headless
         // AWT some launchers/other mods select. This must run before any AWT
         // class initialises, so it lives here at the very start of client init.
@@ -49,21 +55,18 @@ public class AtomChatClient {
         // NotificationController#registerSound).
         modEventBus.addListener(NotificationController::registerSound);
 
-        NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerJoin);
-        NeoForge.EVENT_BUS.addListener(AtomChatClient::onPlayerDisconnect);
-        NeoForge.EVENT_BUS.addListener(AtomChatClient::onClientTick);
+        MinecraftForge.EVENT_BUS.addListener(AtomChatClient::onPlayerJoin);
+        MinecraftForge.EVENT_BUS.addListener(AtomChatClient::onPlayerDisconnect);
+        MinecraftForge.EVENT_BUS.addListener(AtomChatClient::onClientTick);
     }
 
-
-    private static void onClientSetup(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent event) {
+    private static void onClientSetup(FMLClientSetupEvent event) {
         AtomChatConfig.get();
         CacheDirs.migrateFromOldConfigPaths();
-        WallpaperStore.init(
-                net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/wallpaper"));
+        WallpaperStore.init(FMLPaths.CONFIGDIR.get().resolve("atomchat/wallpaper"));
         ImageLoader.get().init(CacheDirs.imageCacheDir());
         com.atom.chat.net.AvatarCompanionClient.init();
-        com.atom.chat.history.ChatHistory.init(
-                net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/history"));
+        com.atom.chat.history.ChatHistory.init(FMLPaths.CONFIGDIR.get().resolve("atomchat/history"));
         AtomChat.LOGGER.info("AtomChat client initialized");
     }
 
@@ -97,7 +100,10 @@ public class AtomChatClient {
         com.atom.chat.chat.OwnIdentity.reset();
     }
 
-    private static void onClientTick(ClientTickEvent.Post event) {
+    private static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
         Minecraft client = Minecraft.getInstance();
         com.atom.chat.history.ChatHistory.tick(client);
         // Expires banners regardless of whether the panel is open: their 4s
