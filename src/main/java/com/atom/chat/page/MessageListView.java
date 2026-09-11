@@ -911,21 +911,26 @@ public final class MessageListView {
         if (hasQuote) {
             drawQuotePill(canvas, msg, x, maxWidth, y + band, msg.isOwn());
         }
-        SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS, otherBubble());
-        drawDuplicateBadge(canvas, msg, bubbleX, imageW, bubbleTop, imageH);
-
         Image image = ImageLoader.get().get(imageUrl, true);
         if (image != null) {
+            // No bubble fill behind a loaded image: a transparent PNG/GIF must
+            // show the panel behind it, not a grey plate. The rounded clip in
+            // drawRoundedImage still shapes the corners; opaque images cover the
+            // area anyway, so they are unchanged.
             // No aspect fix-up here: the CICode carries the intrinsic size, so
             // the bubble already has the image's proportions and the bitmap is
             // simply fitted to it. Stretching only happened because the box used
             // to be a fixed 275x175 with the height clamped rather than scaled.
             SkiaDraw.drawRoundedImage(canvas, image, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS);
         } else {
+            // Placeholder only while the download is in flight: once an image
+            // is loaded it must not keep a plate behind its transparent pixels.
+            SkiaDraw.drawRoundedRect(canvas, bubbleX, bubbleTop, imageW, imageH, UiTokens.BUBBLE_RADIUS, otherBubble());
             Font loadingFont = FontManager.font(UiTokens.FONT_QUOTE);
             SkiaFontRenderer.drawTextCentered(canvas, loadingFont, tr("atomchat.image.loading"),
                     bubbleX + imageW / 2.0F, bubbleTop + imageH / 2.0F, textSecondary());
         }
+        drawDuplicateBadge(canvas, msg, bubbleX, imageW, bubbleTop, imageH);
 
         float bottom = bubbleTop + imageH;
         return new MessageHit(msg, index, x, y, maxWidth, bottom, avatarX, avatarY, avatarSize, bubbleTop, bubbleX, imageW, bottom);

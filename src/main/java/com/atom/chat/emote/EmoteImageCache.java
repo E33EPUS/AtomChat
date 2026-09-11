@@ -1,8 +1,7 @@
 package com.atom.chat.emote;
 
 import com.atom.chat.AtomChat;
-import com.atom.chat.image.AnimatedImage;
-import com.atom.chat.image.GifDecoder;
+import com.atom.chat.image.ImageLoader;
 import io.github.humbleui.skija.Image;
 
 import java.io.File;
@@ -12,36 +11,30 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Lazily decodes emote files into Skia images, cached by file (0.2.7 GIF pass).
- * Static images (png/jpg/jpeg) cache one {@link Image}; an animated GIF caches
- * an {@link AnimatedImage} and every lookup returns the frame for the current
- * tick, so the emote grid animates exactly like the sent message does.
+ * Lazily decodes emote files into Skia images, cached by file.
  *
- * <p>Files that vanish (removed externally) are dropped on the next lookup, and
+ * <p>The grid shows a single static frame (0.2.7 decision): an animated GIF is
+ * decoded to its first frame and every file is fitted to {@link #MAX_DIM}, so a
+ * large sticker cannot pin full-resolution pixels behind a {@code s(44)} cell.
+ * The sent message still animates — that path goes through the chat image
+ * loader, not this cache.
+ *
+ * <p>Files that vanish (removed externally) are dropped on the next lookup and
  * files that fail to decode are remembered so we neither re-decode nor re-log
- * them every frame. Frames are never eagerly closed: the render thread may
- * still hold the frame it was handed, and Skija finalises the native memory.
+ * them every frame.
  */
 public final class EmoteImageCache {
-    private final Map<File, Image> staticCache = new HashMap<>();
-    private final Map<File, AnimatedImage> animatedCache = new HashMap<>();
+    /** Longest side kept for the grid; the cell is only {@code s(44)}. */
+    public static final int MAX_DIM = 128;
+
+    private final Map<File, Image> cache = new HashMap<>();
     private final Set<File> failed = new HashSet<>();
 
-    /** Current frame of the emote, or null while absent/undecodable. */
     public Image image(File file) {
-        return image(file, System.currentTimeMillis());
-    }
-
-    /** Test seam: pick the animation frame for an explicit wall clock. */
-    public Image image(File file, long nowMs) {
         if (file == null) {
             return null;
         }
-        AnimatedImage animated = animatedCache.get(file);
-        if (animated != null) {
-            return animated.frameAt(nowMs);
-        }
-        Image img = staticCache.get(file);
+        Image img = cache.get(file);
         if (img != null) {
             return img;
         }
@@ -49,20 +42,14 @@ public final class EmoteImageCache {
             return null;
         }
         if (!file.isFile()) {
-            staticCache.remove(file);
-            animatedCache.remove(file);
+            cache.remove(file);
             return null;
         }
         try {
-            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
-            AnimatedImage decodedAnimation = GifDecoder.decode(bytes, nowMs);
-            if (decodedAnimation != null) {
-                animatedCache.put(file, decodedAnimation);
-                return decodedAnimation.frameAt(nowMs);
-            }
-            Image decoded = Image.makeFromEncoded(bytes);
+            Image decoded = ImageLoader.decodeStatic(
+                    java.nio.file.Files.readAllBytes(file.toPath()), MAX_DIM);
             if (decoded != null) {
-                staticCache.put(file, decoded);
+                cache.put(file, decoded);
                 return decoded;
             }
             failed.add(file);
@@ -79,14 +66,12 @@ public final class EmoteImageCache {
         if (file == null) {
             return;
         }
-        staticCache.remove(file);
-        animatedCache.remove(file);
+        cache.remove(file);
         failed.remove(file);
     }
 
     public void clear() {
-        staticCache.clear();
-        animatedCache.clear();
+        cache.clear();
         failed.clear();
     }
 }

@@ -150,6 +150,15 @@ public final class ImageLoader {
         return url.startsWith("http://") || url.startsWith("https://") || url.startsWith(MEDIA_URL_PREFIX);
     }
 
+    /**
+     * Decodes a single frame (a GIF's first frame) and fits it inside
+     * {@code maxDim}. The emote grid renders at cell size, so it uses this
+     * instead of the animated path.
+     */
+    public static Image decodeStatic(byte[] bytes, int maxDim) {
+        return downscale(Image.makeFromEncoded(bytes), maxDim);
+    }
+
     private static byte[] httpFetch(String url) throws Exception {
         if (url.startsWith(MEDIA_URL_PREFIX)) {
             Fetcher companion = mediaFetcher;
@@ -249,7 +258,7 @@ public final class ImageLoader {
                 failedUntil.remove(url);
                 return;
             }
-            Image image = downscale(Image.makeFromEncoded(bytes));
+            Image image = decodeStatic(bytes, MAX_DIM);
             if (image != null) {
                 if (disk != null) {
                     // Store only the small display version, never the original

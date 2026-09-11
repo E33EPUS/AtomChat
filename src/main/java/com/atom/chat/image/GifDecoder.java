@@ -30,7 +30,7 @@ public final class GifDecoder {
     }
 
     /** @return the decoded animation, or null when this is not an animated GIF. */
-    public static AnimatedImage decode(byte[] bytes, long nowMs) {
+    static AnimatedImage decode(byte[] bytes, long nowMs) {
         if (!isGif(bytes)) {
             return null;
         }

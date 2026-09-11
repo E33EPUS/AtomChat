@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EmoteImageCacheTest {
 
@@ -53,25 +54,35 @@ class EmoteImageCacheTest {
     }
 
     @Test
-    void staticImageIsCachedAndClockIndependent() throws IOException {
+    void staticImageIsCached() throws IOException {
         EmoteImageCache cache = new EmoteImageCache();
         File file = file("dot.png", png(4, 4));
 
-        Image first = cache.image(file, 0L);
+        Image first = cache.image(file);
         assertNotNull(first);
-        assertSame(first, cache.image(file, 999L), "a static emote must not depend on the clock");
+        assertSame(first, cache.image(file), "a cached emote must be reused");
     }
 
     @Test
-    void animatedGifAdvancesWithTheClock() throws IOException {
+    void animatedGifShowsTheFirstFrameOnly() throws IOException {
         EmoteImageCache cache = new EmoteImageCache();
         File file = file("anim.gif", resource("/atomchat/animated_3frames.gif"));
 
-        Image first = cache.image(file, 0L);
-        assertNotNull(first);
-        assertEquals(0xFFFF0000, argb(first, 0, 0));
-        assertEquals(0xFF00FF00, argb(cache.image(file, 150L), 0, 0));
-        assertEquals(0xFF0000FF, argb(cache.image(file, 250L), 0, 0));
+        Image frame = cache.image(file);
+        assertNotNull(frame);
+        assertEquals(0xFFFF0000, argb(frame, 0, 0), "the grid must show the first frame, not animate");
+    }
+
+    @Test
+    void oversizedEmoteIsDownscaledToTheCellBudget() throws IOException {
+        EmoteImageCache cache = new EmoteImageCache();
+        File file = file("big.gif", resource("/atomchat/large_anim.gif"));
+
+        Image frame = cache.image(file);
+        assertNotNull(frame);
+        assertTrue(frame.getWidth() <= EmoteImageCache.MAX_DIM, "width was " + frame.getWidth());
+        assertTrue(frame.getHeight() <= EmoteImageCache.MAX_DIM, "height was " + frame.getHeight());
+        assertEquals(0xFFFF0000, argb(frame, 0, 0));
     }
 
     @Test
@@ -79,9 +90,9 @@ class EmoteImageCacheTest {
         EmoteImageCache cache = new EmoteImageCache();
         File file = file("bad.png", new byte[]{1, 2, 3});
 
-        assertNull(cache.image(file, 0L));
-        assertNull(cache.image(file, 0L), "a failed file must not be re-decoded every frame");
+        assertNull(cache.image(file));
+        assertNull(cache.image(file), "a failed file must not be re-decoded every frame");
         cache.invalidate(file);
-        assertNull(cache.image(file, 0L));
+        assertNull(cache.image(file));
     }
 }
