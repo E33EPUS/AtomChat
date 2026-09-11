@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.2.8
+
+### 修复
+
+- **Forge 1.20.1 打开面板后整屏变黑**：面板短暂可见后画面变黑，游戏不崩溃、仍能打字、消息与图片照常工作（用户实机反馈）。根因是模糊 pre-pass 的 raw GL 状态写回：`GlStateUtil` 只用裸 GL 还原，而 1.20.1 的 `GlStateManager` setter 是「缓存门控」的——缓存值相同就直接返回、根本不碰驱动。Skia 与模糊改了驱动、游戏缓存没跟上，两边对「当前活动纹理单元 / 各单元绑定」的认知从此不一致，之后原版与 Embeddium 的 `setShaderTexture` / `_bindTexture` 都绑到错误的单元，世界整片采样错纹理。现在每个状态都「先写驱动、再镜像缓存」：缓存已对时裸写已修正驱动，缓存陈旧时 setter 把缓存拉回真实值。同时把帧缓冲、视口与 `UNPACK_ROW_LENGTH` / `SKIP_PIXELS` / `SKIP_ROWS` 纳入保存/还原（原先只还了 `UNPACK_ALIGNMENT`），逐单元镜像也钳制到 Blaze3D 的 `TEXTURE_COUNT`（12，而驱动通常暴露 32 个单元）。
+- **面板尺寸离屏 FBO 泄漏**：`makeTexture()` 建完模糊用的 FBO 后把它留在绑定状态，而 `ensureTextures()` 又跑在 `refreshBlur()` 记录 `oldFbo` 之前——任何重建模糊目标的帧里，圆角模糊被画进面板尺寸的小 FBO，该帧其余绘制也跟着进去。现在 `render()` 先快照帧缓冲/视口/裁剪并在 `finally` 归还，`makeTexture()` 局部还绑定。
+- **模糊失败时面板看起来是黑块**：模糊被请求但这一帧没落地（着色器缺失、GL 报错、pass 提前返回）时，面板仍按「模糊成功」只叠半透明底色；在 93% 不透明度 + 近黑底色、面板又在窗口里几乎铺满时，观感就是整屏黑。现在这种情况回退**不透明**面板，只有「配置里主动关闭模糊」才保持半透明；判定抽成纯类 `PanelBackground` 并配了单测。
+- **开面板滑入动画裁掉自己的左边缘**：面板淡入用的 `saveLayer` 边界是面板外扩 32px，而滑入起点在左侧 36px 处，动画前段面板左缘落在图层外被裁掉。现在图层按滑动距离取并集，滑动距离与图层余量提成常量（模糊 pre-pass 的 capture 矩形与 canvas translate 必须同步）。
+- **头像取色读皮肤纹理**：`AvatarRenderer` 读取皮肤像素时的裸纹理绑定同样镜像 Blaze3D 缓存，消除同一类不一致。
+- **模糊失败不再静默**：模糊 pass 结束后检查 GL 错误，有错就打一条节流警告（日志关键词 `AtomChat panel blur hit GL error 0x...`）并回退实色面板，不再假装成功。
+
+### 更改
+
+- 上述 GL 状态修复三端同源：Fabric 1.21.1 与 NeoForge 1.21.1 一并带上（1.21.1 的 `GlStateManager` 是同一套缓存门控 setter，属同一类隐患）。
+
 ## v0.2.7
 
 ### 新增

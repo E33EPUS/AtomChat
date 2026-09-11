@@ -4,6 +4,18 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
+## v0.2.8
+
+修复：Forge 1.20.1 打开聊天面板后画面整片变黑（面板短短一瞬间还能看到，随后黑屏；游戏不崩溃，仍能打字、发图）——模糊 pre-pass 用裸 GL 写状态，绕过了 Blaze3D「缓存相等就不碰驱动」的门控 setter，于是驱动与游戏对当前纹理单元的认知长期不一致，之后原版与 Embeddium 的纹理绑定全部落到错误的单元；现在状态改为「先写驱动、再镜像缓存」，并把帧缓冲、视口与 unpack 像素状态一并保存还原。
+修复：模糊「被请求但这一帧没落地」时面板改用不透明底色兜底，不再用 93% 半透明的近黑底色（面板在窗口里几乎铺满时看起来就是整屏黑）；模糊失败会打一条节流 GL 错误警告并自动回退。
+修复：开面板滑入动画期间，面板淡入图层会裁掉自己的左边缘（图层余量 32px、滑入起点 36px），现在按滑动距离取并集。
+加固：头像取色读取皮肤纹理的裸纹理绑定同样镜像 Blaze3D 缓存；以上修复三端同源，Fabric 1.21.1 与 NeoForge 1.21.1 一并生效。
+
+Fixed: opening the chat panel on Forge 1.20.1 turned the whole screen black (the panel was visible for an instant, then the screen went black; the game did not crash and typing/image uploads still worked). The blur pre-pass wrote GL state raw, bypassing Blaze3D's cache-gated setters ("equal cache means do not touch the driver"), so the driver and the game disagreed about the active texture unit and every later vanilla/Embeddium bind landed on the wrong one. State is now written to the driver and mirrored back into the cache, and the framebuffer, viewport and unpack pixel state are saved and restored too.
+Fixed: when the blur is requested but does not land this frame the panel now falls back to an opaque background instead of a 93%-opaque near-black tint that read as a full-screen black panel; a failed blur logs one throttled GL error warning and falls back.
+Fixed: the panel's fade layer clipped its own left edge while the open animation slid it in (32px of layer slack against a 36px slide); the layer now spans the slide.
+Hardened: the avatar skin read-back mirrors the texture cache too. All of the above are shared across the three builds, so Fabric and NeoForge 1.21.1 get them as well.
+
 ## v0.2.7
 
 新增：服务端媒体托管 —— 服务端 `config/atomchat/atomchat-server.json` 的 `hostingEnabled`（默认开）决定聊天图片与 GIF 是托管在服务器上还是继续走外部图床；托管时客户端分块上传、服务端按 sha256 去重存进 `atomchat-data/media/`、消息里写 `atomchat-media:<id>` 短链、接收方按需分块拉取，全程走游戏连接、不开 HTTP 端口，上传有大小上限 / 魔数校验 / 限速 / 总量与时效修剪，任何失败都自动回退图床。
