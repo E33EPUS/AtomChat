@@ -2909,13 +2909,21 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                         uploadToUguu(file, size);
                     });
         } else {
+            if (AtomChatConfig.get().debug) {
+                AtomChat.LOGGER.info("[media] server media hosting unavailable; using the external host");
+            }
             uploadToUguu(file, size);
         }
     }
 
     private void uploadToUguu(Path file, int[] size) {
         imageUploader.upload(file,
-                url -> appendImageCode(url, file, size),
+                url -> {
+                    // Keep the choice auditable: server-hosted uploads already
+                    // log "Stored hosted media", so the external path logs too.
+                    AtomChat.LOGGER.info("Uploaded chat image to the external host: {}", url);
+                    appendImageCode(url, file, size);
+                },
                 error -> {
                     AtomChat.LOGGER.warn("Image upload failed: {}", error);
                     this.client.execute(() -> imageUploading = false);
