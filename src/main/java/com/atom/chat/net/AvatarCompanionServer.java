@@ -61,6 +61,9 @@ public final class AvatarCompanionServer {
     }
 
     private static void handleUpload(ServerPlayerEntity player, UUID uuid, byte[] data) {
+        if (!com.atom.chat.config.AtomChatServerConfig.get().hostingEnabled) {
+            return;
+        }
         long now = System.currentTimeMillis();
         Long last = lastUploadMs.get(uuid);
         if (last != null && now - last < UPLOAD_INTERVAL_MS) {
@@ -106,6 +109,12 @@ public final class AvatarCompanionServer {
     }
 
     private static void handleRequest(ServerPlayerEntity player, UUID uuid) {
+        if (!com.atom.chat.config.AtomChatServerConfig.get().hostingEnabled) {
+            // Master switch off: answer the normal "no custom avatar" shape so
+            // the client silently keeps showing skins.
+            ServerPlayNetworking.send(player, new AvatarPayloads.AvatarDataPayload(uuid, new byte[0]));
+            return;
+        }
         long now = System.currentTimeMillis();
         Long last = lastRequestMs.put(uuid, now);
         if (last != null && now - last < REQUEST_INTERVAL_MS) {

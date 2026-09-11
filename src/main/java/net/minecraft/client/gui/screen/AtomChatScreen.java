@@ -14,6 +14,7 @@ import com.atom.chat.emote.EmoteStore;
 import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.ImageUploader;
+import com.atom.chat.net.MediaCompanionClient;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.OwnIdentity;
 import com.atom.chat.text.RichText;
@@ -2897,25 +2898,45 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     private void uploadAndAppend(Path file) {
         int[] size = ImageFiles.dimensions(file);
         imageUploading = true;
-        imageUploader.upload(file, url -> {
-            StringBuilder code = new StringBuilder("[[CICode,url=").append(url)
-                    .append(",name=").append(file.getFileName());
-            // Carry the intrinsic size so any client receiving this can lay the
-            // bubble out at the right aspect ratio before the download lands —
-            // that is what keeps the height from jumping when it arrives.
-            if (size != null) {
-                code.append(",w=").append(size[0]).append(",h=").append(size[1]);
-            }
-            code.append("]]");
-            // The upload callback runs on the uploader's thread; the chat field
-            // is only safe to touch from the render thread.
-            this.client.execute(() -> {
-                imageUploading = false;
-                inputAppend(inputGetText().isEmpty() ? code.toString() : " " + code);
-            });
-        }, error -> {
-            AtomChat.LOGGER.warn("Image upload failed: {}", error);
-            this.client.execute(() -> imageUploading = false);
+        // The server decides: when it hosts media, upload there first; any
+        // failure (or a server without the companion) falls back to uguu.
+        if (MediaCompanionClient.hostingEnabled()) {
+            MediaCompanionClient.uploadFile(file,
+                    url -> appendImageCode(url, file, size),
+                    error -> {
+                        AtomChat.LOGGER.warn("Server media upload failed ({}), falling back to uguu", error);
+                        uploadToUguu(file, size);
+                    });
+        } else {
+            uploadToUguu(file, size);
+        }
+    }
+
+    private void uploadToUguu(Path file, int[] size) {
+        imageUploader.upload(file,
+                url -> appendImageCode(url, file, size),
+                error -> {
+                    AtomChat.LOGGER.warn("Image upload failed: {}", error);
+                    this.client.execute(() -> imageUploading = false);
+                });
+    }
+
+    private void appendImageCode(String url, Path file, int[] size) {
+        StringBuilder code = new StringBuilder("[[CICode,url=").append(url)
+                .append(",name=").append(file.getFileName());
+        // Carry the intrinsic size so any client receiving this can lay the
+        // bubble out at the right aspect ratio before the download lands —
+        // that is what keeps the height from jumping when it arrives.
+        if (size != null) {
+            code.append(",w=").append(size[0]).append(",h=").append(size[1]);
+        }
+        code.append("]]");
+        String text = code.toString();
+        // The upload callbacks run off the render thread; the chat field is
+        // only safe to touch from the render thread.
+        this.client.execute(() -> {
+            imageUploading = false;
+            inputAppend(inputGetText().isEmpty() ? text : " " + text);
         });
     }
 

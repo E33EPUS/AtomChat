@@ -43,6 +43,7 @@ public class AtomChatClient implements ClientModInitializer {
                         .resolve("atomchat/wallpaper"));
         ImageLoader.get().init(CacheDirs.imageCacheDir());
         com.atom.chat.net.AvatarCompanionClient.init();
+        com.atom.chat.net.MediaCompanionClient.init();
         com.atom.chat.history.ChatHistory.init(
                 net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
                         .resolve("atomchat/history"));
@@ -65,6 +66,7 @@ public class AtomChatClient implements ClientModInitializer {
             com.atom.chat.history.ChatHistory.onJoin(client);
             com.atom.chat.page.ProfilePage.noteJoin();
             com.atom.chat.net.AvatarCompanionClient.onJoin();
+            com.atom.chat.net.MediaCompanionClient.onJoin();
             com.atom.chat.chat.OwnIdentity.reset();
             com.atom.chat.chat.TeleportCommands.reset();
         });
@@ -77,10 +79,12 @@ public class AtomChatClient implements ClientModInitializer {
             ChatStore.reset();
             com.atom.chat.chat.SeenPlayers.clear();
             com.atom.chat.chat.OwnIdentity.reset();
+            com.atom.chat.net.MediaCompanionClient.onDisconnect();
         });
         NotificationController.registerSound();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             com.atom.chat.history.ChatHistory.tick(client);
+            com.atom.chat.net.MediaCompanionClient.tick();
             // Expires banners regardless of whether the panel is open: their 4s
             // lifetime starts at enqueue, so a banner queued while the panel was
             // closed is already gone if you open the panel later than that.
