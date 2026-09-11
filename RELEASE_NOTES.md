@@ -4,6 +4,18 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
+## v0.2.7
+
+新增：服务端媒体托管 —— 服务端 `config/atomchat/atomchat-server.json` 的 `hostingEnabled`（默认开）决定聊天图片与 GIF 是托管在服务器上还是继续走外部图床；托管时客户端分块上传、服务端按 sha256 去重存进 `atomchat-data/media/`、消息里写 `atomchat-media:<id>` 短链、接收方按需分块拉取，全程走游戏连接、不开 HTTP 端口，上传有大小上限 / 魔数校验 / 限速 / 总量与时效修剪，任何失败都自动回退图床。
+新增：GIF 动图 —— 聊天图片与表情包支持 `.gif`，视口内循环播放（384px / 120 帧 / 800 万像素预算，超出截断或降级首帧）。
+修复：引用自己的消息时气泡里多出「引用 @名: 文本」前缀；透明底图片 / 动图背后透出灰底板；点击面板下半区会碰到看不见的原版聊天（触发点击事件、吞掉点击刷新未读、滚轮滚隐藏历史）。三条都只影响显示与输入，不改消息内容。
+更改：表情面板降采样到 128px 且只显示首帧，格子不再逐帧播放动图（发送出去仍播放）。
+
+Added: server-side media hosting. The server config `config/atomchat/atomchat-server.json` (`hostingEnabled`, on by default) decides whether chat images and GIFs are hosted on the server or keep going to the external image host. When hosting, the client uploads in chunks, the server deduplicates by sha256 into `atomchat-data/media/`, messages carry an `atomchat-media:<id>` link, and receivers fetch the bytes in chunks over the game connection - no HTTP port is ever opened. Uploads are size-capped, magic-checked, rate-limited and pruned by total size and age, and any failure falls back to the external host automatically.
+Added: animated GIFs for chat images and emotes, looping in the viewport (384px / 120 frames / 8M pixel budget, trimmed or degraded to the first frame beyond that).
+Fixed: the quote prefix ("quote @name: text") leaking into your own bubble, transparent PNG/GIFs rendering on a grey plate, and clicks in the lower half of the panel reaching the hidden vanilla chat (firing a hidden line's click event, swallowing the click to flush unread messages, or scrolling the hidden history with the wheel).
+Changed: the emote grid now decodes at 128px and shows the first frame only instead of animating every cell (sent emotes still animate).
+
 ## v0.2.6.1
 
 新增：Forge 1.20.1 构建 —— 与 Fabric / NeoForge 1.21.1 功能对齐的第三个平台版本，Skija 与 FlatLaf 以 JarJar 内嵌，安装方式同样是往 mods 里丢一个 jar。
