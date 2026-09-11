@@ -14,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
+import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL30;
 
 /**
@@ -46,6 +47,7 @@ public final class PanelBlurRenderer {
     private static int lastBlurTex = -1;
     private static boolean nextFullRefresh = true;
     private static boolean recreated = true;
+    private static long blurErrorCount;
 
     private PanelBlurRenderer() {
     }
@@ -100,13 +102,71 @@ public final class PanelBlurRenderer {
             return false;
         }
 
-        ensureTextures(pw, ph);
-        int blurTex = refreshBlur(fb.frameBufferId, fb.height, px, py, pw, ph);
-        if (blurTex == -1) {
-            return false;
-        }
+        // Snapshot the bindings this call is allowed to move, before anything
+        // touches them: the blur has to hand the frame's real render target back
+        // even when a pass bails out half-way. Nothing else restores the
+        // framebuffer for us (GlStateUtil does not own it).
+        int restoreFbo = GL30.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        int[] restoreViewport = new int[4];
+        GL30.glGetIntegerv(GL30.GL_VIEWPORT, restoreViewport);
+        boolean restoreScissor = GL30.glIsEnabled(GL30.GL_SCISSOR_TEST);
 
-        return drawRoundedQuad(pose, x, y, width, height, radius, alpha, blurTex);
+        // Drop errors other mods left in the queue so the ones seen below are
+        // actually ours.
+        drainGlErrors();
+
+        try {
+            ensureTextures(pw, ph);
+            int blurTex = refreshBlur(fb.frameBufferId, fb.height, px, py, pw, ph);
+            if (blurTex == -1) {
+                return false;
+            }
+            if (!drawRoundedQuad(pose, x, y, width, height, radius, alpha, blurTex)) {
+                return false;
+            }
+            // A silent driver-level failure would otherwise leave the panel
+            // tinted as if the blur had landed. Report it once and answer "no
+            // blur" so drawPanel keeps the solid background instead of showing
+            // whatever the broken pass wrote.
+            int glError = drainGlErrors();
+            if (glError != 0) {
+                reportBlurError(glError);
+                return false;
+            }
+            return true;
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, restoreFbo);
+            GL30.glViewport(restoreViewport[0], restoreViewport[1], restoreViewport[2], restoreViewport[3]);
+            if (restoreScissor) {
+                GL30.glEnable(GL30.GL_SCISSOR_TEST);
+            } else {
+                GL30.glDisable(GL30.GL_SCISSOR_TEST);
+            }
+        }
+    }
+
+    /** Empties the GL error queue, returning the first error found (0 = clean). */
+    private static int drainGlErrors() {
+        int first = 0;
+        for (int i = 0; i < 16; i++) {
+            int error = GL11C.glGetError();
+            if (error == 0) {
+                break;
+            }
+            if (first == 0) {
+                first = error;
+            }
+        }
+        return first;
+    }
+
+    /** Throttled: the blur runs every other frame, so a broken state would spam. */
+    private static void reportBlurError(int error) {
+        long seen = ++blurErrorCount;
+        if (seen <= 3 || seen % 200 == 0) {
+            AtomChat.LOGGER.warn("AtomChat panel blur hit GL error 0x{}; using the solid panel background (occurrence {})",
+                    Integer.toHexString(error), seen);
+        }
     }
 
     public static boolean isAvailable() {
@@ -177,16 +237,25 @@ public final class PanelBlurRenderer {
     private static int[] makeTexture(int w, int h) {
         int fbo = GL30.glGenFramebuffers();
         int tex = GlStateManager._genTexture();
-        GlStateManager._bindTexture(tex);
-        GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_MIN_FILTER, GL30.GL_LINEAR);
-        GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_MAG_FILTER, GL30.GL_LINEAR);
-        GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_WRAP_S, GL30.GL_CLAMP_TO_EDGE);
-        GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_WRAP_T, GL30.GL_CLAMP_TO_EDGE);
-        GlStateManager._texImage2D(GL30.GL_TEXTURE_2D, 0, GL30.GL_RGBA8, w, h, 0,
-                GL30.GL_RGBA, GL30.GL_UNSIGNED_BYTE, null);
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
-        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_TEXTURE_2D, tex, 0);
-        return new int[]{fbo, tex};
+        // This runs mid-frame, so the framebuffer binding has to be handed back:
+        // leaving the new (panel-sized) FBO bound sent every later draw of that
+        // frame into it, and refreshBlur() then recorded the wrong target as
+        // "old" while restoring.
+        int previousFbo = GL30.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        try {
+            GlStateManager._bindTexture(tex);
+            GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_MIN_FILTER, GL30.GL_LINEAR);
+            GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_MAG_FILTER, GL30.GL_LINEAR);
+            GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_WRAP_S, GL30.GL_CLAMP_TO_EDGE);
+            GlStateManager._texParameter(GL30.GL_TEXTURE_2D, GL30.GL_TEXTURE_WRAP_T, GL30.GL_CLAMP_TO_EDGE);
+            GlStateManager._texImage2D(GL30.GL_TEXTURE_2D, 0, GL30.GL_RGBA8, w, h, 0,
+                    GL30.GL_RGBA, GL30.GL_UNSIGNED_BYTE, null);
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+            GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_TEXTURE_2D, tex, 0);
+            return new int[]{fbo, tex};
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFbo);
+        }
     }
 
     private static void destroyTextures() {
