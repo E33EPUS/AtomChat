@@ -4,12 +4,16 @@ import io.github.humbleui.skija.Image;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -153,6 +157,59 @@ class ImageLoaderTest {
         assertEquals(64, same.getWidth());
         assertEquals(32, same.getHeight());
         same.close();
+    }
+
+    /** Lays a cache file down by hand, stamped {@code ageDays} in the past. */
+    private Path staleCacheFile(String url, byte[] bytes, int ageDays) throws IOException {
+        Path file = tempDir.resolve(ImageLoader.sha256Hex(url) + ".bin");
+        Files.write(file, bytes);
+        Files.setLastModifiedTime(file,
+                FileTime.fromMillis(System.currentTimeMillis() - ageDays * 86_400_000L));
+        return file;
+    }
+
+    private static byte[] resource(String name) throws IOException {
+        try (InputStream in = ImageLoaderTest.class.getResourceAsStream(name)) {
+            assertNotNull(in, "missing test resource " + name);
+            return in.readAllBytes();
+        }
+    }
+
+    @Test
+    void diskCacheDropsEntriesUnusedForAWeek() throws Exception {
+        // Files this old exist before the loader is built, so the startup trim
+        // is what has to remove them.
+        Path stale = staleCacheFile("http://test/stale", png(2, 2), 8);
+        Path fresh = staleCacheFile("http://test/fresh", png(2, 2), 6);
+
+        loader(System::currentTimeMillis, url -> {
+            throw new IllegalStateException("no network");
+        });
+
+        assertFalse(Files.exists(stale), "eight days unused must not survive the seven day cap");
+        assertTrue(Files.exists(fresh), "six days unused is still inside the cap");
+    }
+
+    @Test
+    void readingADiskCacheEntryRefreshesItsAge() throws Exception {
+        // The animated path is the one that matters: unlike the static path it
+        // does not rewrite the cache file on a hit, so only the last-used stamp
+        // can keep it alive here.
+        ImageLoader l = loader(System::currentTimeMillis, url -> {
+            throw new IllegalStateException("no network");
+        });
+        String seen = "http://test/anim.gif";
+        byte[] gif = resource("/atomchat/animated_3frames.gif");
+        Path kept = staleCacheFile(seen, gif, 8);
+        Path idle = staleCacheFile("http://test/idle", gif, 8);
+
+        // Served from disk (the fetcher only throws), which stamps it as used.
+        assertNotNull(l.get(seen, true));
+
+        l.trimDiskCache();
+
+        assertTrue(Files.exists(kept), "an entry read just now must survive the age cap");
+        assertFalse(Files.exists(idle), "an entry nobody asked for ages out");
     }
 
     @Test
