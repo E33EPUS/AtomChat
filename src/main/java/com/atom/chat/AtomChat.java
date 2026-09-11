@@ -1,5 +1,9 @@
 package com.atom.chat;
 
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -32,6 +36,24 @@ public class AtomChat {
             // entrypoint pattern and master hosting switch as the avatar side.
             com.atom.chat.net.MediaPayloads.register();
         }));
+
+        // Retention and lifecycle housekeeping for the two hosted stores
+        // (atomchat-data/media and /avatars). These sit on the game bus: the
+        // tick fires for a dedicated server and for the integrated server of a
+        // single-player world alike, while a client connected to someone else's
+        // server never sees either event.
+        MinecraftForge.EVENT_BUS.addListener((TickEvent.ServerTickEvent event) -> {
+            if (event.phase == TickEvent.Phase.END) {
+                com.atom.chat.net.CompanionMaintenance.tick();
+            }
+        });
+        MinecraftForge.EVENT_BUS.addListener((ServerStartedEvent event) ->
+                com.atom.chat.net.CompanionMaintenance.onServerStarted());
+        MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> {
+            if (event.getEntity() != null) {
+                com.atom.chat.net.CompanionMaintenance.onPlayerLogout(event.getEntity().getUUID());
+            }
+        });
 
         if (FMLEnvironment.dist.isClient()) {
             // Client-only listeners, key mappings, shaders and the AWT setup.

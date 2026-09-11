@@ -149,6 +149,15 @@ public final class AvatarCompanionServer {
                 new AvatarPayloads.AvatarDataPayload(uuid, data));
     }
 
+    /** Drops the per-player rate-limit bookkeeping (called when a player leaves). */
+    static void forgetPlayer(UUID player) {
+        if (player == null) {
+            return;
+        }
+        lastUploadMs.remove(player);
+        lastRequestMs.remove(player);
+    }
+
     private static Path storageDir() {
         Path dir = storageDir;
         if (dir == null) {

@@ -29,8 +29,15 @@ public class AtomChatServerConfig {
     public int maxFileKb = 2048;
     /** Total bytes kept in the media store, in MB. */
     public int maxTotalMb = 512;
-    /** Delete hosted media older than this many days; 0 keeps it forever. */
-    public int retentionDays = 30;
+    /** Total bytes kept in the avatar store, in MB. */
+    public int maxAvatarTotalMb = 64;
+    /**
+     * Delete hosted media and avatars older than this many days; 0 keeps them
+     * forever. The sweep runs at server start, every five minutes while the
+     * server is up, and after every accepted upload, so it does not depend on
+     * someone uploading to trigger it.
+     */
+    public int retentionDays = 7;
     /** Per-player upload cooldown, in milliseconds. */
     public int uploadCooldownMs = 3000;
 
@@ -62,6 +69,10 @@ public class AtomChatServerConfig {
 
     public long maxTotalBytes() {
         return Math.max(1L, maxTotalMb) * 1024L * 1024L;
+    }
+
+    public long maxAvatarTotalBytes() {
+        return Math.max(1L, maxAvatarTotalMb) * 1024L * 1024L;
     }
 
     private static Path path() {

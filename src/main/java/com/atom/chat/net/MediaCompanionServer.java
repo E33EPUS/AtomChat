@@ -11,10 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,8 +26,9 @@ import java.util.function.Supplier;
  * <p>Hardening: uploads are content-addressed (sha256), size capped and
  * magic-sniffed (only png/jpg/gif/webp/bmp); the client name is ignored so it
  * can never influence a path. Uploads are rate limited per player and the
- * store is trimmed by total size / age. {@code hostingEnabled} is the master
- * switch shared with the avatar companion.
+ * store is trimmed by total size / age - see {@link CompanionMaintenance}.
+ * {@code hostingEnabled} is the master switch shared with the avatar
+ * companion.
  *
  * <p>Handlers are registered by {@link MediaPayloads#register} through
  * {@code consumerMainThread}, so every one of them already runs on the server
@@ -42,9 +40,11 @@ public final class MediaCompanionServer {
 
     private static final class Pending {
         final MediaUploadBuffer buffer;
+        final long startedAtMs;
 
-        Pending(MediaUploadBuffer buffer) {
+        Pending(MediaUploadBuffer buffer, long startedAtMs) {
             this.buffer = buffer;
+            this.startedAtMs = startedAtMs;
         }
     }
 
@@ -140,7 +140,8 @@ public final class MediaCompanionServer {
         }
         lastUploadMs.put(player.getUUID(), now);
         uploads.computeIfAbsent(player.getUUID(), key -> new ConcurrentHashMap<>())
-                .put(payload.uploadId(), new Pending(new MediaUploadBuffer(payload.totalBytes(), config.maxFileBytes())));
+                .put(payload.uploadId(), new Pending(
+                        new MediaUploadBuffer(payload.totalBytes(), config.maxFileBytes()), now));
     }
 
     private static void onChunk(ServerPlayer player, MediaPayloads.UploadChunk payload) {
@@ -188,7 +189,7 @@ public final class MediaCompanionServer {
                 Files.write(tmp, content);
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             }
-            prune();
+            CompanionMaintenance.pruneMedia();
             AtomChat.LOGGER.info("Stored hosted media {} ({} bytes)", mediaId, content.length);
             result(player, uploadId, mediaId, "");
         } catch (IOException e) {
@@ -240,71 +241,32 @@ public final class MediaCompanionServer {
         }
     }
 
-    /** Deletes expired files, then trims oldest-first to the total-size cap. */
-    private static void prune() {
-        Path dir = mediaDir();
-        if (dir == null || !Files.isDirectory(dir)) {
+    /**
+     * Drops everything remembered about one player: their pending upload
+     * buffers (a disconnect mid-transfer would otherwise pin those bytes until
+     * the server stops) and their upload cooldown entry.
+     */
+    static void forgetPlayer(UUID player) {
+        if (player == null) {
             return;
         }
-        AtomChatServerConfig config = AtomChatServerConfig.get();
-        long cutoff = config.retentionDays > 0
-                ? System.currentTimeMillis() - config.retentionDays * 86_400_000L
-                : Long.MIN_VALUE;
-        List<Path> files = new ArrayList<>();
-        long total = 0L;
-        try (var stream = Files.list(dir)) {
-            for (Path p : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(p)) {
-                    continue;
-                }
-                if (modifiedOrZero(p) < cutoff) {
-                    deleteQuietly(p);
-                    continue;
-                }
-                files.add(p);
-                total += sizeOrZero(p);
-            }
-        } catch (IOException e) {
-            AtomChat.LOGGER.warn("Failed to scan hosted media directory", e);
-            return;
-        }
-        long max = config.maxTotalBytes();
-        if (total <= max) {
-            return;
-        }
-        files.sort(Comparator.comparingLong(MediaCompanionServer::modifiedOrZero));
-        for (Path p : files) {
-            if (total <= max) {
-                break;
-            }
-            long size = sizeOrZero(p);
-            if (deleteQuietly(p)) {
-                total -= size;
-            }
-        }
+        uploads.remove(player);
+        lastUploadMs.remove(player);
     }
 
-    private static boolean deleteQuietly(Path p) {
-        try {
-            return Files.deleteIfExists(p);
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private static long sizeOrZero(Path p) {
-        try {
-            return Files.size(p);
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
-    private static long modifiedOrZero(Path p) {
-        try {
-            return Files.getLastModifiedTime(p).toMillis();
-        } catch (IOException e) {
-            return 0L;
+    /**
+     * Drops pending uploads that were started but never finished. A client that
+     * goes away mid-transfer leaves one buffer behind, and one that simply
+     * stops sending never touches the logout path at all.
+     */
+    static void sweepStaleUploads(long now) {
+        for (Map.Entry<UUID, Map<UUID, Pending>> player : uploads.entrySet()) {
+            Map<UUID, Pending> pending = player.getValue();
+            pending.entrySet().removeIf(entry -> now - entry.getValue().startedAtMs
+                    > CompanionMaintenance.STALE_UPLOAD_MS);
+            if (pending.isEmpty()) {
+                uploads.remove(player.getKey(), pending);
+            }
         }
     }
 
