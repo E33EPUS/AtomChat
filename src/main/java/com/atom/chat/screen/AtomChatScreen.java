@@ -16,6 +16,7 @@ import com.atom.chat.image.ImageUploader;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.PrivateEchoTracker;
+import com.atom.chat.chat.PublicEchoTracker;
 import com.atom.chat.chat.OwnIdentity;
 import com.atom.chat.text.RichText;
 import com.atom.chat.nav.AppPage;
@@ -3047,6 +3048,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 normalized = "[[CICode,url=" + normalized + ",name=图片]]";
             }
             this.client.player.connection.sendChat(normalized);
+            // Arm echo suppression: the server relays this line back through the
+            // identity-less path on NCR-style servers (e33chat parity).
+            PublicEchoTracker.markSent(normalized);
         }
         this.client.gui.getChat().addRecentChat(normalized);
         // Vanilla never echoes commands back into the chat feed as your own

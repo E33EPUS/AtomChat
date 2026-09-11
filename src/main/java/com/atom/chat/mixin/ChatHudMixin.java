@@ -16,6 +16,7 @@ import com.atom.chat.chat.OwnNameMatcher;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.PrivateChatParser;
 import com.atom.chat.chat.PrivateEchoTracker;
+import com.atom.chat.chat.PublicEchoTracker;
 import com.atom.chat.chat.QuoteParser;
 import com.atom.chat.chat.PrivateChatStore;
 import com.atom.chat.chat.SeenPlayers;
@@ -102,6 +103,11 @@ public class ChatHudMixin {
         TeleportCommands.checkFailure(raw);
 
         SenderMeta meta = MessageCapture.consume();
+        if (AtomChatConfig.get().debug) {
+            // Whether the channel-level capture landed at all: a missing meta is
+            // why an own line falls through to the text heuristics (2026-09-11).
+            AtomChat.LOGGER.info("[capture] meta={} line={}", meta != null, raw);
+        }
         // Machine-to-machine chat protocols must never be claimed as player chat
         // or suppressed as an own echo. e33chat routes them to the system channel
         // ("宁可不杀不可错杀"): when in doubt, let the line through.
@@ -180,11 +186,27 @@ public class ChatHudMixin {
                     : atomchat$ensureSenderColor(
                             displayName != null ? RichText.literal(displayName) : RichText.empty(),
                             parsed.profileName());
-            if (atomchat$isOwnIdentity(parsed, client)) {
-                // The channel layer had no identity for this line, but the text
-                // parse resolved it to us: keep the decorated label as the
-                // self-name cache source (e33chat caches on every own message).
+            // Own echo on this identity-less path (NCR-style relays). Two
+            // independent signals, either one is enough:
+            //  - the wire name is one of our own renderings (team prefix/suffix
+            //    included), or
+            //  - the text is exactly a message we just sent and no other player is
+            //    named in the line (e33chat's EchoTracker contract: content first,
+            //    never a time-only guess).
+            boolean ownIdentity = atomchat$isOwnIdentity(parsed, client);
+            boolean ownEchoText = false;
+            if (!ownIdentity && !atomchat$otherPlayerNamed(raw, client)) {
+                ownEchoText = PublicEchoTracker.consumeIfEcho(body, raw);
+            }
+            if (ownIdentity || ownEchoText) {
+                // The local bubble already exists; only keep the server-decorated
+                // label as the self-name cache source (e33chat parity).
+                if (AtomChatConfig.get().debug) {
+                    AtomChat.LOGGER.info("[echo] own line dropped (identity={} text={}) name={} line={}",
+                            ownIdentity, ownEchoText, displayName, raw);
+                }
                 OwnIdentity.cache(senderRichParsed);
+                return;
             }
             if (sliced.isPresent()) {
                 RichText richContent = quote != null
@@ -206,13 +228,21 @@ public class ChatHudMixin {
             return;
         }
 
+        String content = ChatPipeline.extractContent(raw, meta);
         boolean own = isOwn(meta, raw, client);
+        boolean ownEchoText = false;
+        if (!own && !atomchat$otherPlayerNamed(raw, client)) {
+            // Identity-less relay of our own line: the decorated wire name is not
+            // proof, the text we just sent is (e33chat parity).
+            ownEchoText = PublicEchoTracker.consumeIfEcho(content, raw);
+            own = ownEchoText;
+        }
         if (AtomChatConfig.get().debug) {
             // Why a line was routed to the own-echo branch vs the public feed:
             // the only way to tell an echo bug from a real duplicate after the
             // fact (see the 2026-09-11 team-prefix echo).
-            AtomChat.LOGGER.info("[route] own={} uuid={} sender={} profile={} text={}",
-                    own, meta.senderUuid(), meta.senderName(), meta.profileName(), raw);
+            AtomChat.LOGGER.info("[route] own={} textEcho={} uuid={} sender={} profile={} text={}",
+                    own, ownEchoText, meta.senderUuid(), meta.senderName(), meta.profileName(), raw);
         }
         if (own) {
             // Own message echo: already added locally by AtomChatScreen. The
@@ -238,7 +268,6 @@ public class ChatHudMixin {
             return;
         }
 
-        String content = ChatPipeline.extractContent(raw, meta);
         String displayName = ChatPipeline.decoratedDisplayName(raw, meta);
         if (displayName == null) {
             displayName = meta.senderName();
@@ -346,8 +375,42 @@ public class ChatHudMixin {
         if (parsed.senderUuid() != null && parsed.senderUuid().equals(client.player.getUUID())) {
             return true;
         }
-        return parsed.profileName() != null
-                && parsed.profileName().equals(client.player.getName().getString());
+        // Wire names are decorated (team prefix/suffix, tab display name), so the
+        // bare profile name is not the right thing to compare against.
+        java.util.List<String> own = OwnIdentity.wireNameCandidates();
+        return OwnNameMatcher.matches(parsed.profileName(), own)
+                || OwnNameMatcher.matches(parsed.senderName(), own);
+    }
+
+    /**
+     * True when the line names a different online player. That makes it their
+     * message rather than our relayed echo, however well the text matches
+     * something we just sent (e33chat's EchoSuppressor guard).
+     */
+    @Unique
+    private static boolean atomchat$otherPlayerNamed(String raw, Minecraft client) {
+        if (raw == null || client == null || client.player == null || client.getConnection() == null) {
+            return false;
+        }
+        java.util.List<String> own = OwnIdentity.wireNameCandidates();
+        String bare = client.player.getName().getString();
+        for (PlayerInfo info : client.getConnection().getOnlinePlayers()) {
+            if (info.getProfile().getId().equals(client.player.getUUID())) {
+                continue;
+            }
+            for (String cand : ChatClassifier.nameCandidates(info)) {
+                if (cand == null || cand.isBlank()) {
+                    continue;
+                }
+                if (cand.equals(bare) || OwnNameMatcher.matches(cand, own)) {
+                    continue;
+                }
+                if (raw.contains(cand)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
