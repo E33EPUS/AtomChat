@@ -9,11 +9,12 @@
 </p>
 
 <p align="center">
-  <img alt="MC" src="https://img.shields.io/badge/MC-1.21.1-green">
+  <img alt="MC" src="https://img.shields.io/badge/MC-1.21.1%20%7C%201.20.1-green">
   <img alt="Loader" src="https://img.shields.io/badge/Loader-Fabric-orange">
   <img alt="Loader" src="https://img.shields.io/badge/Loader-NeoForge-blue">
-  <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
-  <img alt="Java" src="https://img.shields.io/badge/Java-21%2B-yellow">
+  <img alt="Loader" src="https://img.shields.io/badge/Loader-Forge-red">
+  <img alt="Side" src="https://img.shields.io/badge/Side-Client%20%7C%20Server-blue">
+  <img alt="Java" src="https://img.shields.io/badge/Java-17%2B-yellow">
   <img alt="Version" src="https://img.shields.io/github/v/release/E33EPUS/AtomChat?sort=semver">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-brightgreen">
 </p>
@@ -21,13 +22,14 @@
 <p align="center">
   <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Fabric Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Fabric-1.21.1"></a>
   <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="NeoForge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=NeoForge-1.21.1"></a>
+  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Forge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Forge-1.20.1"></a>
 </p>
 
-原子聊天（AtomChat）是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发的全新聊天美化 mod，旨在把原版聊天屏改造成「手机 App」风格的独立聊天面板，元素包括：圆角气泡、自定义头像、真实玩家名、表情 / 颜文字 / 表情包、图片消息、复制引用、多行输入与 QQ 式动效，以及除聊天界面外的更多界面。
+原子聊天（AtomChat）是基于 [E33Chat](https://github.com/E33EPUS/E33Chat) 理念而开发的全新聊天美化 mod，旨在把原版聊天屏改造成「手机 App」风格的独立聊天面板，元素包括：圆角气泡、自定义头像、真实玩家名、表情 / 颜文字 / 表情包、图片与 GIF 动图消息、服务端媒体托管、复制引用、多行输入与 QQ 式动效，以及除聊天界面外的更多界面。
 
 渲染层使用 [Skija](https://github.com/HumbleUI/skija)，所有界面由矢量绘制，不依赖原版聊天纹理。
 
-> 状态：**v0.2.6 已实现并已发布（Fabric / NeoForge 1.21.1）**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
+> 状态：**v0.2.7 已发布（Fabric / NeoForge 1.21.1，Forge 1.20.1）**。可从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载；项目是有意做成 E33Chat 思路的干净重写，不是 E33Chat 的 fork。
 
 ---
 
@@ -54,14 +56,15 @@
 
 | 依赖 | 类型 | 说明 |
 |---|---|---|
-| Minecraft | 必需 | 1.21.1 |
+| Minecraft | 必需 | 1.21.1（Fabric / NeoForge 版）或 1.20.1（Forge 版） |
 | Fabric Loader | 必需（Fabric 版） | 0.16.0+ |
 | Fabric API | 必需（Fabric 版） | 任意兼容 1.21.1 的版本 |
 | NeoForge | 必需（NeoForge 版） | 21.1.235 |
-| Java | 必需 | 21+ |
+| Forge | 必需（Forge 版） | 47.x（1.20.1） |
+| Java | 必需 | Fabric / NeoForge 版需 21+，Forge 1.20.1 版需 17+ |
 
-1. 从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载最新 JAR，或按 [开发与构建](#开发与构建) 自行构建
-2. 将 JAR 放入 `.minecraft/mods/`
+1. 从 [Releases](https://github.com/E33EPUS/AtomChat/releases) 下载对应平台的 JAR（`atomchat-Fabric-1.21.1-*.jar` / `atomchat-NeoForge-1.21.1-*.jar` / `atomchat-Forge-1.20.1-*.jar`），或按 [开发与构建](#开发与构建) 自行构建
+2. 将 JAR 放入 `.minecraft/mods/`；若想让服务端托管图片 / GIF 并同步头像，把同一个 JAR 也放进服务端的 `mods/`
 3. 启动游戏，按聊天键（默认 `T` / `/`）打开 AtomChat
 
 ---
@@ -92,9 +95,10 @@
 - 📱 **手机面板界面** — 原版聊天 HUD 打开期间隐藏，AtomChat 以独立面板呈现；面板模糊背景 + 半透明毛玻璃输入栏
 - 🖼️ **自定义头像** — 本地选图裁剪成方形头像，档案页与自己的气泡即时显示；同一服务器装了 AtomChat 时自动同步给其他玩家（换头像即时广播刷新），无伴侣环境静默降级为皮肤
 - 🔔 **通知横幅与音效** — 被 @、被引用、收到私聊时面板顶部弹出横幅（点击跳转原消息并高亮），配套原创合成的气泡提示音；设置 → 聊天 →「通知」可分别开关并调音量
-- 🖼️ **图片消息** — 原生渲染 `[[CICode]]` 图片协议（与 E33Chat / ChatImage 互通），按原图比例显示；加载中显示占位文案；右键图片可保存原图到本地
-- 📤 **本地图片发送** — FlatLaf 文件选择器默认“详细信息”视图并直接显示缩略图；支持拖放 / Ctrl+V 粘贴；上传到图床后自动生成 CICode
-- 😀 **表情 / 颜文字 / 表情包** — 三个标签页带滑动指示器与全宽 push 切换动画；表情包从 `<config>/atomchat/emotes/` 持久化（png/jpg/jpeg，最多 10 个），`+` 号选择图片，悬停 `×` 删除
+- 🖼️ **图片消息** — 原生渲染 `[[CICode]]` 图片协议（与 E33Chat / ChatImage 互通），按原图比例显示，**GIF 动图在气泡内自动循环播放**；透明底 PNG / GIF 直接透出面板背景、不再垫灰底板；加载中显示占位文案；右键图片可保存原图到本地
+- 📤 **本地图片发送** — FlatLaf 文件选择器默认“详细信息”视图并直接显示缩略图；支持拖放 / Ctrl+V 粘贴；上传后自动生成 CICode，服务端不可用时自动回退第三方图床
+- 📦 **服务端媒体托管** — 服务端装了 AtomChat 时，图片与 GIF 直接上传到服务器并由服务器分发给其他玩家，不再依赖第三方图床：内容寻址去重、按需分块下发、只走游戏连接、**不开 HTTP 端口**；服务端未装 / 关闭托管 / 超限 / 上传失败时自动回退图床。同一个 `hostingEnabled` 总开关也管自定义头像同步
+- 😀 **表情 / 颜文字 / 表情包** — 三个标签页带滑动指示器与全宽 push 切换动画；表情包从 `<config>/atomchat/emotes/` 持久化（png/jpg/jpeg/gif，最多 10 个），`+` 号选择图片，悬停 `×` 删除；gif 表情在面板里只显示首帧（保证格子流畅），发送出去后正常播放
 - ⚡ **常用语** — 输入栏闪电按钮打开常用语列表；点选插入输入框（不直接发送），支持新增 / 行内编辑 / 删除，单条 ≤256 字符、最多 20 条
 - 🔗 **富文本消息** — 玩家名/正文支持颜色、下划线、点击与悬停：`/tell`、坐标、FTB 接受/拒绝、外部链接均可点；裸 URL 自动转链接
 - 📋 **复制 / 引用 / 保存** — 右键消息复制、引用；图片消息可保存原图；菜单带 20×20 SVG 线性图标
@@ -135,12 +139,13 @@
 - 点击图片按钮 → FlatLaf 选择器（默认打开 `Pictures` / `图片` 文件夹，带缩略图预览）
 - 拖拽图片文件到游戏窗口，或复制图片后 `Ctrl+V`：自动上传并插入草稿
 - 上传过程输入框占位显示「图片上传中…」；完成后按回车发送
-- 当前默认图床为 uguu.se，链接约 3 小时过期；本模组暂无服务端媒体托管
+- 服务端装了 AtomChat 且开启 `hostingEnabled` 时，图片与 GIF 会先上传到服务器（内容寻址，重复图片只存一份），消息里写入 `atomchat-media:<id>` 短链，其他玩家按需拉取；服务端未安装 / 关闭托管 / 超过 `maxFileKb` / 上传失败时自动回退图床
+- 默认第三方图床为 uguu.se，链接约 3 小时过期；服务端托管的文件不过期，由服务端按 `maxTotalMb` 与 `retentionDays` 自动修剪
 
 ### 表情包
 
 - 目录：`.minecraft/config/atomchat/emotes/`
-- 支持 png / jpg / jpeg，按文件名排序，最多 10 个
+- 支持 png / jpg / jpeg / gif，按文件名排序，最多 10 个（gif 在面板里显示首帧，发送后播放）
 - 在「表情包」标签页点末尾 `+` 添加；悬停缩略图显示 `×` 可删除
 - 点击表情包会自动上传并插入草稿，然后关闭面板（一次一个）
 
@@ -186,12 +191,26 @@
 |---|---|
 | `atomchat-client.json` | 主配置文件（首次启动自动生成） |
 | `avatar/` | 自定义头像（256px PNG） |
-| `emotes/` | 表情包（png / jpg / jpeg，最多 10 个） |
+| `emotes/` | 表情包（png / jpg / jpeg / gif，最多 10 个） |
 | `wallpaper/` | 自定义壁纸 |
 | `history/` | 聊天记录（各存档 / 服务器独立） |
 | `debug/` | 调试模式下导出的头像采样 PNG |
 
-此外，自动下载的聊天图片缓存与他人头像数据位于 `<游戏目录>/atomchat-data/`（上限 500 文件 / 100 MB，可在 设置 → 关于 中查看并清空）。
+此外，自动下载的聊天图片缓存与他人头像数据位于 `<游戏目录>/atomchat-data/`（上限 500 文件 / 100 MB，可在 设置 → 关于 中查看并清空）。服务端托管下来的媒体则放在服务端自己的 `<服务端游戏目录>/atomchat-data/media/`。
+
+### 服务端配置
+
+服务端（或单人 / 局域网主机的服务端侧）装了 AtomChat 时，会在 `<服务端游戏目录>/config/atomchat/atomchat-server.json` 生成一份服务端配置（首次启动自动创建，手改后下次有客户端进服时生效）：
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `hostingEnabled` | `true` | 总开关：本服务端是否托管聊天图片 / GIF 与玩家头像。关闭后客户端自动回退第三方图床、头像回退皮肤 |
+| `maxFileKb` | `2048` | 单个托管文件的大小上限（KB），超出则回退图床 |
+| `maxTotalMb` | `512` | 媒体库总容量上限（MB），超出后按最旧优先删除 |
+| `retentionDays` | `30` | 托管文件保留天数，`0` 表示永久保留 |
+| `uploadCooldownMs` | `3000` | 同一玩家两次上传之间的最小间隔（毫秒） |
+
+服务端媒体存放在 `<服务端游戏目录>/atomchat-data/media/`，文件名即内容哈希、天然按内容去重。
 
 ---
 
@@ -201,35 +220,39 @@
 |---|---|
 | Fabric 1.21.1 | ✅ 支持 |
 | NeoForge 1.21.1 | ✅ 支持 |
-| Java 21+ | ✅ 必需 |
-| 服务端 | ✅ 无需安装（纯客户端）；服务端安装后激活自定义头像同步 |
+| Forge 1.20.1 | ✅ 支持 |
+| Java | ✅ Fabric / NeoForge 版需 21+；Forge 1.20.1 版需 17+ |
+| 服务端 | ✅ 无需安装（纯客户端）；服务端安装后激活**服务端媒体托管**与自定义头像同步 |
 | `[[CICode]]` 图片协议 | ✅ 与 E33Chat / ChatImage 系互通 |
 | 花名 / 昵称插件 | 🟡 尽力识别（点击私聊 / Tab 名 / 装饰名结构）；极端未知格式回退灰字 |
 | 聊天头像（ChatHeads） | ✅ 兼容 |
 | 聊天动画（Chat Animation）/ 同类型动画 Mod | ✅ 兼容 |
 | EasyBot | 🟡 尽力识别（QQ 消息类型解析）；无法解析则回退灰字 |
 | Quark | 🚫 不显示表情菜单，正尝试兼容 |
-| 其他加载器 / 版本 | ❌ 目前仅支持 Fabric / NeoForge 的 1.21.1 |
+| 其他加载器 / 版本 | ❌ 目前仅支持 Fabric / NeoForge 的 1.21.1 与 Forge 的 1.20.1 |
 
 ---
 
 ## 已知限制
 
-1. 目前支持 Fabric / NeoForge 1.21.1；Skija Windows x64 原生库已内置，Linux / macOS 尚未打包（无法运行）
-2. 图片默认上传第三方图床 uguu.se，约 3 小时过期；暂无服务端媒体托管（计划）
+1. 支持 Fabric / NeoForge 1.21.1 与 Forge 1.20.1；Skija Windows x64 原生库已内置，Linux / macOS 尚未打包（无法运行）
+2. 服务端媒体托管需要服务端也安装 AtomChat；未安装或关闭托管时图片仍走第三方图床 uguu.se（约 3 小时过期）。超过 `maxFileKb`（默认 2 MB）的文件不会再上传服务端而是直接回退图床，客户端也不会为它重新压缩
 3. 暂无 E33Chat 的私聊侧边栏、搜索等能力；服务端格式模板已支持（手改 `chatTemplates` / `whisperTemplates`），按世界聊天记录持久化已内置（默认关闭）
 4. 玩家身份解析为尽力而为：tell-click 结构捕获、离线 seen 缓存、ownDisplayName 多级降级；极端未知格式回退灰字
 5. 聊天记录持久化默认关闭；开启后按服务器 / 世界保存在磁盘，重进同一服务器恢复，跨世界 / 服务器不会串台
+6. 服务端媒体托管的端到端联调目前只做过「单人 / 局域网主机的服务端侧」一种场景，独立服务器（尤其 Linux，无内置 Skija 原生库）与两个客户端互相拉图尚未实测
 
 ---
 
 ## 隐私与数据
 
 > [!WARNING]
-> 你发送的本地图片会被上传到第三方图床（默认 uguu.se）且他人可保存。你的消息也可能被开启了聊天记录的用户保存。请勿发送敏感或私密内容。
+> 你发送的本地图片会被上传到第三方图床（默认 uguu.se），或（服务端开启托管时）保存到你所在服务器的磁盘上，且他人可保存 / 转发。你的消息也可能被开启了聊天记录的用户保存。请勿发送敏感或私密内容。
 
 - 模组不上传任何遥测 / 个人信息
 - 图片上传仅在主动选择 / 粘贴 / 拖入图片时发生
+- 服务端托管只通过游戏连接传输字节，不开放 HTTP 端口，也不会把媒体暴露给未连接的玩家
+- 开启托管的服务端会在 `<服务端游戏目录>/atomchat-data/media/` 保留一份你的图片副本，由服务端按 `maxTotalMb` / `retentionDays` 修剪，管理员也可随时手动删除
 - 本地配置与表情包仅存于 `.minecraft/config/atomchat/`，不会自动同步
 - 皮肤头像解析会按玩家名 / UUID 请求 Minecraft 皮肤服务，属于原版同款行为
 
@@ -237,13 +260,15 @@
 
 ## 常见问题
 
-**需要装服务端吗？** 不需要，AtomChat 是纯客户端模组，但服务端安装则激活自定义头像功能。
+**需要装服务端吗？** 不需要，AtomChat 是纯客户端模组。服务端（或单人 / 局域网主机的服务端侧）装了 AtomChat 后，会额外激活**服务端媒体托管**（图片与 GIF 走服务器、不依赖图床）与**自定义头像同步**。
 
 **怎么发图片？** 点图片按钮选择本地图片，或拖图片进窗口 / Ctrl+V 粘贴；上传完成后自动插入草稿，再回车发送。
 
+**图片是走图床还是走服务器？** 服务端装了 AtomChat 且 `hostingEnabled=true` 时优先走服务器，消息里是 `atomchat-media:<id>` 短链；服务端没装 / 关闭托管 / 文件超过 `maxFileKb` / 上传失败时自动回退 uguu.se 图床。服务端托管的内容由服务器按容量与时效自动清理。想确认实际走了哪条路，可以看日志：托管成功是 `Stored hosted media`，回退图床是 `Uploaded chat image to the external host`。
+
 **为什么某条消息显示为灰色系统消息？** 客户端无法确定它是玩家消息时会保守归为系统灰字（例如昵称插件使用无法解析的格式）。
 
-**表情包存在哪里？** `.minecraft/config/atomchat/emotes/`，最多 10 个，支持 png / jpg / jpeg。
+**表情包存在哪里？** `.minecraft/config/atomchat/emotes/`，最多 10 个，支持 png / jpg / jpeg / gif。
 
 **怎么改颜色 / 大小？** 游戏内 `设置 → 外观` 即时调整（颜色项带预设与自定义拾色器）；也可以编辑 `config/atomchat/atomchat-client.json` 后重启游戏。
 
@@ -263,7 +288,11 @@
 ./gradlew.bat build
 ```
 
-产物位于 `build/libs/atomchat-Fabric-1.21.1-<version>.jar`。
+产物位于 `build/libs/`：
+
+- Fabric：`atomchat-Fabric-1.21.1-<version>.jar`
+- NeoForge：`atomchat-NeoForge-1.21.1-<version>.jar`
+- Forge：`atomchat-Forge-1.20.1-<version>.jar`（另有未内嵌依赖的 `-slim` 版本，发版请用不带 `-slim` 的那个）
 
 ```bash
 ./gradlew.bat test
