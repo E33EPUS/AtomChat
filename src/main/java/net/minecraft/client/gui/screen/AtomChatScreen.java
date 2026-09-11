@@ -15,6 +15,7 @@ import com.atom.chat.image.ImageLoader;
 import com.atom.chat.image.ImageSaver;
 import com.atom.chat.image.ImageUploader;
 import com.atom.chat.net.MediaCompanionClient;
+import com.atom.chat.chat.LocalEcho;
 import com.atom.chat.chat.PlayerRef;
 import com.atom.chat.chat.OwnIdentity;
 import com.atom.chat.text.RichText;
@@ -3041,17 +3042,20 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         }
         String quoteName = null;
         String quoteText = null;
+        // The typed body stays separate from the wire text: the quote prefix
+        // travels with the message, but the local bubble must not show it.
+        String body = normalized;
         if (replyTarget != null) {
             quoteName = messageSenderName(replyTarget);
             quoteText = quoteTextFor(replyTarget);
             // Quote travels with the message so other players can see it too.
-            normalized = "「引用 @" + quoteName + ": " + quoteText + "」" + normalized;
+            normalized = "「引用 @" + quoteName + ": " + quoteText + "」" + body;
         }
 
         boolean privateChat = topPage() == AppPage.PRIVATE_CHAT;
         PlayerRef privateTarget = privateChat ? activePrivateTarget() : null;
         if (privateChat) {
-            sendPrivateMessage(normalized, privateTarget);
+            sendPrivateMessage(normalized, body, privateTarget);
             return;
         }
 
@@ -3080,9 +3084,8 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             String ownProfile = this.client.player.getName().getString();
             // Own bubbles show the decorated self name (titles/team prefix),
             // e33chat parity — the bare profile name stays for identity fields.
-            ChatStore.get().add(new ChatMessage(Text.literal(normalized), true, false, quoteName, quoteText,
-                    ownUuid, ownProfile, ownProfile, normalized,
-                    OwnIdentity.displayNameRich(), RichText.literal(normalized).linkifyUrls()));
+            ChatStore.get().add(LocalEcho.build(normalized, body, quoteName, quoteText,
+                    ownUuid, ownProfile, OwnIdentity.displayNameRich()));
         }
         inputSetText("");
         replyTarget = null;
@@ -3090,7 +3093,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         currentScroll().stickToBottom();
     }
 
-    private void sendPrivateMessage(String normalized, PlayerRef target) {
+    private void sendPrivateMessage(String normalized, String body, PlayerRef target) {
         if (target == null || BlockList.isBlocked(target)) {
             return;
         }
@@ -3107,12 +3110,9 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             String ownProfile = this.client.player.getName().getString();
             // Decorated self name on the outgoing bubble, e33chat parity.
             PrivateChatStore.addOutgoing(target,
-                    new ChatMessage(Text.literal(historyText), true, false,
-                            replyTarget != null ? messageSenderName(replyTarget) : null,
+                    LocalEcho.build(historyText, body, replyTarget != null ? messageSenderName(replyTarget) : null,
                             replyTarget != null ? quoteTextFor(replyTarget) : null,
-                            ownUuid, ownProfile, ownProfile, historyText,
-                            OwnIdentity.displayNameRich(),
-                            RichText.literal(historyText).linkifyUrls()));
+                            ownUuid, ownProfile, OwnIdentity.displayNameRich()));
             PrivateEchoTracker.markOutgoing(target);
         }
         inputSetText("");
