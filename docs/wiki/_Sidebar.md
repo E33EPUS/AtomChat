@@ -11,6 +11,19 @@
 
 ---
 
+**AtomChat English docs**
+
+- [English](English)
+- [Getting Started](Getting-Started)
+- [Media and Transfers](Media-and-Transfers)
+- [Emotes](Emotes)
+- [Appearance and Config](Appearance-and-Config)
+- [Server Owner Guide](Server-Owner-Guide)
+- [Troubleshooting](Troubleshooting)
+- [Developer and Build](Developer-and-Build)
+
+---
+
 - [下载最新版](https://github.com/E33EPUS/AtomChat/releases)
 - [问题反馈](https://github.com/E33EPUS/AtomChat/issues)
 - [源码仓库](https://github.com/E33EPUS/AtomChat)

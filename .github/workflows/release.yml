@@ -186,7 +186,11 @@ jobs:
   # 表现是 0 秒失败、日志为空，只说"workflow file issue"。
   publish:
     name: 发布到商店 ${{ matrix.target }}
-    needs: build
+    # targets 必须列在 needs 里：下面的 matrix 读的是 needs.targets.outputs.list。
+    # 只写 needs: build 的后果不是报错，而是这个 job 被整条丢掉 —— 整条 run 标红、
+    # 日志为空、jobs 列表里少一个。预发布演练看不见它（if 直接跳过，matrix 不求值），
+    # 只有真发版才会撞上（0.2.10 撞上了）。
+    needs: [targets, build]
     if: >-
       ${{
         startsWith(github.ref, 'refs/tags/v') &&

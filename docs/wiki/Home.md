@@ -1,6 +1,6 @@
 > 原子聊天（AtomChat）的中文文档。它把原版聊天屏改造成「手机 App」风格的独立聊天面板，支持 Fabric / NeoForge 1.21.1 与 Forge 1.20.1。
 
-**当前版本：v0.2.9 ・ [下载](https://github.com/E33EPUS/AtomChat/releases) ・ [问题反馈](https://github.com/E33EPUS/AtomChat/issues)**
+**当前版本：v0.2.10 ・ [下载](https://github.com/E33EPUS/AtomChat/releases) ・ [问题反馈](https://github.com/E33EPUS/AtomChat/issues)**
 
 ## 你想做什么？
 
@@ -29,4 +29,4 @@
 
 ## 其他语言
 
-英文文档是仓库里的 [README_EN.md](https://github.com/E33EPUS/AtomChat/blob/main/README_EN.md)；本 Wiki 目前只有中文版。
+**英文 Wiki：[English](English)** —— 与这里逐页对应（Getting Started / Media and Transfers / Emotes / Appearance and Config / Server Owner Guide / Troubleshooting / Developer and Build）。仓库里的英文简介是 [README_EN.md](https://github.com/E33EPUS/AtomChat/blob/main/README_EN.md)。
