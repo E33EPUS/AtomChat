@@ -57,7 +57,7 @@
 | `com.atom.chat.net.ConfigPayloads` | 1.20.1-forge, 1.21.1-fabric, 1.21.1-neoforge |
 | `com.atom.chat.net.ConfigScreenClient` | 1.21.1-fabric |
 | `com.atom.chat.net.MediaCompanionServer` | 1.20.1-forge, 1.21.1-fabric, 1.21.1-neoforge |
-| `com.atom.chat.net.PackSyncClient` | 1.20.1-forge, 1.21.1-fabric, 1.21.1-neoforge |
+| `com.atom.chat.net.PackPayloads` | 1.20.1-forge, 1.21.1-fabric, 1.21.1-neoforge |
 | `com.atom.chat.notification.NotificationBanner` | 1.21.1-fabric |
 | `com.atom.chat.page.ConversationListPage` | 1.21.1-fabric |
 | `com.atom.chat.page.MessageListView` | 1.21.1-fabric |
@@ -94,8 +94,8 @@
 | 1.20.1-forge | `com.atom.chat.net.ConfigScreenServer` |
 | 1.20.1-forge | `com.atom.chat.net.MediaCompanionClient` |
 | 1.20.1-forge | `com.atom.chat.net.MediaPayloads` |
-| 1.20.1-forge | `com.atom.chat.net.PackPayloads` |
-| 1.20.1-forge | `com.atom.chat.net.PackSyncServer` |
+| 1.20.1-forge | `com.atom.chat.net.PackNetClient` |
+| 1.20.1-forge | `com.atom.chat.net.PackNetServer` |
 | 1.20.1-forge | `com.atom.chat.notification.NotificationController` |
 | 1.20.1-forge | `com.atom.chat.platform.ForgePlatform` |
 | 1.20.1-forge | `com.atom.chat.net.AvatarCompanionServerTest` |
@@ -106,8 +106,8 @@
 | 1.21.1-fabric | `com.atom.chat.net.ConfigScreenServer` |
 | 1.21.1-fabric | `com.atom.chat.net.MediaCompanionClient` |
 | 1.21.1-fabric | `com.atom.chat.net.MediaPayloads` |
-| 1.21.1-fabric | `com.atom.chat.net.PackPayloads` |
-| 1.21.1-fabric | `com.atom.chat.net.PackSyncServer` |
+| 1.21.1-fabric | `com.atom.chat.net.PackNetClient` |
+| 1.21.1-fabric | `com.atom.chat.net.PackNetServer` |
 | 1.21.1-fabric | `com.atom.chat.notification.NotificationController` |
 | 1.21.1-fabric | `com.atom.chat.platform.FabricPlatform` |
 | 1.21.1-fabric | `com.atom.chat.net.AvatarCompanionServerTest` |
@@ -118,8 +118,8 @@
 | 1.21.1-neoforge | `com.atom.chat.net.ConfigScreenServer` |
 | 1.21.1-neoforge | `com.atom.chat.net.MediaCompanionClient` |
 | 1.21.1-neoforge | `com.atom.chat.net.MediaPayloads` |
-| 1.21.1-neoforge | `com.atom.chat.net.PackPayloads` |
-| 1.21.1-neoforge | `com.atom.chat.net.PackSyncServer` |
+| 1.21.1-neoforge | `com.atom.chat.net.PackNetClient` |
+| 1.21.1-neoforge | `com.atom.chat.net.PackNetServer` |
 | 1.21.1-neoforge | `com.atom.chat.notification.NotificationController` |
 | 1.21.1-neoforge | `com.atom.chat.net.AvatarCompanionServerTest` |
 | 1.21.1-neoforge | `com.atom.chat.net.ConfigPayloadsCodecTest` |

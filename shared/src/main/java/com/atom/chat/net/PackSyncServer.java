@@ -6,16 +6,11 @@ import com.atom.chat.pack.PackBuilder;
 import com.atom.chat.pack.ServerEmoteMigration;
 import com.atom.chat.pack.ServerPack;
 import com.atom.chat.util.CacheDirs;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Player;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -24,6 +19,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Server side of the pack distribution (0.2.9): answers a client's Hello with the
@@ -34,6 +30,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@value #CACHE_MS} ms so a busy join minute does not hash the same files for
  * every player. Only one download per player runs at a time and each tick gives
  * every waiting player at most {@value #CHUNKS_PER_TICK} chunks.
+ *
+ * <p>This file is mapping- and loader-neutral on purpose: the server handle and
+ * the player handles travel as opaque objects, and everything that differs
+ * between the three targets goes through {@link Net} (sending) and {@link Host}
+ * (player identity, MOTD, environment). Each platform unpacks its own payload
+ * into a {@link PackMessage} before calling in here.
  */
 public final class PackSyncServer {
     private static final int CHUNKS_PER_TICK = 4;
@@ -44,8 +46,7 @@ public final class PackSyncServer {
     private static final Map<UUID, ServerPack> OFFERED = new ConcurrentHashMap<>();
     private static volatile Cached cached;
     /** The legacy emote carry-over runs once per JVM, on the first pack build. */
-    private static final java.util.concurrent.atomic.AtomicBoolean LEGACY_CHECKED =
-            new java.util.concurrent.atomic.AtomicBoolean();
+    private static final AtomicBoolean LEGACY_CHECKED = new AtomicBoolean();
 
     private PackSyncServer() {
     }
@@ -55,13 +56,13 @@ public final class PackSyncServer {
 
     /** One player's remaining chunks for one request. */
     private static final class Download {
-        final Queue<PackPayloads.Chunk> chunks = new ArrayDeque<>();
+        final Queue<PackMessage.Chunk> chunks = new ArrayDeque<>();
         int files;
 
         void add(String name, byte[] bytes) {
             for (int offset = 0; offset < bytes.length; offset += MediaIds.CHUNK_BYTES) {
                 int length = Math.min(MediaIds.CHUNK_BYTES, bytes.length - offset);
-                chunks.add(new PackPayloads.Chunk(name, offset, bytes.length,
+                chunks.add(new PackMessage.Chunk(name, offset, bytes.length,
                         Arrays.copyOfRange(bytes, offset, offset + length)));
             }
             files++;
@@ -69,42 +70,41 @@ public final class PackSyncServer {
     }
 
     /** C2S: "send me your manifest" (runs on the server thread). */
-    public static void onHello(Player player) {
-        ServerPlayer sender = asServerPlayer(player);
-        if (sender == null) {
+    public static void onHello(Object player) {
+        UUID id = Host.playerId(player);
+        if (id == null) {
             return;
         }
-        DOWNLOADS.remove(sender.getUUID());
+        DOWNLOADS.remove(id);
         AtomChatServerConfig config = AtomChatServerConfig.get();
         if (!config.packEnabled) {
             // Answering beats staying silent: the client shows "this server does
             // not offer a pack" instead of waiting for a timeout.
-            PacketDistributor.sendToPlayer(sender, new PackPayloads.Manifest(
-                    false, "", "", new byte[0], List.of(), List.of()));
+            Net.sendToPlayer(player, PackMessage.disabledManifest());
             return;
         }
-        ServerPack pack = pack(sender.getServer());
-        OFFERED.put(sender.getUUID(), pack);
-        PacketDistributor.sendToPlayer(sender, manifestOf(pack));
+        ServerPack pack = pack(serverOf(player));
+        OFFERED.put(id, pack);
+        Net.sendToPlayer(player, PackMessage.manifestOf(pack));
     }
 
     /** C2S: "these files differ from mine" - only names the manifest listed. */
-    public static void onNeed(Player player, List<String> names) {
-        ServerPlayer sender = asServerPlayer(player);
-        if (sender == null) {
+    public static void onNeed(Object player, List<String> names) {
+        UUID id = Host.playerId(player);
+        if (id == null) {
             return;
         }
         AtomChatServerConfig config = AtomChatServerConfig.get();
         // Send exactly the pack this player was shown: a rebuild between the
         // manifest and the download would otherwise ship bodies whose hashes
         // contradict the manifest the client verifies against.
-        ServerPack pack = OFFERED.get(sender.getUUID());
+        ServerPack pack = OFFERED.get(id);
         if (pack == null) {
-            pack = pack(sender.getServer());
+            pack = pack(serverOf(player));
         }
         if (!config.packEnabled || names == null || names.isEmpty()) {
-            DOWNLOADS.remove(sender.getUUID());
-            PacketDistributor.sendToPlayer(sender, new PackPayloads.Done(0));
+            DOWNLOADS.remove(id);
+            Net.sendToPlayer(player, new PackMessage.Done(0));
             return;
         }
         Map<String, ServerPack.FileEntry> offered = new HashMap<>();
@@ -133,22 +133,22 @@ public final class PackSyncServer {
             download.add(entry.name(), bytes);
         }
         if (download.files == 0) {
-            PacketDistributor.sendToPlayer(sender, new PackPayloads.Done(0));
+            Net.sendToPlayer(player, new PackMessage.Done(0));
             return;
         }
-        DOWNLOADS.put(sender.getUUID(), download);
+        DOWNLOADS.put(id, download);
     }
 
     /** C2S: the client's verdict, so the outcome lands in the server log. */
-    public static void onAck(Player player, PackPayloads.Ack ack) {
-        ServerPlayer sender = asServerPlayer(player);
-        if (sender == null) {
+    public static void onAck(Object player, PackMessage.Ack ack) {
+        UUID id = Host.playerId(player);
+        if (id == null) {
             return;
         }
-        OFFERED.remove(sender.getUUID());
+        OFFERED.remove(id);
         Cached current = cached;
         String hash = current == null ? "-" : current.pack().packHash().substring(0, 8);
-        String name = sender.getName().getString();
+        String name = Host.playerName(player);
         if (ack.ok()) {
             AtomChat.LOGGER.info("Player {} verified the server pack {} ({})", name, hash,
                     ack.detail().isEmpty() ? "up to date" : ack.detail());
@@ -159,14 +159,14 @@ public final class PackSyncServer {
     }
 
     /** Server tick (hooked from the common entrypoint): drains the queues. */
-    public static void tick(MinecraftServer server) {
+    public static void tick(Object server) {
         if (server == null || DOWNLOADS.isEmpty()) {
             return;
         }
         Iterator<Map.Entry<UUID, Download>> iterator = DOWNLOADS.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<UUID, Download> entry = iterator.next();
-            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            Object player = Host.playerById(server, entry.getKey());
             if (player == null) {
                 iterator.remove();
                 OFFERED.remove(entry.getKey());
@@ -175,18 +175,18 @@ public final class PackSyncServer {
             Download download = entry.getValue();
             int sent = 0;
             while (sent < CHUNKS_PER_TICK && !download.chunks.isEmpty()) {
-                PacketDistributor.sendToPlayer(player, download.chunks.poll());
+                Net.sendToPlayer(player, download.chunks.poll());
                 sent++;
             }
             if (download.chunks.isEmpty()) {
-                PacketDistributor.sendToPlayer(player, new PackPayloads.Done(download.files));
+                Net.sendToPlayer(player, new PackMessage.Done(download.files));
                 iterator.remove();
             }
         }
     }
 
     /** The pack this server is currently offering (for the config screen). */
-    public static ServerPack peek(MinecraftServer server) {
+    public static ServerPack peek(Object server) {
         return pack(server);
     }
 
@@ -195,20 +195,18 @@ public final class PackSyncServer {
         cached = null;
     }
 
-    private static ServerPlayer asServerPlayer(Player player) {
-        return player instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+    /**
+     * The server handle a player belongs to.
+     *
+     * <p>The port exposes no such lookup because every call site already has the
+     * player and its server comes with it - the platform adapter resolves this
+     * when it unpacks the payload.
+     */
+    private static Object serverOf(Object player) {
+        return player == null ? null : Host.serverOf(player);
     }
 
-    private static PackPayloads.Manifest manifestOf(ServerPack pack) {
-        List<PackPayloads.PackFile> files = new ArrayList<>(pack.files().size());
-        for (ServerPack.FileEntry entry : pack.files()) {
-            files.add(new PackPayloads.PackFile(entry.name(), entry.sha256Hex(), entry.size()));
-        }
-        return new PackPayloads.Manifest(true, pack.packHash(), pack.serverName(),
-                pack.icon() == null ? new byte[0] : pack.icon(), files, pack.phrases());
-    }
-
-    private static ServerPack pack(MinecraftServer server) {
+    private static ServerPack pack(Object server) {
         Cached current = cached;
         long now = System.currentTimeMillis();
         if (current != null && now - current.builtAtMs() < CACHE_MS) {
@@ -217,8 +215,7 @@ public final class PackSyncServer {
         carryOverLegacyServerEmotes();
         AtomChatServerConfig config = AtomChatServerConfig.get();
         ServerPack pack = PackBuilder.build(CacheDirs.serverEmotesDir(), config.phrases, config.packName,
-                server == null ? "" : server.getMotd(), readIcon(),
-                config.packMaxFiles, config.packMaxBytes());
+                Host.motd(server), readIcon(), config.packMaxFiles, config.packMaxBytes());
         cached = new Cached(pack, now);
         return pack;
     }
@@ -234,7 +231,7 @@ public final class PackSyncServer {
             return;
         }
         ServerEmoteMigration.migrate(CacheDirs.emotesDir(), CacheDirs.serverEmotesDir(),
-                net.neoforged.fml.loading.FMLEnvironment.dist == net.neoforged.api.distmarker.Dist.DEDICATED_SERVER);
+                Host.dedicatedServer());
     }
 
     private static byte[] readIcon() {
