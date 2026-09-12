@@ -94,6 +94,15 @@ public final class ServerPackStore {
         return emotes.size();
     }
 
+    /**
+     * True when this pack actually offers something to show. A server with packs
+     * enabled but an empty emote folder and no phrases is treated as "not
+     * distributing", so the panels stay free of server-only rows.
+     */
+    public boolean hasContent() {
+        return pack != null && (!emotes.isEmpty() || !phrases().isEmpty());
+    }
+
     private static List<Path> listEmotes(Path dir) {
         Path emotes = dir.resolve(PackManifestFile.EMOTES_DIR);
         if (!Files.isDirectory(emotes)) {

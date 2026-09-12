@@ -272,13 +272,18 @@ public final class PackSyncClient {
             abort("incomplete");
             return;
         }
-        Map<String, byte[]> contents = new LinkedHashMap<>(ready);
+        Map<String, byte[]> downloaded = new LinkedHashMap<>(ready);
         ServerPack pack = expected;
         String installKey = key;
+        Path dir = CacheDirs.packDir(key);
         String hash = pack.packHash().substring(0, 8);
-        int count = contents.size();
+        int count = downloaded.size();
         IO.execute(() -> {
+            Map<String, byte[]> contents;
             try {
+                // An incremental sync only fetched the files that differed, so the
+                // ones we kept have to be folded back in before installing.
+                contents = PackManifestFile.completeWithExisting(dir, pack, downloaded);
                 PackManifestFile.install(CacheDirs.packsRoot(), installKey, pack, contents);
             } catch (IOException e) {
                 AtomChat.LOGGER.warn("Failed to store the server pack", e);

@@ -118,6 +118,9 @@ public final class EmojiPanel {
         return open;
     }
 
+    /** Hover keys for the server's cells live above the local ones and never collide. */
+    private static final int SERVER_HOVER_BASE = 1000;
+
     /** The grid model for the current sources; hover, click and draw all use it. */
     private EmoteGridLayout emoteLayout() {
         return new EmoteGridLayout(UiTokens.EMOTE_COLS, emoteStore.count(), emoteStore.serverCount());
@@ -125,7 +128,10 @@ public final class EmojiPanel {
 
     /** Re-scans the local folder and re-points the server half at the installed pack. */
     private void refreshEmotes() {
-        emoteStore.setServerDir(ServerPackStore.current().emotesDir());
+        ServerPackStore store = ServerPackStore.current();
+        // A pack with nothing to show is treated as "no distribution": no
+        // server rows, no header, no status line.
+        emoteStore.setServerDir(store.hasContent() ? store.emotesDir() : null);
     }
 
     public void close() {
@@ -447,6 +453,9 @@ public final class EmojiPanel {
         return switch (cell.kind()) {
             case LOCAL -> cell.index();
             case ADD -> emoteStore.count();
+            // Server cells animate too (they just carry no x), so they get their
+            // own key range instead of the header's "not a target".
+            case SERVER -> SERVER_HOVER_BASE + cell.index();
             default -> -1;
         };
     }
@@ -683,7 +692,16 @@ public final class EmojiPanel {
                             drawCellActions(canvas, ex, ey, colW, cell, hover);
                         }
                     }
-                    case SERVER -> drawEmoteImage(canvas, serverEmotes.get(c.index()), ex, ey, colW, cell, pad);
+                    case SERVER -> {
+                        // Read-only, but it highlights like any other cell: the only
+                        // thing missing is the x, which would promise a delete this
+                        // cell cannot do.
+                        drawEmoteImage(canvas, serverEmotes.get(c.index()), ex, ey, colW, cell, pad);
+                        if (interactive) {
+                            drawHoverWash(canvas, ex, ey, colW, cell, cellHover.getOrDefault(
+                                    gridHoverKey(2, SERVER_HOVER_BASE + c.index()), 0.0F));
+                        }
+                    }
                     case ADD -> drawAddSlot(canvas, ex, ey, colW, cell,
                             interactive ? cellHover.getOrDefault(gridHoverKey(2, addKey), 0.0F) : 0.0F);
                     default -> {
@@ -693,13 +711,20 @@ public final class EmojiPanel {
         }
     }
 
-    /** Hover wash and the x button of one of the player's own emotes. */
+    /** The shared hover highlight, faded with the same curve as every other cell. */
+    private void drawHoverWash(Canvas canvas, float ex, float ey, float colW, float cell, float hover) {
+        if (hover > 0.01F) {
+            SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
+                    Color.makeARGB((int) (60.0F * hover), 255, 255, 255));
+        }
+    }
+
+    /** Hover wash plus the x button, for cells the player is allowed to delete. */
     private void drawCellActions(Canvas canvas, float ex, float ey, float colW, float cell, float hover) {
+        drawHoverWash(canvas, ex, ey, colW, cell, hover);
         if (hover <= 0.01F) {
             return;
         }
-        SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
-                Color.makeARGB((int) (60.0F * hover), 255, 255, 255));
         // The wash and the x sit above the picture, so the button can never be
         // buried under the emote itself.
         float rs = UiTokens.EMOTE_REMOVE_SIZE;
