@@ -57,6 +57,8 @@ public final class ServerConfigScreen extends Screen {
     private int phraseScroll;
     private int selectedPhrase = -1;
     private String status = "";
+    /** When the current status line was set, so transient hints can expire. */
+    private long statusAt;
 
     public ServerConfigScreen(Screen parent, int configVersion, ServerConfigValues values,
                               ConfigPayloads.PackStatus pack) {
@@ -80,7 +82,20 @@ public final class ServerConfigScreen extends Screen {
     /** The server rescanned the folders: update the summary line only. */
     public void acceptStatus(ConfigPayloads.PackStatus status) {
         this.pack = status;
-        this.status = Text.translatable("atomchat.config.rescanned").getString();
+        setStatus(Text.translatable("atomchat.config.rescanned").getString());
+    }
+
+    private void setStatus(String text) {
+        this.status = text == null ? "" : text;
+        this.statusAt = System.currentTimeMillis();
+    }
+
+    /** Transient hints (a rescan, a save) fade after a few seconds. */
+    private String currentStatus() {
+        if (statusAt > 0L && System.currentTimeMillis() - statusAt > 4000L) {
+            return "";
+        }
+        return status;
     }
 
     /** The server answered a save: close on success, explain a refusal. */
@@ -91,7 +106,7 @@ public final class ServerConfigScreen extends Screen {
             }
             return;
         }
-        status = errorText(error);
+        setStatus(errorText(error));
     }
 
     @Override
@@ -108,16 +123,13 @@ public final class ServerConfigScreen extends Screen {
         int colW = 150;
         int y = 30;
 
+        // Two sections, one per master switch: the numbers only make sense
+        // underneath the switch they belong to.
+        rows.add(new Row("atomchat.config.section.hosting", left, y + 5, true));
         hostingButton = addDrawableChild(ButtonWidget.builder(
                         toggle("atomchat.config.hosting", hostingEnabled), b -> {
                             hostingEnabled = !hostingEnabled;
                             b.setMessage(toggle("atomchat.config.hosting", hostingEnabled));
-                        })
-                .dimensions(left, y, colW, 18).build());
-        packButton = addDrawableChild(ButtonWidget.builder(
-                        toggle("atomchat.config.packs", packEnabled), b -> {
-                            packEnabled = !packEnabled;
-                            b.setMessage(toggle("atomchat.config.packs", packEnabled));
                         })
                 .dimensions(right, y, colW, 18).build());
         y += ROW_H;
@@ -129,14 +141,28 @@ public final class ServerConfigScreen extends Screen {
         number(right, y, colW, "uploadCooldownMs", "atomchat.config.cooldown_ms");
         y += ROW_H;
         number(left, y, colW, "maxAvatarTotalMb", "atomchat.config.max_avatar_mb");
-        number(right, y, colW, "packMaxFiles", "atomchat.config.pack_files");
         y += ROW_H;
+
+        rows.add(new Row("atomchat.config.section.packs", left, y + 5, true));
+        packButton = addDrawableChild(ButtonWidget.builder(
+                        toggle("atomchat.config.packs", packEnabled), b -> {
+                            packEnabled = !packEnabled;
+                            b.setMessage(toggle("atomchat.config.packs", packEnabled));
+                        })
+                .dimensions(right, y, colW, 18).build());
+        y += ROW_H;
+
+        number(left, y, colW, "packMaxFiles", "atomchat.config.pack_files");
         number(right, y, colW, "packMaxMb", "atomchat.config.pack_mb");
         y += ROW_H;
 
-        int nameLabelW = 104;
-        nameBox = addDrawableChild(new TextFieldWidget(textRenderer, left + nameLabelW, y,
-                width - 2 * left - nameLabelW, 18, Text.translatable("atomchat.config.name")));
+        // The name needs whatever room its label actually takes: a fixed width
+        // ran Chinese labels straight under the box.
+        String nameLabel = Text.translatable("atomchat.config.name").getString();
+        int nameBoxX = left + Math.min(width / 2 - 12, textRenderer.getWidth(nameLabel) + 8);
+        nameBox = addDrawableChild(new TextFieldWidget(textRenderer, nameBoxX, y,
+                Math.max(60, width - nameBoxX - (width / 2 - 155)), 18,
+                Text.translatable("atomchat.config.name")));
         nameBox.setMaxLength(ServerConfigValues.MAX_NAME_CHARS);
         nameBox.setText(name);
         rows.add(new Row("atomchat.config.name", left, y + 5));
@@ -187,7 +213,10 @@ public final class ServerConfigScreen extends Screen {
     }
 
     /** A label drawn next to a widget that already knows its own position. */
-    private record Row(String key, int x, int y) {
+    private record Row(String key, int x, int y, boolean section) {
+        Row(String key, int x, int y) {
+            this(key, x, y, false);
+        }
     }
 
     private final List<Row> rows = new ArrayList<>();
@@ -198,13 +227,45 @@ public final class ServerConfigScreen extends Screen {
         super.render(context, mouseX, mouseY, delta);
         context.drawCenteredTextWithShadow(textRenderer, title, width / 2, 12, 0xFFFFFF);
         for (Row row : rows) {
-            context.drawTextWithShadow(textRenderer, Text.translatable(row.key()), row.x(), row.y(), 0xC8C8C8);
+            // Section headings are the one label that is not a field name.
+            context.drawTextWithShadow(textRenderer, Text.translatable(row.key()), row.x(), row.y(),
+                    row.section() ? 0xFFE08A : 0xC8C8C8);
         }
+        drawCooldownHint(context);
         context.drawTextWithShadow(textRenderer, packLine(), listLeft, listTop - 24, 0x9FE8FF);
-        context.drawTextWithShadow(textRenderer, Text.translatable("atomchat.config.phrases"),
+        context.drawTextWithShadow(textRenderer,
+                Text.translatable("atomchat.config.phrases").getString()
+                        + "   " + phrases.size() + " / " + ServerConfigValues.MAX_PHRASES,
                 listLeft, listTop - 11, 0xC8C8C8);
         drawPhrases(context);
-        context.drawTextWithShadow(textRenderer, status, listLeft, height - 60, 0xFFC080);
+        context.drawTextWithShadow(textRenderer, currentStatus(), listLeft, height - 60, 0xFFC080);
+    }
+
+    /**
+     * The cooldown is stored in milliseconds but nobody thinks in them, so the
+     * field gets a "3.0 s" twin - drawn only when it fits beside the label.
+     */
+    private void drawCooldownHint(DrawContext context) {
+        TextFieldWidget box = boxes.get("uploadCooldownMs");
+        Integer ms = number("uploadCooldownMs");
+        Row row = null;
+        for (Row candidate : rows) {
+            if (candidate.key().equals("atomchat.config.cooldown_ms")) {
+                row = candidate;
+                break;
+            }
+        }
+        if (box == null || ms == null || ms < 0 || row == null) {
+            return;
+        }
+        String hint = Text.translatable("atomchat.config.cooldown_hint",
+                String.format(java.util.Locale.ROOT, "%.1f", ms / 1000.0)).getString();
+        String label = Text.translatable(row.key()).getString();
+        int hintX = box.getX() - 6 - textRenderer.getWidth(hint);
+        if (hintX < row.x() + textRenderer.getWidth(label) + 6) {
+            return;
+        }
+        context.drawTextWithShadow(textRenderer, hint, hintX, box.getY() + 5, 0x8A8A8A);
     }
 
     /** Never pauses the world: this screen is opened from inside a running game. */
@@ -216,8 +277,9 @@ public final class ServerConfigScreen extends Screen {
     private String packLine() {
         int files = pack == null ? 0 : pack.files();
         long bytes = pack == null ? 0L : pack.bytes();
-        String hash = pack == null || pack.packHash().isEmpty() ? "-" : pack.packHash().substring(0, 8);
-        return tr("atomchat.config.pack_status") + " " + files + " / " + (bytes / 1024) + " KB / " + hash;
+        // No pack fingerprint here: it means nothing to an operator, and the log
+        // already carries it.
+        return Text.translatable("atomchat.config.pack_status", files, bytes / 1024).getString();
     }
 
     private void drawPhrases(DrawContext context) {
@@ -279,10 +341,13 @@ public final class ServerConfigScreen extends Screen {
             phrases.set(selectedPhrase, text);
         } else if (phrases.size() < ServerConfigValues.MAX_PHRASES) {
             phrases.add(text);
+        } else {
+            setStatus(tr("atomchat.config.error.bad_phrases"));
+            return;
         }
         phraseBox.setText("");
         selectedPhrase = -1;
-        status = "";
+        setStatus("");
     }
 
     private void deletePhrase() {
@@ -290,14 +355,14 @@ public final class ServerConfigScreen extends Screen {
             phrases.remove(selectedPhrase);
             selectedPhrase = -1;
             phraseBox.setText("");
-            status = "";
+            setStatus("");
         }
     }
 
     /** Asks the server to re-scan its emote folder; the answer updates the summary. */
     private void rescan() {
         ClientPlayNetworking.send(new ConfigPayloads.Refresh());
-        status = tr("atomchat.config.rescanning");
+        setStatus(tr("atomchat.config.rescanning"));
     }
 
     private void save() {
@@ -310,13 +375,59 @@ public final class ServerConfigScreen extends Screen {
         Integer packMb = number("packMaxMb");
         if (fileKb == null || totalMb == null || avatarMb == null || days == null
                 || cooldown == null || packFiles == null || packMb == null) {
-            status = tr("atomchat.config.bad_number");
+            setStatus(tr("atomchat.config.bad_number"));
+            return;
+        }
+        String range = firstRangeError(fileKb, totalMb, avatarMb, days, cooldown, packFiles, packMb);
+        if (range != null) {
+            // Caught here so the operator is told which field, not just "refused".
+            setStatus(range);
             return;
         }
         ClientPlayNetworking.send(new ConfigPayloads.Save(configVersion, new ServerConfigValues(
                 hostingEnabled, packEnabled, fileKb, totalMb, avatarMb, days, cooldown,
                 packFiles, packMb, nameBox.getText(), List.copyOf(phrases))));
-        status = tr("atomchat.config.saving");
+        setStatus(tr("atomchat.config.saving"));
+    }
+
+    /** Names the first field that is out of range, instead of making the user guess. */
+    private static String firstRangeError(int fileKb, int totalMb, int avatarMb, int days,
+                                          int cooldown, int packFiles, int packMb) {
+        String error = rangeError("atomchat.config.max_file_kb", fileKb, 1,
+                ServerConfigValues.MAX_FILE_KB_LIMIT);
+        if (error == null) {
+            error = rangeError("atomchat.config.max_total_mb", totalMb, 1,
+                    ServerConfigValues.MAX_STORE_MB_LIMIT);
+        }
+        if (error == null) {
+            error = rangeError("atomchat.config.max_avatar_mb", avatarMb, 1,
+                    ServerConfigValues.MAX_STORE_MB_LIMIT);
+        }
+        if (error == null) {
+            error = rangeError("atomchat.config.retention_days", days, 0,
+                    ServerConfigValues.MAX_RETENTION_DAYS);
+        }
+        if (error == null) {
+            error = rangeError("atomchat.config.cooldown_ms", cooldown, 0,
+                    ServerConfigValues.MAX_COOLDOWN_MS);
+        }
+        if (error == null) {
+            error = rangeError("atomchat.config.pack_files", packFiles, 1,
+                    ServerConfigValues.MAX_PACK_FILES_LIMIT);
+        }
+        if (error == null) {
+            error = rangeError("atomchat.config.pack_mb", packMb, 1,
+                    ServerConfigValues.MAX_PACK_MB_LIMIT);
+        }
+        return error;
+    }
+
+    private static String rangeError(String labelKey, int value, int min, int max) {
+        if (value >= min && value <= max) {
+            return null;
+        }
+        return Text.translatable("atomchat.config.error.field_range",
+                Text.translatable(labelKey), min, max).getString();
     }
 
     private Integer number(String key) {
