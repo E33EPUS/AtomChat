@@ -159,6 +159,22 @@ public final class ImageLoader {
     }
 
     /**
+     * The raw bytes behind an image url, whichever transport owns it: http(s)
+     * goes out directly, {@link #MEDIA_URL_PREFIX} urls come from the server
+     * media companion.
+     *
+     * <p>Anything that needs original bytes (the save-image action) has to come
+     * through here rather than building its own HTTP request: the hosted-media
+     * scheme has no HTTP transport at all, so an independent request rejects it
+     * outright ("invalid URI scheme").
+     *
+     * <p>Blocking; call it off the render thread, like the loader does.
+     */
+    public static byte[] fetchBytes(String url) throws Exception {
+        return httpFetch(url);
+    }
+
+    /**
      * Decodes a single frame (a GIF's first frame) and fits it inside
      * {@code maxDim}. The emote grid renders at cell size, so it uses this
      * instead of the animated path.
