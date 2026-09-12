@@ -225,7 +225,13 @@ def predicate_gap(t: dict, layer_name: str, d: dict):
 
 
 def digest(path: pathlib.Path) -> str:
-    return hashlib.sha1(path.read_bytes()).hexdigest()
+    """行尾无关的比较。
+
+    工作区是 CRLF、仓库里存的是 LF（`.gitattributes` 的 `* text=auto` 管这件事），
+    所以直读字节会把"只有行尾不同"判成内容不同 —— 那样"孪生副本逐字相同"这条检查
+    会假阴性（该报的不报）。比较前先折叠行尾，让这条检查只看内容。
+    """
+    return hashlib.sha1(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def check_mapping_twins(layer_name: str, d: dict, targets: dict, family: str, aliases: dict) -> None:
