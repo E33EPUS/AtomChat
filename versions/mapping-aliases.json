@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "【路径别名：同一个类在不同目标上的包不同】",
+    "映射层假设「同一个类在各家族的路径相同」，于是孪生副本能按路径一一对应。",
+    "但有一类例外是真实存在的：Fabric 侧有三个类故意住在原版的包里 ——",
+    "  net/minecraft/client/gui/screen/AtomChatSuggestor.java",
+    "  net/minecraft/client/gui/screen/atomchat/ChatInputSuggestorAccessor.java",
+    "  net/minecraft/client/gui/screen/AtomChatScreen.java",
+    "住在原版包下是为了直接访问包私有成员（对应 Neo/Forge 侧用 accesstransformer 达到的同一目的）。",
+    "这三个类在官方名一侧的路径是 com/atom/chat/...，两边路径对不上。",
+    "",
+    "【别名不是豁免，是把例外写下来】没有别名，孪生检查只能报「少了副本」——而实际上它在，只是名字不同。",
+    "写了别名，检查照样跑：它按这里的对应关系去另一侧找，找不到一样红。",
+    "换个说法：这份文件存在的意义是让「包位置差异」从隐性事实变成显式声明，代价是这一处必须人手维护。",
+    "",
+    "【键是层内的相对路径，值是该类在另一家族上的相对路径】两边都相对仓库根。"
+  ],
+
+  "layers/mapping/official": {
+    "src/main/java/com/atom/chat/screen/AtomChatSuggestor.java": "src/main/java/net/minecraft/client/gui/screen/AtomChatSuggestor.java",
+    "src/main/java/com/atom/chat/mixin/ChatInputSuggestorAccessor.java": "src/main/java/net/minecraft/client/gui/screen/atomchat/ChatInputSuggestorAccessor.java"
+  }
+}
