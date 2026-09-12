@@ -1,7 +1,7 @@
 package com.atom.chat.util;
 
 import com.atom.chat.AtomChat;
-import net.minecraftforge.fml.loading.FMLPaths;
+import com.atom.chat.platform.Platform;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,7 +47,7 @@ public final class CacheDirs {
     }
 
     public static Path dataRoot() {
-        return FMLPaths.GAMEDIR.get().resolve("atomchat-data");
+        return Platform.gameDir().resolve("atomchat-data");
     }
 
     /** Processed chat-image cache files decoded from downloaded chat links. */
@@ -62,7 +62,7 @@ public final class CacheDirs {
 
     /** Game directory root; {@code server-icon.png} lives here. */
     public static Path gameDir() {
-        return FMLPaths.GAMEDIR.get();
+        return Platform.gameDir();
     }
 
     /** Root of the downloaded server packs, one folder per {@code PackKeys} key. */
@@ -77,7 +77,7 @@ public final class CacheDirs {
 
     /** The player's own emotes, added through the panel. Never distributed. */
     public static Path emotesDir() {
-        return FMLPaths.CONFIGDIR.get().resolve("atomchat/emotes");
+        return Platform.configDir().resolve("atomchat/emotes");
     }
 
     /**
@@ -86,7 +86,7 @@ public final class CacheDirs {
      * {@link #emotesDir()}: that folder belongs to whoever is playing.
      */
     public static Path serverEmotesDir() {
-        return FMLPaths.CONFIGDIR.get().resolve("atomchat/server-emotes");
+        return Platform.configDir().resolve("atomchat/server-emotes");
     }
 
     /** Companion server's hosted chat media (images / animated GIFs). */
@@ -95,7 +95,7 @@ public final class CacheDirs {
     }
 
     public static void migrateFromOldConfigPaths() {
-        Path config = FMLPaths.CONFIGDIR.get().resolve("atomchat");
+        Path config = Platform.configDir().resolve("atomchat");
         migrateDir(config.resolve("image-cache"), imageCacheDir(), "image cache");
         migrateDir(config.resolve("avatars"), avatarDataDir(), "companion avatar data");
         cleanupMovedLegacyDirs(config);
