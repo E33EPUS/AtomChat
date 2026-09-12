@@ -2,15 +2,11 @@ package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
 import com.atom.chat.config.ServerConfigValues;
-import io.netty.handler.codec.DecoderException;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Payloads behind {@code /atomchat gui} (0.2.9): the server hands a client its
@@ -28,11 +24,11 @@ import java.util.List;
  *   <li>S2C {@code Result(ok, error)} - the verdict, so a refused save stays on
  *       screen with a reason instead of closing.</li>
  * </ul>
+ *
+ * <p>The value list, its limits, its truncation and its validation live in
+ * {@link Wire}; this file keeps the payload ids and the codec registration.
  */
 public final class ConfigPayloads {
-    /** Longest phrase list a payload may carry; the real cap is validated server-side. */
-    public static final int MAX_WIRE_PHRASES = 64;
-
     private ConfigPayloads() {
     }
 
@@ -43,64 +39,24 @@ public final class ConfigPayloads {
     // ------------------------------------------------------------ value codec
 
     private static void writeValues(ServerConfigValues values, RegistryByteBuf buf) {
-        buf.writeBoolean(values.hostingEnabled());
-        buf.writeBoolean(values.packEnabled());
-        buf.writeVarInt(values.maxFileKb());
-        buf.writeVarInt(values.maxTotalMb());
-        buf.writeVarInt(values.maxAvatarTotalMb());
-        buf.writeVarInt(values.retentionDays());
-        buf.writeVarInt(values.uploadCooldownMs());
-        buf.writeVarInt(values.packMaxFiles());
-        buf.writeVarInt(values.packMaxMb());
-        buf.writeString(truncate(values.packName(), ServerConfigValues.MAX_NAME_CHARS),
-                ServerConfigValues.MAX_NAME_CHARS);
-        List<String> phrases = values.phrases();
-        int count = Math.min(phrases.size(), MAX_WIRE_PHRASES);
-        buf.writeVarInt(count);
-        for (int i = 0; i < count; i++) {
-            buf.writeString(truncate(phrases.get(i), ServerConfigValues.MAX_PHRASE_CHARS),
-                    ServerConfigValues.MAX_PHRASE_CHARS);
-        }
+        Wire.writeValues(new FabricWireIo(buf), values);
     }
 
     private static ServerConfigValues readValues(RegistryByteBuf buf) {
-        boolean hosting = buf.readBoolean();
-        boolean packs = buf.readBoolean();
-        int fileKb = buf.readVarInt();
-        int totalMb = buf.readVarInt();
-        int avatarMb = buf.readVarInt();
-        int days = buf.readVarInt();
-        int cooldown = buf.readVarInt();
-        int packFiles = buf.readVarInt();
-        int packMb = buf.readVarInt();
-        String name = buf.readString(ServerConfigValues.MAX_NAME_CHARS);
-        int count = buf.readVarInt();
-        if (count < 0 || count > MAX_WIRE_PHRASES) {
-            throw new DecoderException("AtomChat config: bad phrase count " + count);
-        }
-        List<String> phrases = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            phrases.add(buf.readString(ServerConfigValues.MAX_PHRASE_CHARS));
-        }
-        return new ServerConfigValues(hosting, packs, fileKb, totalMb, avatarMb, days, cooldown,
-                packFiles, packMb, name, phrases);
-    }
-
-    private static String truncate(String value, int max) {
-        if (value == null) {
-            return "";
-        }
-        return value.length() > max ? value.substring(0, max) : value;
+        return Wire.readValues(new FabricWireIo(buf));
     }
 
     private static void writeStatus(PackStatus status, RegistryByteBuf buf) {
-        buf.writeVarInt(status.files());
-        buf.writeVarLong(status.bytes());
-        buf.writeString(status.packHash() == null ? "" : status.packHash(), 80);
+        Wire.writePackSummary(new FabricWireIo(buf), summary(status));
     }
 
     private static PackStatus readStatus(RegistryByteBuf buf) {
-        return new PackStatus(buf.readVarInt(), buf.readVarLong(), buf.readString(80));
+        Wire.PackSummary summary = Wire.readPackSummary(new FabricWireIo(buf));
+        return new PackStatus(summary.files(), summary.bytes(), summary.packHash());
+    }
+
+    private static Wire.PackSummary summary(PackStatus status) {
+        return new Wire.PackSummary(status.files(), status.bytes(), status.packHash());
     }
 
     // ---------------------------------------------------------------- records

@@ -4,25 +4,18 @@ import com.atom.chat.AtomChat;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 /**
  * The server half of the pack seam: where the shared logic meets Fabric.
  *
- * <p>Three jobs, all of them mechanical:
- * <ul>
- *   <li>the send port ({@link Net.ServerSide}) - neutral message to payload;</li>
- *   <li>the server facts the shared logic asks for ({@link Host.ServerSide});</li>
- *   <li>the receivers, which unpack a payload into a neutral message and hand it
- *       to the shared logic (Fabric registers those here, not in the payload
- *       types).</li>
- * </ul>
+ * <p>Two jobs, both mechanical: the send port ({@link Net.ServerSide}) and the
+ * server facts the shared logic asks for ({@link Host.ServerSide}) - plus the
+ * receivers, which hand a payload's neutral form to the shared logic (Fabric
+ * registers those here, not in the payload types).
  *
  * <p>Loaded on a dedicated server too, so it must not name a client type - the
  * dist guard scans this file. The client half lives in {@link PackNetClient}.
@@ -42,7 +35,7 @@ public final class PackNetServer implements Net.ServerSide, Host.ServerSide {
                         () -> PackSyncServer.onNeed(context.player(), payload.names())));
         ServerPlayNetworking.registerGlobalReceiver(PackPayloads.Ack.ID,
                 (payload, context) -> onServer(context.player(),
-                        () -> PackSyncServer.onAck(context.player(), toMessage(payload))));
+                        () -> PackSyncServer.onAck(context.player(), PackPayloads.toMessage(payload))));
         AtomChat.LOGGER.info("AtomChat pack distribution registered (server side)");
     }
 
@@ -65,7 +58,7 @@ public final class PackNetServer implements Net.ServerSide, Host.ServerSide {
     @Override
     public void sendToPlayer(Object player, PackMessage.S2C message) {
         if (player instanceof ServerPlayerEntity sender) {
-            ServerPlayNetworking.send(sender, toPayload(message));
+            ServerPlayNetworking.send(sender, PackPayloads.fromMessage(message));
         }
     }
 
@@ -101,29 +94,5 @@ public final class PackNetServer implements Net.ServerSide, Host.ServerSide {
     @Override
     public boolean dedicatedServer() {
         return FabricLoader.getInstance().getEnvironmentType() == EnvType.SERVER;
-    }
-
-    /** Neutral message to this target's payload. S2C only: the client unpacks those. */
-    private static PackPayloads.Manifest manifestOf(PackMessage.Manifest manifest) {
-        List<PackPayloads.PackFile> files = new ArrayList<>(manifest.files().size());
-        for (PackMessage.PackFile file : manifest.files()) {
-            files.add(new PackPayloads.PackFile(file.name(), file.sha256(), file.size()));
-        }
-        return new PackPayloads.Manifest(manifest.enabled(), manifest.packHash(),
-                manifest.serverName(), manifest.icon(), files, manifest.phrases());
-    }
-
-    private static CustomPayload toPayload(PackMessage.S2C message) {
-        return switch (message) {
-            case PackMessage.Manifest manifest -> manifestOf(manifest);
-            case PackMessage.Chunk chunk -> new PackPayloads.Chunk(chunk.name(), chunk.offset(),
-                    chunk.totalBytes(), chunk.data());
-            case PackMessage.Done done -> new PackPayloads.Done(done.fileCount());
-        };
-    }
-
-    /** This target's C2S payload to a neutral message; called from the receivers. */
-    static PackMessage.Ack toMessage(PackPayloads.Ack payload) {
-        return new PackMessage.Ack(payload.ok(), payload.detail());
     }
 }

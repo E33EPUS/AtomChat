@@ -1,10 +1,8 @@
 package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
-import io.netty.handler.codec.DecoderException;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
@@ -31,25 +29,109 @@ import java.util.List;
  *       (decision 28: there is no /atomchat info command to fall back on).</li>
  * </ul>
  *
- * <p>Every read path validates before allocating: a peer that sends an absurd
- * file count, name or hash is a protocol violation, not something to store.
+ * <p>The byte format, its limits and its validation live in {@link Wire}, so the
+ * three targets cannot drift apart field by field; this file keeps what is
+ * genuinely NeoForge's - the payload types the loader demands, the channel ids,
+ * and the conversion to and from the neutral {@link PackMessage}. Every read path
+ * still validates before allocating: a peer that sends an absurd file count, name
+ * or hash is a protocol violation, not something to store.
  */
 public final class PackPayloads {
-    /** Files a manifest may declare; well above the server cap, low enough to refuse nonsense. */
-    public static final int MAX_WIRE_FILES = 512;
-    /** Phrases a manifest may carry. */
-    public static final int MAX_WIRE_PHRASES = 64;
-    /** Longest name, hash or detail string we accept off the wire. */
-    private static final int MAX_NAME_CHARS = 96;
-    private static final int MAX_HASH_CHARS = 80;
-    private static final int MAX_DETAIL_CHARS = 120;
-
     private PackPayloads() {
     }
 
     /** One manifest entry: name, content hash and size. */
     public record PackFile(String name, String sha256, int size) {
     }
+
+    // ------------------------------------------------------- neutral conversion
+
+    static PackMessage.Hello toMessage(Hello payload) {
+        return new PackMessage.Hello();
+    }
+
+    static PackMessage.Need toMessage(Need payload) {
+        return new PackMessage.Need(payload.names());
+    }
+
+    static PackMessage.Ack toMessage(Ack payload) {
+        return new PackMessage.Ack(payload.ok(), payload.detail());
+    }
+
+    static PackMessage.Manifest toMessage(Manifest payload) {
+        return new PackMessage.Manifest(payload.enabled(), payload.packHash(), payload.serverName(),
+                payload.icon(), filesToMessage(payload.files()), payload.phrases());
+    }
+
+    static PackMessage.Chunk toMessage(Chunk payload) {
+        return new PackMessage.Chunk(payload.name(), payload.offset(), payload.totalBytes(),
+                payload.data());
+    }
+
+    static PackMessage.Done toMessage(Done payload) {
+        return new PackMessage.Done(payload.fileCount());
+    }
+
+    static Hello fromMessage(PackMessage.Hello message) {
+        return new Hello();
+    }
+
+    static Need fromMessage(PackMessage.Need message) {
+        return new Need(message.names());
+    }
+
+    static Ack fromMessage(PackMessage.Ack message) {
+        return new Ack(message.ok(), message.detail());
+    }
+
+    static Manifest fromMessage(PackMessage.Manifest message) {
+        List<PackFile> files = new ArrayList<>(message.files().size());
+        for (PackMessage.PackFile file : message.files()) {
+            files.add(new PackFile(file.name(), file.sha256(), file.size()));
+        }
+        return new Manifest(message.enabled(), message.packHash(), message.serverName(),
+                message.icon(), files, message.phrases());
+    }
+
+    static Chunk fromMessage(PackMessage.Chunk message) {
+        return new Chunk(message.name(), message.offset(), message.totalBytes(), message.data());
+    }
+
+    static Done fromMessage(PackMessage.Done message) {
+        return new Done(message.fileCount());
+    }
+
+    private static List<PackMessage.PackFile> filesToMessage(List<PackFile> files) {
+        List<PackMessage.PackFile> converted =
+                new ArrayList<>(files == null ? 0 : files.size());
+        for (PackFile file : files == null ? List.<PackFile>of() : files) {
+            converted.add(new PackMessage.PackFile(file.name(), file.sha256(), file.size()));
+        }
+        return converted;
+    }
+
+    /**
+     * Direction-wide dispatch for the send port: one neutral message in, this
+     * target's payload out. The switch stays exhaustive because the two
+     * direction interfaces are sealed.
+     */
+    static CustomPacketPayload fromMessage(PackMessage.C2S message) {
+        return switch (message) {
+            case PackMessage.Hello hello -> fromMessage(hello);
+            case PackMessage.Need need -> fromMessage(need);
+            case PackMessage.Ack ack -> fromMessage(ack);
+        };
+    }
+
+    static CustomPacketPayload fromMessage(PackMessage.S2C message) {
+        return switch (message) {
+            case PackMessage.Manifest manifest -> fromMessage(manifest);
+            case PackMessage.Chunk chunk -> fromMessage(chunk);
+            case PackMessage.Done done -> fromMessage(done);
+        };
+    }
+
+    // ---------------------------------------------------------------- payloads
 
     /** "Send me your manifest." */
     public record Hello() implements CustomPacketPayload {
@@ -59,10 +141,11 @@ public final class PackPayloads {
                 StreamCodec.of(Hello::write, Hello::read);
 
         private static void write(RegistryFriendlyByteBuf buf, Hello payload) {
+            Wire.writeHello(new NeoForgeWireIo(buf), toMessage(payload));
         }
 
         private static Hello read(RegistryFriendlyByteBuf buf) {
-            return new Hello();
+            return fromMessage(Wire.readHello(new NeoForgeWireIo(buf)));
         }
 
         @Override
@@ -79,23 +162,11 @@ public final class PackPayloads {
                 StreamCodec.of(Need::write, Need::read);
 
         private static void write(RegistryFriendlyByteBuf buf, Need payload) {
-            List<String> names = payload.names() == null ? List.of() : payload.names();
-            buf.writeVarInt(names.size());
-            for (String name : names) {
-                buf.writeUtf(name == null ? "" : name, MAX_NAME_CHARS);
-            }
+            Wire.writeNeed(new NeoForgeWireIo(buf), toMessage(payload));
         }
 
         private static Need read(RegistryFriendlyByteBuf buf) {
-            int count = buf.readVarInt();
-            if (count < 0 || count > MAX_WIRE_FILES) {
-                throw new DecoderException("AtomChat pack need: bad file count " + count);
-            }
-            List<String> names = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                names.add(buf.readUtf(MAX_NAME_CHARS));
-            }
-            return new Need(names);
+            return fromMessage(Wire.readNeed(new NeoForgeWireIo(buf)));
         }
 
         @Override
@@ -112,12 +183,11 @@ public final class PackPayloads {
                 StreamCodec.of(Ack::write, Ack::read);
 
         private static void write(RegistryFriendlyByteBuf buf, Ack payload) {
-            buf.writeBoolean(payload.ok());
-            buf.writeUtf(payload.detail() == null ? "" : payload.detail(), MAX_DETAIL_CHARS);
+            Wire.writeAck(new NeoForgeWireIo(buf), toMessage(payload));
         }
 
         private static Ack read(RegistryFriendlyByteBuf buf) {
-            return new Ack(buf.readBoolean(), buf.readUtf(MAX_DETAIL_CHARS));
+            return fromMessage(Wire.readAck(new NeoForgeWireIo(buf)));
         }
 
         @Override
@@ -135,47 +205,11 @@ public final class PackPayloads {
                 StreamCodec.of(Manifest::write, Manifest::read);
 
         private static void write(RegistryFriendlyByteBuf buf, Manifest payload) {
-            buf.writeBoolean(payload.enabled());
-            buf.writeUtf(payload.packHash() == null ? "" : payload.packHash(), MAX_HASH_CHARS);
-            buf.writeUtf(payload.serverName() == null ? "" : payload.serverName());
-            buf.writeByteArray(payload.icon() == null ? new byte[0] : payload.icon());
-            List<PackFile> files = payload.files() == null ? List.of() : payload.files();
-            buf.writeVarInt(files.size());
-            for (PackFile file : files) {
-                buf.writeUtf(file.name() == null ? "" : file.name(), MAX_NAME_CHARS);
-                buf.writeUtf(file.sha256() == null ? "" : file.sha256(), MAX_HASH_CHARS);
-                buf.writeVarInt(file.size());
-            }
-            List<String> phrases = payload.phrases() == null ? List.of() : payload.phrases();
-            buf.writeVarInt(phrases.size());
-            for (String phrase : phrases) {
-                buf.writeUtf(phrase == null ? "" : phrase);
-            }
+            Wire.writeManifest(new NeoForgeWireIo(buf), toMessage(payload));
         }
 
         private static Manifest read(RegistryFriendlyByteBuf buf) {
-            boolean enabled = buf.readBoolean();
-            String packHash = buf.readUtf(MAX_HASH_CHARS);
-            String serverName = buf.readUtf();
-            byte[] icon = buf.readByteArray();
-            int fileCount = buf.readVarInt();
-            if (fileCount < 0 || fileCount > MAX_WIRE_FILES) {
-                throw new DecoderException("AtomChat pack manifest: bad file count " + fileCount);
-            }
-            List<PackFile> files = new ArrayList<>(fileCount);
-            for (int i = 0; i < fileCount; i++) {
-                files.add(new PackFile(buf.readUtf(MAX_NAME_CHARS), buf.readUtf(MAX_HASH_CHARS),
-                        buf.readVarInt()));
-            }
-            int phraseCount = buf.readVarInt();
-            if (phraseCount < 0 || phraseCount > MAX_WIRE_PHRASES) {
-                throw new DecoderException("AtomChat pack manifest: bad phrase count " + phraseCount);
-            }
-            List<String> phrases = new ArrayList<>(phraseCount);
-            for (int i = 0; i < phraseCount; i++) {
-                phrases.add(buf.readUtf());
-            }
-            return new Manifest(enabled, packHash, serverName, icon, files, phrases);
+            return fromMessage(Wire.readManifest(new NeoForgeWireIo(buf)));
         }
 
         @Override
@@ -192,18 +226,11 @@ public final class PackPayloads {
                 StreamCodec.of(Chunk::write, Chunk::read);
 
         private static void write(RegistryFriendlyByteBuf buf, Chunk payload) {
-            buf.writeUtf(payload.name() == null ? "" : payload.name(), MAX_NAME_CHARS);
-            buf.writeVarInt(payload.offset());
-            buf.writeVarInt(payload.totalBytes());
-            buf.writeByteArray(payload.data() == null ? new byte[0] : payload.data());
+            Wire.writeChunk(new NeoForgeWireIo(buf), toMessage(payload));
         }
 
         private static Chunk read(RegistryFriendlyByteBuf buf) {
-            String name = buf.readUtf(MAX_NAME_CHARS);
-            int offset = buf.readVarInt();
-            int total = buf.readVarInt();
-            byte[] data = buf.readByteArray(MediaIds.CHUNK_BYTES);
-            return new Chunk(name, offset, total, data);
+            return fromMessage(Wire.readChunk(new NeoForgeWireIo(buf)));
         }
 
         @Override
@@ -220,11 +247,11 @@ public final class PackPayloads {
                 StreamCodec.of(Done::write, Done::read);
 
         private static void write(RegistryFriendlyByteBuf buf, Done payload) {
-            buf.writeVarInt(payload.fileCount());
+            Wire.writeDone(new NeoForgeWireIo(buf), toMessage(payload));
         }
 
         private static Done read(RegistryFriendlyByteBuf buf) {
-            return new Done(buf.readVarInt());
+            return fromMessage(Wire.readDone(new NeoForgeWireIo(buf)));
         }
 
         @Override
@@ -242,17 +269,17 @@ public final class PackPayloads {
                 (payload, ctx) -> ctx.enqueueWork(() -> PackSyncServer.onNeed(ctx.player(), payload.names())));
         registrar.playToServer(Ack.TYPE, Ack.STREAM_CODEC,
                 (payload, ctx) -> ctx.enqueueWork(
-                        () -> PackSyncServer.onAck(ctx.player(), PackNetServer.toMessage(payload))));
+                        () -> PackSyncServer.onAck(ctx.player(), toMessage(payload))));
         // The S2C receivers touch client-only classes; the dist check keeps those
         // references out of a dedicated server's class loading (e33chat pattern).
         registrar.playToClient(Manifest.TYPE, Manifest.STREAM_CODEC, (payload, ctx) -> {
             if (dist() == Dist.CLIENT) {
-                ctx.enqueueWork(() -> PackSyncClient.onManifest(PackNetClient.toMessage(payload)));
+                ctx.enqueueWork(() -> PackSyncClient.onManifest(toMessage(payload)));
             }
         });
         registrar.playToClient(Chunk.TYPE, Chunk.STREAM_CODEC, (payload, ctx) -> {
             if (dist() == Dist.CLIENT) {
-                ctx.enqueueWork(() -> PackSyncClient.onChunk(PackNetClient.toMessage(payload)));
+                ctx.enqueueWork(() -> PackSyncClient.onChunk(toMessage(payload)));
             }
         });
         registrar.playToClient(Done.TYPE, Done.STREAM_CODEC, (payload, ctx) -> {
