@@ -55,6 +55,11 @@ public final class OwnIdentity {
         cachedDecorated = null;
     }
 
+    /** Bare local profile name, or null while no world/player is loaded. */
+    public static String bareName() {
+        return localNameSupplier.get();
+    }
+
     /** Styled display name for own bubbles; best available source wins. */
     public static RichText displayNameRich() {
         Component tab = tabName();
