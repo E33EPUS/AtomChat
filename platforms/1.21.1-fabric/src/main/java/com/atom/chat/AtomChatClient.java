@@ -44,7 +44,7 @@ public class AtomChatClient implements ClientModInitializer {
         ImageLoader.get().init(CacheDirs.imageCacheDir());
         com.atom.chat.net.AvatarCompanionClient.init();
         com.atom.chat.net.MediaCompanionClient.init();
-        com.atom.chat.net.PackSyncClient.init();
+        com.atom.chat.net.PackNetClient.install();
         com.atom.chat.net.ConfigScreenClient.init();
         com.atom.chat.history.ChatHistory.init(
                 net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
@@ -69,7 +69,7 @@ public class AtomChatClient implements ClientModInitializer {
             com.atom.chat.page.ProfilePage.noteJoin();
             com.atom.chat.net.AvatarCompanionClient.onJoin();
             com.atom.chat.net.MediaCompanionClient.onJoin();
-        com.atom.chat.net.PackSyncClient.onJoin(client);
+            com.atom.chat.net.PackSyncClient.onJoin();
             com.atom.chat.chat.OwnIdentity.reset();
             com.atom.chat.chat.TeleportCommands.reset();
         });

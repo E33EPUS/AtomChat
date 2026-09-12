@@ -32,7 +32,10 @@ public class AtomChat implements ModInitializer {
         // Server pack distribution (0.2.9): emotes, phrases and the server
         // identity, on its own channel so it can be switched off alone.
         com.atom.chat.net.PackPayloads.register();
-        com.atom.chat.net.PackSyncServer.register();
+        // Server pack distribution (0.2.9): the receivers, the send port and the
+        // server facts the shared logic asks for. The tick that drains the queues
+        // is hooked below, next to the other server-side housekeeping.
+        com.atom.chat.net.PackNetServer.install();
         // Server config screen (0.2.9): /atomchat gui + the save path. The screen
         // itself is built by the editing player's client, never by the server.
         com.atom.chat.net.ConfigPayloads.register();
@@ -42,8 +45,11 @@ public class AtomChat implements ModInitializer {
         // for a server - a dedicated one, or the integrated one of a
         // single-player world - so a plain client connected to someone else's
         // server never sweeps its own game directory.
-        ServerTickEvents.END_SERVER_TICK.register(server ->
-                com.atom.chat.net.CompanionMaintenance.tick());
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            com.atom.chat.net.CompanionMaintenance.tick();
+            // The pack download queue: a few chunks per player per tick.
+            com.atom.chat.net.PackSyncServer.tick(server);
+        });
         ServerLifecycleEvents.SERVER_STARTED.register(server ->
                 com.atom.chat.net.CompanionMaintenance.onServerStarted());
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {

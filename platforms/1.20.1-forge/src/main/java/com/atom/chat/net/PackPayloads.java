@@ -228,7 +228,8 @@ public final class PackPayloads {
                 .encoder(Ack::encode)
                 .decoder(Ack::decode)
                 .consumerMainThread((payload, ctx) -> {
-                    ctx.get().enqueueWork(() -> PackSyncServer.onAck(ctx.get().getSender(), payload));
+                    ctx.get().enqueueWork(() -> PackSyncServer.onAck(ctx.get().getSender(),
+                            PackNetServer.toMessage(payload)));
                     ctx.get().setPacketHandled(true);
                 })
                 .add();
@@ -240,7 +241,7 @@ public final class PackPayloads {
                 .decoder(Manifest::decode)
                 .consumerMainThread((payload, ctx) -> {
                     if (FMLEnvironment.dist == Dist.CLIENT) {
-                    ctx.get().enqueueWork(() -> PackSyncClient.onManifest(payload));
+                    ctx.get().enqueueWork(() -> PackSyncClient.onManifest(PackNetClient.toMessage(payload)));
                     }
                     ctx.get().setPacketHandled(true);
                 })
@@ -251,7 +252,7 @@ public final class PackPayloads {
                 .decoder(Chunk::decode)
                 .consumerMainThread((payload, ctx) -> {
                     if (FMLEnvironment.dist == Dist.CLIENT) {
-                    ctx.get().enqueueWork(() -> PackSyncClient.onChunk(payload));
+                    ctx.get().enqueueWork(() -> PackSyncClient.onChunk(PackNetClient.toMessage(payload)));
                     }
                     ctx.get().setPacketHandled(true);
                 })

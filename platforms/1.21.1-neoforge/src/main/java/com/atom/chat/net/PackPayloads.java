@@ -241,17 +241,18 @@ public final class PackPayloads {
         registrar.playToServer(Need.TYPE, Need.STREAM_CODEC,
                 (payload, ctx) -> ctx.enqueueWork(() -> PackSyncServer.onNeed(ctx.player(), payload.names())));
         registrar.playToServer(Ack.TYPE, Ack.STREAM_CODEC,
-                (payload, ctx) -> ctx.enqueueWork(() -> PackSyncServer.onAck(ctx.player(), payload)));
+                (payload, ctx) -> ctx.enqueueWork(
+                        () -> PackSyncServer.onAck(ctx.player(), PackNetServer.toMessage(payload))));
         // The S2C receivers touch client-only classes; the dist check keeps those
         // references out of a dedicated server's class loading (e33chat pattern).
         registrar.playToClient(Manifest.TYPE, Manifest.STREAM_CODEC, (payload, ctx) -> {
             if (dist() == Dist.CLIENT) {
-                ctx.enqueueWork(() -> PackSyncClient.onManifest(payload));
+                ctx.enqueueWork(() -> PackSyncClient.onManifest(PackNetClient.toMessage(payload)));
             }
         });
         registrar.playToClient(Chunk.TYPE, Chunk.STREAM_CODEC, (payload, ctx) -> {
             if (dist() == Dist.CLIENT) {
-                ctx.enqueueWork(() -> PackSyncClient.onChunk(payload));
+                ctx.enqueueWork(() -> PackSyncClient.onChunk(PackNetClient.toMessage(payload)));
             }
         });
         registrar.playToClient(Done.TYPE, Done.STREAM_CODEC, (payload, ctx) -> {
