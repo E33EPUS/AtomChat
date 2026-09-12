@@ -21,6 +21,9 @@ public class AtomChat {
     private static volatile String version;
 
     public AtomChat() {
+        // 第一件事：把平台门面装上（共享层要问加载器的事情都走它）。
+        // 必须在任何配置/路径访问之前 —— 没装就抛错，不给默认值。
+        com.atom.chat.platform.Platform.install(new com.atom.chat.platform.ForgePlatform());
         // Config seam for anti-spam: wire the pure logic to the real config
         // only in a real launch (unit tests keep the safe no-merge default).
         com.atom.chat.chat.MessageMerge.antiSpamEnabledSupplier =
