@@ -36,10 +36,15 @@ public class MessageHandlerMixin {
                                             ChatType.Bound bound, CallbackInfo ci) {
         UUID uuid = message.sender();
         String profile = gameProfile.getName();
-        String content = message.signedContent();
+        // decoratedContent() keeps the server/plugin rich body (unsigned
+        // content); signedContent() is the plain signing payload, and wrapping
+        // it in Component.literal() dropped every style — coloured @mentions
+        // arrived colourless on this leg. e33chat's Forge port does the same.
+        Component contentComponent = message.decoratedContent();
+        String content = contentComponent.getString();
         Component senderComponent = bound.name();
         MessageCapture.set(new SenderMeta(uuid, profile, profile, content, false,
-                senderComponent, Component.literal(content)));
+                senderComponent, contentComponent));
     }
 
     @Inject(method = "handleDisguisedChatMessage", at = @At("HEAD"))

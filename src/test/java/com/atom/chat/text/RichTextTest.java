@@ -110,4 +110,24 @@ class RichTextTest {
         RichText emptyText = RichText.of(Component.literal("").setStyle(root));
         assertEquals(root, emptyText.slice(0, 0).rootStyle());
     }
+
+    @Test
+    void spliceReplacesRangeAndKeepsStyles() {
+        RichText rich = RichText.of(Component.literal("abc").setStyle(Style.EMPTY.withColor(0xFF0000))
+                .append(Component.literal("def").setStyle(Style.EMPTY.withColor(0x00FF00))));
+        RichText replaced = rich.splice(2, 5,
+                RichText.of(Component.literal("XY").setStyle(Style.EMPTY.withColor(0x0000FF))));
+        assertEquals("abXYf", replaced.getString());
+        assertEquals(0xFF0000, replaced.runs().get(0).style().getColor().getValue());
+        assertEquals(0x0000FF, replaced.slice(2, 4).runs().get(0).style().getColor().getValue());
+    }
+
+    @Test
+    void spliceClampsAndKeepsRootStyle() {
+        Style root = Style.EMPTY.withColor(0x123456);
+        RichText rich = RichText.of(Component.literal("abc").setStyle(root));
+        assertEquals("abc", rich.splice(1, 1, RichText.empty()).getString());
+        assertEquals("bc", rich.splice(-5, 1, RichText.empty()).getString());
+        assertEquals(root, rich.splice(0, 1, RichText.literal("z")).rootStyle());
+    }
 }
