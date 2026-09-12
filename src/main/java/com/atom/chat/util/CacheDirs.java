@@ -29,8 +29,12 @@ import java.util.stream.Stream;
  *       media (content-addressed, trimmed by the server config)</li>
  *   <li>{@code <gameDir>/atomchat-data/packs/<key>/} — emote packs downloaded
  *       from a server (re-verified on every join, safe to delete)</li>
- *   <li>{@code config/atomchat/emotes/} — the local emotes; on a server the
- *       same folder is the pack it hands to clients (admin content)</li>
+ *   <li>{@code config/atomchat/emotes/} — the emotes the player added with the
+ *       panel's {@code +} (their own stickers, never distributed)</li>
+ *   <li>{@code config/atomchat/server-emotes/} — the emotes a server hands to
+ *       clients (admin content). Deliberately a different folder: sharing one
+ *       path between the two roles meant a single game dir - single player, or
+ *       a LAN host - pushed the player's own stickers to every guest</li>
  * </ul>
  *
  * <p>Old v0.2.3 locations under {@code config/atomchat/} are migrated once on
@@ -71,9 +75,18 @@ public final class CacheDirs {
         return packsRoot().resolve(key);
     }
 
-    /** Local emotes; on a server this doubles as the distributed emote pack. */
+    /** The player's own emotes, added through the panel. Never distributed. */
     public static Path emotesDir() {
         return FabricLoader.getInstance().getConfigDir().resolve("atomchat/emotes");
+    }
+
+    /**
+     * The emotes a server offers to clients - admin content, sitting next to
+     * {@code atomchat-server.json}. A server must never build its pack from
+     * {@link #emotesDir()}: that folder belongs to whoever is playing.
+     */
+    public static Path serverEmotesDir() {
+        return FabricLoader.getInstance().getConfigDir().resolve("atomchat/server-emotes");
     }
 
     /** Companion server's hosted chat media (images / animated GIFs). */
@@ -86,6 +99,31 @@ public final class CacheDirs {
         migrateDir(config.resolve("image-cache"), imageCacheDir(), "image cache");
         migrateDir(config.resolve("avatars"), avatarDataDir(), "companion avatar data");
         cleanupMovedLegacyDirs(config);
+        retireLegacyFlatConfig(config);
+    }
+
+    /**
+     * The pre-0.2.4 client settings lived in one flat file,
+     * {@code config/atomchat.json}. Once the current layout is in place that
+     * file is dead weight, so it is renamed rather than deleted - a player who
+     * hand-edited it keeps the text.
+     */
+    private static void retireLegacyFlatConfig(Path configRoot) {
+        if (configRoot == null) {
+            return;
+        }
+        Path legacy = configRoot.resolve("atomchat.json");
+        Path current = configRoot.resolve("atomchat-client.json");
+        if (!Files.isRegularFile(legacy) || !Files.isRegularFile(current)) {
+            return;
+        }
+        Path retired = configRoot.resolve("atomchat.json.migrated-bak");
+        try {
+            Files.move(legacy, retired, StandardCopyOption.REPLACE_EXISTING);
+            AtomChat.LOGGER.info("Retired the pre-0.2.4 flat config {} -> {}", legacy, retired);
+        } catch (IOException e) {
+            AtomChat.LOGGER.warn("Could not retire the legacy flat config {}", legacy, e);
+        }
     }
 
     private static void migrateDir(Path oldDir, Path newDir, String label) {
