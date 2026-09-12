@@ -32,7 +32,7 @@ public final class WatutBridge {
             return;
         }
         resolved = true;
-        if (!net.minecraftforge.fml.ModList.get().isLoaded("watut")) {
+        if (!com.atom.chat.platform.Platform.isModLoaded("watut")) {
             return;
         }
         try {
