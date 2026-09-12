@@ -396,17 +396,21 @@ public final class QuickPhrasePanel {
             }
             Rect r = rowRect(layout, i);
             if (vmx >= r.getLeft() && vmx <= r.getRight() && vmy >= r.getTop() && vmy <= r.getBottom()) {
-                // The server's rows and the group label are not targets, so no
-                // hover capsule appears over them.
-                if (rowKind(index) != ROW_LOCAL) {
+                int kind = rowKind(index);
+                if (kind == ROW_HEADER) {
+                    // The group label is the one row that is not a target.
                     break;
                 }
+                // The server's rows highlight like the player's own - only the
+                // buttons are missing, so nothing else here is hit-tested.
                 hoveredRow = index;
                 rowHover.putIfAbsent(index, 0.0F);
-                if (contains(btnRect(r, 1), vmx, vmy)) {
-                    hoveredBtn = index * 2 + 1;
-                } else if (contains(btnRect(r, 0), vmx, vmy)) {
-                    hoveredBtn = index * 2;
+                if (kind == ROW_LOCAL) {
+                    if (contains(btnRect(r, 1), vmx, vmy)) {
+                        hoveredBtn = index * 2 + 1;
+                    } else if (contains(btnRect(r, 0), vmx, vmy)) {
+                        hoveredBtn = index * 2;
+                    }
                 }
                 if (hoveredBtn >= 0) {
                     btnHover.putIfAbsent(hoveredBtn, 0.0F);
@@ -479,8 +483,14 @@ public final class QuickPhrasePanel {
             return;
         }
         if (kind == ROW_SERVER) {
-            // Same colour as the player's own phrases - the group label and the
-            // missing buttons are what mark it read-only, not a dimmer text.
+            // Same colour and the same hover capsule as the player's own phrases;
+            // only the edit/delete buttons are missing, because there are none.
+            if (rowHover.getOrDefault(position, 0.0F) > 0.01F) {
+                float fade = rowHover.getOrDefault(position, 0.0F);
+                SkiaDraw.drawRoundedRect(canvas, r.getLeft() + s(4), r.getTop() + s(4),
+                        r.getWidth() - s(8), r.getHeight() - s(8), s(6),
+                        Color.makeARGB((int) (55.0F * fade), 255, 255, 255));
+            }
             String theirs = SkiaFontRenderer.truncate(font, rowTextAt(position), r.getWidth() - s(24));
             SkiaFontRenderer.drawText(canvas, font, theirs, r.getLeft() + s(12),
                     SkiaFontRenderer.centerBaselineY(font, r.getTop() + r.getHeight() / 2.0F), TEXT);

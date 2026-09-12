@@ -10,13 +10,13 @@
 新增：**`/atomchat gui` 服务端配置屏**（OP 2 级，单人存档自动放行）——游戏内改开关、数值、面板显示名与服务端常用语；服务端重新校验值域，并用版本号拒绝过期编辑。
 新增：**服务端托管数据默认 7 天清理**（`retentionDays` 由 30 改为 7，头像库新增 `maxAvatarTotalMb`），清理时机改为开服 + 每 5 分钟 + 上传后，掉线即清未完成的上传缓冲；客户端图片缓存同样 7 天未用自动清理。
 更改：本地表情上限 10 → 20 且表情格可滚动；客户端新增「接收本服下发内容」隐私开关（默认开）；服务端新增 `packEnabled` / `packMaxFiles` / `packMaxMb` / `packName` / `phrases` 五个配置键。
-修复：增量补差（客户端删过或改过已下发文件时）此前会因「清单里未下载的文件缺字节」整包失败；现在会先把保留的文件重新校验后补进包里。细调：服务端表情格与本地一样有悬停高亮（只是没有删除按钮），服务端常用语与本地同色，服务器没有可下发内容时不显示任何服务端相关行。
+修复：增量补差（客户端删过或改过已下发文件时）此前会因「清单里未下载的文件缺字节」整包失败；现在会先把保留的文件重新校验后补进包里。细调：服务端表情格与本地一样有悬停高亮（只是没有删除按钮），服务端常用语与本地同色且同样有悬停高亮，服务器没有可下发内容时不显示任何服务端相关行。
 
 Added: server-offered content - a client picks up the server's emote pack, phrases and identity (server-icon.png plus MOTD) on join. The emote panel gains a read-only "this server" section and the phrase panel a read-only group; the transfer runs over a new atomchat-dist channel with per-file SHA-256 verification and incremental fetch (deleting one emote costs one file next join), a client-side hard cap of 200 files / 16 MB, and a written reason in the server log for every failure.
 Added: /atomchat gui - an in-game server settings screen (OP level 2, always allowed in single-player) for the master switches, the numeric limits, the panel name and the server phrases; the server re-validates every field and refuses stale edits by version.
 Added: hosted data now defaults to a 7-day retention (retentionDays 30 to 7, plus a separate avatar store cap, maxAvatarTotalMb); the sweep runs at server start, every five minutes and after each upload, and a player leaving drops their unfinished upload buffers; the client image cache expires after seven days unused as well.
 Changed: the local emote cap went from 10 to 20 with a scrollable grid; the client gained an "accept server packs" privacy switch (on by default); the server gained five config keys (packEnabled, packMaxFiles, packMaxMb, packName, phrases).
-Fixed: an incremental sync (after the client deleted or edited an offered file) used to fail as a whole because the manifest files it did not download had no bytes; kept files are now re-verified and folded back in. Polished: server-emote cells highlight on hover like local ones (they just carry no delete button), server phrases use the same colour as local ones, and nothing server-related is shown when the server offers nothing.
+Fixed: an incremental sync (after the client deleted or edited an offered file) used to fail as a whole because the manifest files it did not download had no bytes; kept files are now re-verified and folded back in. Polished: server-emote cells highlight on hover like local ones (they just carry no delete button), server phrases use the same colour and the same hover highlight as local ones, and nothing server-related is shown when the server offers nothing.
 
 ## v0.2.8
 
