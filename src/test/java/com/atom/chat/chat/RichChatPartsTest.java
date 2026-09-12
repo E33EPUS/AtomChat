@@ -1,5 +1,6 @@
 package com.atom.chat.chat;
 
+import com.atom.chat.text.RichText;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
@@ -139,6 +140,61 @@ class RichChatPartsTest {
                 .orElseThrow();
         assertEquals("[VIP]Steve", parts.sender().getString());
         assertEquals("hi", parts.content().getString());
+    }
+
+    @Test
+    void quoteBodySlicesStyledReplyBody() {
+        Style orange = Style.EMPTY.withColor(0xFF8800);
+        Text line = Text.literal("「引用 @Steve: hello」")
+                .append(Text.literal("@[称号]E33EPUS").setStyle(orange))
+                .append(Text.literal(" got it"));
+        RichText body = ChatPipeline.quoteBodyRich(RichText.of(line), "@[称号]E33EPUS got it");
+        assertEquals("@[称号]E33EPUS got it", body.getString());
+        assertTrue(body.runs().stream().anyMatch(r -> r.style().getColor() != null
+                && r.style().getColor().getRgb() == 0xFF8800));
+    }
+
+    @Test
+    void quoteBodyDoesNotLeakSenderStyles() {
+        Style orange = Style.EMPTY.withColor(0xFF8800);
+        Text line = Text.literal("[VIP]")
+                .append(Text.literal("Steve").setStyle(orange))
+                .append(Text.literal("> 「引用 @Bob: yo」body text"));
+        RichText body = ChatPipeline.quoteBodyRich(RichText.of(line), "body text");
+        assertEquals("body text", body.getString());
+        assertTrue(body.runs().stream().allMatch(r -> r.style().getColor() == null));
+    }
+
+    @Test
+    void quoteBodyFallsBackWhenVisibleTextDiffers() {
+        RichText source = RichText.literal("「引用 @Steve: hello」server text");
+        RichText body = ChatPipeline.quoteBodyRich(source, "client text");
+        assertEquals("client text", body.getString());
+        assertTrue(body.runs().stream().allMatch(r -> r.style().getColor() == null));
+    }
+
+    @Test
+    void quoteBodyTrimsSurroundingWhitespace() {
+        RichText source = RichText.literal("「引用 @Steve: hello」   reply   ");
+        assertEquals("reply", ChatPipeline.quoteBodyRich(source, "reply").getString());
+    }
+
+    @Test
+    void quoteBodyWithoutPrefixFallsBackToLiteral() {
+        assertEquals("plain body",
+                ChatPipeline.quoteBodyRich(RichText.literal("no quote at all"), "plain body").getString());
+    }
+
+    @Test
+    void quoteBodyKeepsUrlLinks() {
+        RichText source = RichText.literal("「引用 @Steve: hello」see https://example.com/x now");
+        RichText body = ChatPipeline.quoteBodyRich(source, "see https://example.com/x now");
+        assertTrue(body.runs().stream().anyMatch(r -> r.style().getClickEvent() != null));
+    }
+
+    @Test
+    void quoteBodyHandlesMissingRichSource() {
+        assertEquals("body", ChatPipeline.quoteBodyRich(null, "body").getString());
     }
 
     @Test
