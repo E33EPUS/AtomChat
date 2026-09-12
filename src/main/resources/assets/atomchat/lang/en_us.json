@@ -55,6 +55,7 @@
   "atomchat.picker.filter.emote": "Stickers (png, jpg, jpeg)",
   "atomchat.picker.preview.none": "No preview",
   "atomchat.picker.preview.loading": "Loading…",
+  "atomchat.picker.headless": "AtomChat cannot open the file picker: Java's window toolkit is locked in headless mode, most likely by another mod. See the game log for details.",
   "atomchat.input.save_failed": "Failed to save image",
   "key.atomchat.open": "Open AtomChat home",
   "key.atomchat.category": "AtomChat",

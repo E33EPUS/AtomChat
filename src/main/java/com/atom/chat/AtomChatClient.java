@@ -9,6 +9,7 @@ import com.atom.chat.notification.NotificationBanner;
 import com.atom.chat.notification.NotificationController;
 import com.atom.chat.render.PanelBlurRenderer;
 import com.atom.chat.screen.AtomChatScreen;
+import com.atom.chat.util.AwtDisplay;
 import com.atom.chat.util.CacheDirs;
 import com.atom.chat.wallpaper.WallpaperStore;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -35,10 +36,9 @@ public class AtomChatClient {
             "key.atomchat.category");
 
     public AtomChatClient(ModContainer container, IEventBus modEventBus) {
-        // The AWT/Swing image picker needs a real toolkit, not the headless
-        // AWT some launchers/other mods select. This must run before any AWT
-        // class initialises, so it lives here at the very start of client init.
-        System.setProperty("java.awt.headless", "false");
+        // Second, idempotent call: the mixin plugin already claimed AWT before
+        // any mod was constructed. See AwtDisplay for why being first matters.
+        AwtDisplay.claim();
 
         modEventBus.addListener(PanelBlurRenderer::registerShaders);
         modEventBus.addListener(AtomChatClient::onClientSetup);
