@@ -32,8 +32,12 @@ public class AtomChat {
         // tick and start events fire for a dedicated server and for the
         // integrated server of a single-player world alike, while a client
         // connected to someone else's server never sees them.
-        NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post event) ->
-                com.atom.chat.net.CompanionMaintenance.tick());
+        NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post event) -> {
+            com.atom.chat.net.CompanionMaintenance.tick();
+            // The pack download queue: a few chunks per player per tick.
+            com.atom.chat.net.PackSyncServer.tick(event.getServer());
+        });
+        com.atom.chat.net.ConfigScreenServer.register();
         NeoForge.EVENT_BUS.addListener((ServerStartedEvent event) ->
                 com.atom.chat.net.CompanionMaintenance.onServerStarted());
         NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> {
@@ -47,6 +51,10 @@ public class AtomChat {
 
     private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
         com.atom.chat.net.AvatarPayloads.register(event);
+        // Server pack distribution (0.2.9): emotes, phrases and the server
+        // identity, plus the config screen's snapshot/save pair.
+        com.atom.chat.net.PackPayloads.register(event);
+        com.atom.chat.net.ConfigPayloads.register(event);
         // Media companion: server-hosted chat images / GIFs, same dual
         // entrypoint pattern and master hosting switch as the avatar side.
         com.atom.chat.net.MediaPayloads.register(event);

@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Server-side AtomChat settings (0.2.7), stored next to the client file at
@@ -40,6 +42,16 @@ public class AtomChatServerConfig {
     public int retentionDays = 7;
     /** Per-player upload cooldown, in milliseconds. */
     public int uploadCooldownMs = 3000;
+    /** Master switch: offer this server's emotes, phrases and identity to clients. */
+    public boolean packEnabled = true;
+    /** Largest number of emote files offered to clients. */
+    public int packMaxFiles = 32;
+    /** Total emote bytes offered to clients, in MB. */
+    public int packMaxMb = 8;
+    /** Server name shown in the client panel; blank keeps the MOTD. */
+    public String packName = "";
+    /** Phrases offered to clients (at most 20, each at most 200 characters). */
+    public List<String> phrases = new ArrayList<>();
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static volatile AtomChatServerConfig instance;
@@ -73,6 +85,10 @@ public class AtomChatServerConfig {
 
     public long maxAvatarTotalBytes() {
         return Math.max(1L, maxAvatarTotalMb) * 1024L * 1024L;
+    }
+
+    public long packMaxBytes() {
+        return Math.max(1L, packMaxMb) * 1024L * 1024L;
     }
 
     private static Path path() {

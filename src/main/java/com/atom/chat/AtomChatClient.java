@@ -84,6 +84,7 @@ public class AtomChatClient {
         com.atom.chat.page.ProfilePage.noteJoin();
         com.atom.chat.net.AvatarCompanionClient.onJoin();
         com.atom.chat.net.MediaCompanionClient.onJoin();
+        com.atom.chat.net.PackSyncClient.onJoin(client);
         com.atom.chat.chat.OwnIdentity.reset();
         com.atom.chat.chat.TeleportCommands.reset();
     }
@@ -99,12 +100,15 @@ public class AtomChatClient {
         com.atom.chat.chat.SeenPlayers.clear();
         com.atom.chat.chat.OwnIdentity.reset();
         com.atom.chat.net.MediaCompanionClient.onDisconnect();
+        com.atom.chat.net.PackSyncClient.onDisconnect();
+        com.atom.chat.net.ConfigScreenClient.onDisconnect();
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
         com.atom.chat.history.ChatHistory.tick(client);
         com.atom.chat.net.MediaCompanionClient.tick();
+        com.atom.chat.net.PackSyncClient.tick();
         // Expires banners regardless of whether the panel is open: their 4s
         // lifetime starts at enqueue, so a banner queued while the panel was
         // closed is already gone if you open the panel later than that.
