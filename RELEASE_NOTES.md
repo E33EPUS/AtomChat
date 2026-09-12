@@ -4,15 +4,22 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
-## v0.2.91
+## v0.2.10
+
+本版是「单分支多目标」重铸后的第一次发版，也是商店线上 0.2.9 之后的第一版。开发期内部号一度写到 0.2.91，但它从未发过版 —— 为了让商店版本号保持递增，这里回到 0.2.10：下面既包含那批修复，也包含此后落到 main 的修复。三个目标（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1）现在由同一份源码产出。
 
 修复：玩家卡片右键菜单的「取消屏蔽」点不到——绘制按 3 行、点击判定只按 2 行，第三行永远在判定区外；现在绘制与三个点击入口共用同一行数计算。
 修复：别人 @ 你时名字前的称号颜色消失——NeoForge / Forge 的签名聊天捕获把 unsigned 富文本丢成了纯文本；现在改取 decoratedContent()，@ 提及动作改插真实玩家名，并在客户端用本地已知称号给 @ 提及重新着色。
 修复：引用回复的正文样式丢失——正文此前由解析出的纯文本重建；现在从富文本行里 slice 正文，服务器样式（含 @ 提及颜色）保留，文本对不上时回退旧行为。
+修复：设置页与个人资料页的列表打开时停在底部——滚动控制器一律「首帧贴底」（公屏要的正是这个），可这两页也想贴底；现在控制器带上下锚定策略，这两页改为顶部锚定，公屏行为不变。
+修复：Forge 1.20.1 上点服务端下发的常用语没反应——该目标的点击分支里缺「插入服务端常用语」这一支（1.21.1 两端都有），落在空 default 上；现在补齐。
 
 Fixed the player-card menu's unblock row being unclickable because the hit test used two rows while the drawing used three.
 Fixed coloured @mentions losing their decoration: NeoForge/Forge signed-chat capture dropped unsigned rich content, so it now takes decoratedContent(), mention actions insert the real profile name, and local mentions are re-coloured from the locally known decoration.
 Fixed quoted reply bodies losing their rich styles: the body is now sliced from the rich line instead of rebuilt from plain text, with the old literal fallback when the visible text does not match.
+Fixed the settings and profile lists opening at the bottom: every scroll controller snapped to the newest entry on its first frame, which chat wants and those two lists do not, so the controller now takes an anchor policy and they pass top.
+Fixed server-offered quick phrases doing nothing when clicked on Forge 1.20.1, whose click handling lacked the insert-from-server branch the other two targets have.
+This is the first release from the single-branch multi-target line, which builds all three jars from one source; it renumbers to 0.2.10 because the internal 0.2.91 label was never released and store versions must keep increasing.
 
 ## v0.2.9
 
