@@ -9,7 +9,17 @@ public final class NeoForgePlatform implements Platform.Provider {
 
     @Override
     public Path configDir() {
-        return FMLPaths.CONFIGDIR.get();
+        try {
+            Path dir = FMLPaths.CONFIGDIR.get();
+            if (dir != null) {
+                return dir;
+            }
+        } catch (Throwable ignored) {
+            // 没有可问的加载器启动（单测、工具）：退回工作目录下的常规位置。
+            // 这个兜底原先写在 AtomChatServerConfig 里，现在归到「加载器事实」这一侧 ——
+            // 共享层只该问路，不该知道谁会答不上来。
+        }
+        return Path.of("config");
     }
 
     @Override

@@ -3,7 +3,6 @@ package com.atom.chat.config;
 import com.atom.chat.AtomChat;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import net.neoforged.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -92,16 +91,9 @@ public class AtomChatServerConfig {
     }
 
     private static Path path() {
-        try {
-            Path configDir = FMLPaths.CONFIGDIR.get();
-            if (configDir != null) {
-                return configDir.resolve("atomchat/atomchat-server.json");
-            }
-        } catch (Throwable ignored) {
-            // No Forge launch to ask (unit tests, tooling): fall back to the
-            // conventional location relative to the working directory.
-        }
-        return Path.of("config", "atomchat", "atomchat-server.json");
+        // 「没有加载器可问」的兜底属于加载器事实，住在各目标的 Platform.Provider 里
+        // （见 NeoForgePlatform.configDir）；共享层只需要问一句路。
+        return com.atom.chat.platform.Platform.configDir().resolve("atomchat/atomchat-server.json");
     }
 
     private static AtomChatServerConfig load() {
