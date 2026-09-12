@@ -26,4 +26,9 @@ public final class NeoForgePlatform implements Platform.Provider {
     public Path gameDir() {
         return FMLPaths.GAMEDIR.get();
     }
+
+    @Override
+    public boolean isModLoaded(String modId) {
+        return net.neoforged.fml.ModList.get().isLoaded(modId);
+    }
 }

@@ -25,4 +25,9 @@ public final class ForgePlatform implements Platform.Provider {
     public Path gameDir() {
         return FMLPaths.GAMEDIR.get();
     }
+
+    @Override
+    public boolean isModLoaded(String modId) {
+        return net.minecraftforge.fml.ModList.get().isLoaded(modId);
+    }
 }

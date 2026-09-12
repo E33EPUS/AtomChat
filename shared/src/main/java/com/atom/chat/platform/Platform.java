@@ -29,6 +29,9 @@ public final class Platform {
 
         /** 游戏目录（服务端就是服务端目录）。 */
         Path gameDir();
+
+        /** 某个模组是否已加载（联动模组的桥接要问这一句）。 */
+        boolean isModLoaded(String modId);
     }
 
     private static volatile Provider provider;
@@ -66,5 +69,10 @@ public final class Platform {
     /** 游戏目录（服务端就是服务端目录）。 */
     public static Path gameDir() {
         return require().gameDir();
+    }
+
+    /** 某个模组是否已加载。 */
+    public static boolean isModLoaded(String modId) {
+        return require().isModLoaded(modId);
     }
 }
