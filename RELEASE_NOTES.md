@@ -4,6 +4,18 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
+## v0.2.9
+
+新增：**服务端下发**——客户端进服会拿到本服的表情包、常用语与服务器标识（`server-icon.png` + MOTD）。表情面板多出只读的「本服」分区、常用语面板多出只读的「本服」分组；传输走新的 `atomchat-dist` 通道，逐文件 sha256 校验、只补差量（删掉一个表情下次进服只补那一个），客户端硬上限 200 个 / 16 MB，失败会写明原因进服务端日志。
+新增：**`/atomchat gui` 服务端配置屏**（OP 2 级，单人存档自动放行）——游戏内改开关、数值、面板显示名与服务端常用语；服务端重新校验值域，并用版本号拒绝过期编辑。
+新增：**服务端托管数据默认 7 天清理**（`retentionDays` 由 30 改为 7，头像库新增 `maxAvatarTotalMb`），清理时机改为开服 + 每 5 分钟 + 上传后，掉线即清未完成的上传缓冲；客户端图片缓存同样 7 天未用自动清理。
+更改：本地表情上限 10 → 20 且表情格可滚动；客户端新增「接收本服下发内容」隐私开关（默认开）；服务端新增 `packEnabled` / `packMaxFiles` / `packMaxMb` / `packName` / `phrases` 五个配置键。
+
+Added: server-offered content - a client picks up the server's emote pack, phrases and identity (server-icon.png plus MOTD) on join. The emote panel gains a read-only "this server" section and the phrase panel a read-only group; the transfer runs over a new atomchat-dist channel with per-file SHA-256 verification and incremental fetch (deleting one emote costs one file next join), a client-side hard cap of 200 files / 16 MB, and a written reason in the server log for every failure.
+Added: /atomchat gui - an in-game server settings screen (OP level 2, always allowed in single-player) for the master switches, the numeric limits, the panel name and the server phrases; the server re-validates every field and refuses stale edits by version.
+Added: hosted data now defaults to a 7-day retention (retentionDays 30 to 7, plus a separate avatar store cap, maxAvatarTotalMb); the sweep runs at server start, every five minutes and after each upload, and a player leaving drops their unfinished upload buffers; the client image cache expires after seven days unused as well.
+Changed: the local emote cap went from 10 to 20 with a scrollable grid; the client gained an "accept server packs" privacy switch (on by default); the server gained five config keys (packEnabled, packMaxFiles, packMaxMb, packName, phrases).
+
 ## v0.2.8
 
 修复：Forge 1.20.1 打开聊天面板后画面整片变黑（面板短短一瞬间还能看到，随后黑屏；游戏不崩溃，仍能打字、发图）——模糊 pre-pass 用裸 GL 写状态，绕过了 Blaze3D「缓存相等就不碰驱动」的门控 setter，于是驱动与游戏对当前纹理单元的认知长期不一致，之后原版与 Embeddium 的纹理绑定全部落到错误的单元；现在状态改为「先写驱动、再镜像缓存」，并把帧缓冲、视口与 unpack 像素状态一并保存还原。
