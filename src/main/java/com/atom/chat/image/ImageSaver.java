@@ -15,7 +15,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Saves a remote image URL to a local path as raw bytes.
+ * Saves an image url to a local path as raw bytes.
+ *
+ * <p>Two transports meet here. External hosts are plain HTTP; server-hosted
+ * media ({@code atomchat-media:}) is served by the companion channel, the same
+ * one the renderer uses, so the saved file is byte-identical to what was shown.
  *
  * <p>This deliberately does not round-trip through Skia/ImageIO: GIF animation,
  * WebP and transparent PNGs must stay byte-identical. The future-based API is
@@ -39,25 +43,36 @@ public final class ImageSaver {
     public static CompletableFuture<Path> save(String url, Path target) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                HttpResponse<byte[]> response = CLIENT.send(
-                        HttpRequest.newBuilder()
-                                .uri(URI.create(url))
-                                .timeout(Duration.ofSeconds(30))
-                                .GET()
-                                .build(),
-                        HttpResponse.BodyHandlers.ofByteArray());
-                if (response.statusCode() != 200) {
-                    throw new IOException("HTTP " + response.statusCode());
-                }
+                // Hosted media travels over the server companion, not HTTP, so
+                // the byte source has to be picked by scheme. See
+                // ImageLoader#fetchBytes.
+                byte[] body = url.startsWith(ImageLoader.MEDIA_URL_PREFIX)
+                        ? ImageLoader.fetchBytes(url)
+                        : download(url);
                 if (target.getParent() != null) {
                     Files.createDirectories(target.getParent());
                 }
-                Files.write(target, response.body());
+                Files.write(target, body);
                 return target;
             } catch (Exception e) {
                 AtomChat.LOGGER.warn("Failed to save image {} to {}", url, target, e);
                 throw new RuntimeException("Failed to save image", e);
             }
         }, EXECUTOR);
+    }
+
+    /** Plain HTTP download. Redirects are followed: image hosts hand out links that move. */
+    private static byte[] download(String url) throws Exception {
+        HttpResponse<byte[]> response = CLIENT.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(30))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() != 200) {
+            throw new IOException("HTTP " + response.statusCode());
+        }
+        return response.body();
     }
 }

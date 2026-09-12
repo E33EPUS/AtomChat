@@ -65,6 +65,7 @@ import com.atom.chat.wallpaper.WallpaperImage;
 import com.atom.chat.wallpaper.WallpaperStore;
 import com.atom.chat.util.ClipboardImages;
 import com.atom.chat.util.FilePicker;
+import com.atom.chat.util.ImageFileNames;
 import com.atom.chat.util.ImageFiles;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
@@ -2897,21 +2898,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     /** URL last path segment, stripped of query/fragment; falls back to image.png. */
     private static String fileNameFromUrl(String url) {
-        if (url == null) {
-            return "image.png";
-        }
-        String clean = url;
-        int cut = clean.indexOf('?');
-        int hash = clean.indexOf('#');
-        if (hash >= 0) {
-            cut = cut >= 0 ? Math.min(cut, hash) : hash;
-        }
-        if (cut >= 0) {
-            clean = clean.substring(0, cut);
-        }
-        int slash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'));
-        String name = slash >= 0 && slash + 1 < clean.length() ? clean.substring(slash + 1) : clean;
-        return name.isEmpty() ? "image.png" : name;
+        return ImageFileNames.fromUrl(url);
     }
 
     private void showTransientHint(String text) {
