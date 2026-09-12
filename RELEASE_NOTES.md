@@ -4,6 +4,16 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
+## v0.2.91
+
+修复：玩家卡片右键菜单的「取消屏蔽」点不到——绘制按 3 行、点击判定只按 2 行，第三行永远在判定区外；现在绘制与三个点击入口共用同一行数计算。
+修复：别人 @ 你时名字前的称号颜色消失——NeoForge / Forge 的签名聊天捕获把 unsigned 富文本丢成了纯文本；现在改取 decoratedContent()，@ 提及动作改插真实玩家名，并在客户端用本地已知称号给 @ 提及重新着色。
+修复：引用回复的正文样式丢失——正文此前由解析出的纯文本重建；现在从富文本行里 slice 正文，服务器样式（含 @ 提及颜色）保留，文本对不上时回退旧行为。
+
+Fixed the player-card menu's unblock row being unclickable because the hit test used two rows while the drawing used three.
+Fixed coloured @mentions losing their decoration: NeoForge/Forge signed-chat capture dropped unsigned rich content, so it now takes decoratedContent(), mention actions insert the real profile name, and local mentions are re-coloured from the locally known decoration.
+Fixed quoted reply bodies losing their rich styles: the body is now sliced from the rich line instead of rebuilt from plain text, with the old literal fallback when the visible text does not match.
+
 ## v0.2.9
 
 新增：**服务端下发**——客户端进服会拿到本服的表情包、常用语与服务器标识（`server-icon.png` + MOTD）。表情面板多出只读的「本服」分区、常用语面板多出只读的「本服」分组；传输走新的 `atomchat-dist` 通道，逐文件 sha256 校验、只补差量（删掉一个表情下次进服只补那一个），客户端硬上限 200 个 / 16 MB，失败会写明原因进服务端日志。
