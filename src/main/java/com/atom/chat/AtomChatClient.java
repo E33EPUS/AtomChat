@@ -45,6 +45,7 @@ public class AtomChatClient implements ClientModInitializer {
         com.atom.chat.net.AvatarCompanionClient.init();
         com.atom.chat.net.MediaCompanionClient.init();
         com.atom.chat.net.PackSyncClient.init();
+        com.atom.chat.net.ConfigScreenClient.init();
         com.atom.chat.history.ChatHistory.init(
                 net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
                         .resolve("atomchat/history"));
@@ -83,6 +84,7 @@ public class AtomChatClient implements ClientModInitializer {
             com.atom.chat.chat.OwnIdentity.reset();
             com.atom.chat.net.MediaCompanionClient.onDisconnect();
         com.atom.chat.net.PackSyncClient.onDisconnect();
+        com.atom.chat.net.ConfigScreenClient.onDisconnect();
         });
         NotificationController.registerSound();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
