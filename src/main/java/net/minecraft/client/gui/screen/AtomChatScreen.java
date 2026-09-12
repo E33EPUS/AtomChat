@@ -2507,6 +2507,22 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         worker.start();
     }
 
+    /**
+     * Row count for a context menu. Drawing and every click hit-test go through
+     * this one helper so their geometry cannot drift apart: the player-card menu
+     * grew a third row (block/unblock) while the root-page click test stayed at
+     * two, which made "取消屏蔽" unclickable.
+     */
+    private static int contextMenuRows(ContextMenuMode mode, boolean imageMessage) {
+        if (mode == ContextMenuMode.AVATAR) {
+            return 4;
+        }
+        if (mode == ContextMenuMode.PLAYER_CARD) {
+            return 3;
+        }
+        return imageMessage ? 3 : 2;
+    }
+
     private void drawContextMenu(Canvas canvas, float vmx, float vmy) {
         boolean hasCurrent = contextMessage != null || contextPlayer != null;
         boolean hasLast = lastContextMessage != null || lastContextPlayer != null;
@@ -2530,7 +2546,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
         boolean bubbleMenu = !avatarMenu && !playerMenu;
         ChatMessage shown = contextMessage != null ? contextMessage : lastContextMessage;
         boolean imageMessage = bubbleMenu && shown != null && Cicodes.extractImageUrl(shown.getRawText()) != null;
-        int rows = avatarMenu ? 4 : playerMenu ? 3 : (imageMessage ? 3 : 2);
+        int rows = contextMenuRows(mode, imageMessage);
         float rowH = UiTokens.MENU_H / 2.0F;
         float menuH = rowH * rows;
         float menuW = UiTokens.MENU_W;
@@ -2734,7 +2750,11 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             return;
         }
         if (row == 0) {
-            inputAppend("@" + messageSenderName(message) + " ");
+            // Insert the real profile name, not the decorated label: the label
+            // reaches other clients as uncoloured plain text (the title colour
+            // cannot survive a vanilla chat string) and a decorated @token also
+            // defeats mention detection that looks for @ProfileName.
+            inputAppend("@" + player.realName() + " ");
         } else if (row == 1) {
             openPrivateChat(player);
         } else if (row == 2) {
@@ -3597,7 +3617,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
             ScrollController pageScroll = listScroll();
             // Root-page player-card context menu gets priority over row clicks.
             if (contextPlayer != null || lastContextPlayer != null) {
-                int rows = 2;
+                // Player-card menus are always the 3-row layout (profile / tp /
+                // block), so the hit test must use the same row count as the
+                // drawing. Two rows left "取消屏蔽" permanently unclickable.
+                int rows = contextMenuRows(ContextMenuMode.PLAYER_CARD, false);
                 float rowH = UiTokens.MENU_H / 2.0F;
                 float menuH = rowH * rows;
                 float menuW = UiTokens.MENU_W;
@@ -3899,7 +3922,7 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 float menuW = UiTokens.MENU_W;
                 boolean avatarMenu = contextMenuMode == ContextMenuMode.AVATAR;
                 boolean imageMessage = !avatarMenu && Cicodes.extractImageUrl(contextMessage.getRawText()) != null;
-                int rows = avatarMenu ? 4 : (imageMessage ? 3 : 2);
+                int rows = contextMenuRows(contextMenuMode, imageMessage);
                 float rowH = UiTokens.MENU_H / 2.0F;
                 float menuH = rowH * rows;
                 float menuX = Math.min(contextX, panelX + panelWidth() - menuW - s(8));

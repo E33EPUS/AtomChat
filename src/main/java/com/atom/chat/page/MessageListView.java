@@ -2,7 +2,9 @@ package com.atom.chat.page;
 
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.Cicodes;
+import com.atom.chat.chat.MentionHighlighter;
 import com.atom.chat.chat.MessageGrouping;
+import com.atom.chat.chat.OwnIdentity;
 import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.font.FontManager;
 import com.atom.chat.image.ImageLoader;
@@ -302,7 +304,15 @@ public final class MessageListView {
         if (cached != null) {
             return cached;
         }
-        List<RichLine> lines = RichTextRenderer.wrapFor(msg.getContentRich(), font, wrapWidth);
+        RichText content = msg.getContentRich();
+        if (!msg.isSystem()) {
+            String own = OwnIdentity.bareName();
+            if (own != null && !own.isBlank()) {
+                content = MentionHighlighter.highlightLocal(content, own,
+                        OwnIdentity.displayNameRich());
+            }
+        }
+        List<RichLine> lines = RichTextRenderer.wrapFor(content, font, wrapWidth);
         layoutCache.put(key, lines);
         return lines;
     }
