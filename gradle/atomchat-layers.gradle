@@ -73,16 +73,50 @@ mounted.each { name ->
     }
 }
 
-// 目录是推出来的：只写 since → layers/version/，只写 loader → layers/loader/，都写 → layers/both/
+// 三个轴；目录由【声明的轴】推出来：单轴 → layers/<轴名>/，多轴 → layers/<轴名按字母序 + 连接>/
+def AXIS_DIR = [since: 'version', loader: 'loader', mappings: 'mapping']
+def axesOf = { Map d -> ['since', 'loader', 'mappings'].findAll { d.containsKey(it) } }
 def layerDir = { String name ->
     def d = layers[name] as Map
-    boolean hasSince = d.containsKey('since')
-    boolean hasLoader = d.containsKey('loader')
-    if (!hasSince && !hasLoader) {
-        throw new GradleException("层 ${name} 既不写 since 也不写 loader —— 两者都不写就是 shared/，不是层")
+    def axes = axesOf(d)
+    if (axes.isEmpty()) {
+        throw new GradleException("层 ${name} 一个轴都没钉（since / loader / mappings）—— 一个都不写就是 shared/，不是层")
     }
-    String sub = (hasSince && hasLoader) ? 'both' : (hasSince ? 'version' : 'loader')
-    return new File(repoRoot, "layers/${sub}/${name}")
+    return new File(repoRoot, "layers/${axes.collect { AXIS_DIR[it] }.sort().join('+')}/${name}")
+}
+
+// 版本比较：够不够得到 since
+def versionAtLeast = { String have, String want ->
+    def a = have.tokenize('.').collect { it.isInteger() ? it.toInteger() : 0 }
+    def b = want.tokenize('.').collect { it.isInteger() ? it.toInteger() : 0 }
+    for (int i = 0; i < Math.max(a.size(), b.size()); i++) {
+        int x = i < a.size() ? a[i] : 0
+        int y = i < b.size() ? b[i] : 0
+        if (x != y) { return x > y }
+    }
+    return true
+}
+
+// 挂载即声明：目标必须真的满足该层的谓词 —— yarn 家族的目标挂 official 映射层是硬错误，
+// 而且要在【配置期】就红，不要等到某个文件恰好被编到才暴露。
+mounted.each { name ->
+    def d = layers[name] as Map
+    axesOf(d).each { axis ->
+        def want = d[axis].toString()
+        if (axis == 'since') {
+            if (!versionAtLeast(targetDef.minecraft.toString(), want)) {
+                throw new GradleException(
+                    "目标 ${targetName}（Minecraft ${targetDef.minecraft}）挂了版本层 ${name}（since ${want}）—— 它够不到。")
+            }
+        } else {
+            def have = (axis == 'mappings' ? targetDef.mappings : targetDef.loader).toString()
+            if (have != want) {
+                throw new GradleException(
+                    "目标 ${targetName} 的 ${axis} 是 ${have}，却挂了要求 ${axis}=${want} 的层 ${name}。\n" +
+                    "挂载即声明：要么去掉这一层，要么这一层本来就不该给这个目标。")
+            }
+        }
+    }
 }
 
 def mainJava = []

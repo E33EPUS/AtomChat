@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import pathlib
 import re
@@ -99,6 +100,10 @@ def check_targets(targets: dict, layers: dict) -> None:
         for layer in t["layers"]:
             if layer not in layers:
                 fail(f"目标 {name} 引用了 layers.json 里没有的层：{layer}")
+                continue
+            gap = predicate_gap(t, layer, layers[layer])
+            if gap:
+                fail(f"目标 {name} 挂了层 {layer}，但它满足不了该层的谓词：{gap}")
 
         project = ROOT / t["project"]
         exists = project.is_dir()
@@ -114,10 +119,32 @@ def check_targets(targets: dict, layers: dict) -> None:
             check_platform_identity(name, project)
             check_platform_toolchain(name, project, t)
 
-    # mappings 必须全一致
+    # 映射家族不止一个时（本仓就是：Fabric 走 Yarn，另两端走官方名），
+    # 每个【有两个以上成员在建】的家族都要有对应的映射层 —— 那种家族里的平行副本是可共享的，
+    # 让它们各存一份就是把「三端同步」缩小成「两端同步」。只有一个成员的家族不必成层（没人可共享）；
+    # 层存在时，未挂该层的目标要在自己平台目录里保留同路径副本，那份副本由孪生检查盯着。
     if len(mappings) > 1:
-        detail = "；".join(f"{m}: {', '.join(sorted(names))}" for m, names in sorted(mappings.items()))
-        fail(f"mappings 在所有目标上必须一致，现在是 {len(mappings)} 种 —— {detail}")
+        for family in sorted(mappings):
+            built = [n for n in mappings[family] if (ROOT / targets[n]["project"]).is_dir()]
+            declared = [n for n, d in layers.items()
+                        if layer_axes(d) == ["mappings"] and d.get("mappings") == family]
+            if len(built) > 1 and not declared:
+                fail(f"mappings={family} 有 {len(built)} 个在建目标（{', '.join(built)}），"
+                     f"但 layers.json 里没有纯映射层声明 mappings={family} —— "
+                     f"它们本可共用一份，现在只能各存一份没人盯着的手抄副本")
+                continue
+            for layer_name in declared:
+                check_mapping_twins(layer_name, layers[layer_name], targets, family)
+
+    # 反方向：某一家族已经有映射层了，同家族的目标就必须挂它 —— 否则它会留一份私藏副本，
+    # 而那份副本与层里的内容本应逐字相同，没有任何东西会告诉你它慢慢不一样了。
+    for name, t in targets.items():
+        for layer_name, d in layers.items():
+            if layer_axes(d) != ["mappings"] or d.get("mappings") != t.get("mappings"):
+                continue
+            if layer_name not in t["layers"]:
+                fail(f"目标 {name} 的 mappings 是 {t.get('mappings')}，映射层 {layer_name} 就是为这个家族准备的，"
+                     f"但它的 layers 里没有这一层 —— 那样它会留一份没人盯着的私藏副本")
 
     # 矩阵是规则：每个出现过的 Minecraft 版本都要凑齐三个加载器
     mcs = sorted({mc for mc, _ in seen_combo})
@@ -160,28 +187,87 @@ def check_platform_toolchain(name: str, project: pathlib.Path, t: dict) -> None:
                  f"但 wrapper 是 {m.group(1)}")
 
 
+def layer_axes(d: dict) -> list:
+    return [a for a in ("since", "loader", "mappings") if a in d]
+
+
+def layer_dir(layer_name: str, d: dict) -> pathlib.Path:
+    """目录由声明的轴推出来 —— 声明与目录不会互相矛盾。"""
+    axis_dirs = {"since": "version", "loader": "loader", "mappings": "mapping"}
+    return ROOT / "layers" / "+".join(sorted(axis_dirs[a] for a in layer_axes(d))) / layer_name
+
+
+def version_at_least(have: str, want: str) -> bool:
+    def parts(v):
+        return [int(p) if str(p).isdigit() else 0 for p in str(v).split(".")]
+
+    a, b = parts(have), parts(want)
+    for i in range(max(len(a), len(b))):
+        x, y = (a[i] if i < len(a) else 0), (b[i] if i < len(b) else 0)
+        if x != y:
+            return x > y
+    return True
+
+
+def predicate_gap(t: dict, layer_name: str, d: dict):
+    """目标挂了这个层，但它满足不了该层的谓词 —— 返回原因，满足则 None。"""
+    for axis in layer_axes(d):
+        want = str(d[axis])
+        if axis == "since":
+            if not version_at_least(t["minecraft"], want):
+                return f"Minecraft {t['minecraft']} 够不到 since {want}"
+        else:
+            have = str(t.get(axis))
+            if have != want:
+                return f"它的 {axis} 是 {have}，层要求 {axis}={want}"
+    return None
+
+
+def digest(path: pathlib.Path) -> str:
+    return hashlib.sha1(path.read_bytes()).hexdigest()
+
+
+def check_mapping_twins(layer_name: str, d: dict, targets: dict, family: str) -> None:
+    """映射层的代价是「另一个家族保留同路径的孪生副本」。这份副本是手抄的，
+    所以必须有人在盯着：少一个、或者其实逐字相同（那它本该进 shared/）都要红。"""
+    base = layer_dir(layer_name, d)
+    if not base.is_dir():
+        return
+    files = [p.relative_to(base).as_posix() for p in base.rglob("*.java")]
+    for rel in sorted(files):
+        if not rel.startswith(("src/main/java/", "src/test/java/")):
+            continue
+        sub, short = rel.split("/java/", 1)
+        sub = sub + "/java"
+        for name, t in targets.items():
+            if t.get("mappings") == family:
+                continue
+            project = ROOT / t["project"]
+            if not project.is_dir():
+                continue  # 还没建起来的目标不欠副本
+            twin = project / sub / short
+            if not twin.is_file():
+                fail(f"映射层 {layer_name} 里有 {short}，但目标 {name}"
+                     f"（mappings={t.get('mappings')}）的平台目录里没有同路径的孪生副本 —— "
+                     f"这条路线的代价就是那份平行副本，少了它意味着这个类在那个目标上根本不存在")
+            elif digest(twin) == digest(base / rel):
+                fail(f"{short} 的孪生副本与映射层里那份【逐字相同】—— 它其实是映射中立的，"
+                     f"应该进 shared/，不必在这里共存两份")
+
+
 def check_layers(layers: dict) -> None:
     if not layers:
         fail("versions/layers.json 里一层都没有")
         return
     for name, d in layers.items():
-        has_since = "since" in d
-        has_loader = "loader" in d
-        if not has_since and not has_loader:
-            fail(f"层 {name} 既不写 since 也不写 loader —— 两者都不写就是 shared/，不是层")
+        axes = layer_axes(d)
+        if not axes:
+            fail(f"层 {name} 一个轴都没钉（since / loader / mappings）—— 一个都不写就是 shared/，不是层")
         if not isinstance(d.get("populated"), bool):
             fail(f"层 {name} 没有声明 populated（true/false）—— 「空」要是显式声明的状态")
-        if has_since and has_loader:
-            sub = "both"
-        elif has_since:
-            sub = "version"
-        elif has_loader:
-            sub = "loader"
-        else:
-            continue
-        directory = ROOT / "layers" / sub / name
+        directory = layer_dir(name, d)
         if d.get("populated") and not directory.is_dir():
-            fail(f"层 {name} 声明 populated: true，但目录 layers/{sub}/{name} 不存在")
+            fail(f"层 {name} 声明 populated: true，但目录 {directory.relative_to(ROOT).as_posix()} 不存在")
         if directory.is_dir() and not d.get("populated"):
             files = [p for p in directory.rglob("*") if p.is_file()]
             if files:
