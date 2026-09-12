@@ -249,7 +249,7 @@ public class ChatHudMixin {
             }
             if (sliced.isPresent()) {
                 RichText richContent = quote != null
-                        ? RichText.literal(body).linkifyUrls()
+                        ? ChatPipeline.quoteBodyRich(sliced.get().content(), body)
                         : sliced.get().content().linkifyUrls();
                 atomchat$addPublic(new ChatMessage(message, false, parsed.system(),
                         quote != null ? quote.quoteName() : null,
@@ -257,11 +257,14 @@ public class ChatHudMixin {
                         parsed.senderUuid(), displayName, parsed.profileName(), body,
                         senderRichParsed, richContent), body, parsed.system());
             } else {
+                RichText richContent = quote != null
+                        ? ChatPipeline.quoteBodyRich(RichText.of(message), body)
+                        : RichText.literal(body).linkifyUrls();
                 atomchat$addPublic(new ChatMessage(message, false, parsed.system(),
                         quote != null ? quote.quoteName() : null,
                         quote != null ? quote.quoteText() : null,
                         parsed.senderUuid(), displayName, parsed.profileName(), body,
-                        senderRichParsed, RichText.literal(body).linkifyUrls()), body, parsed.system());
+                        senderRichParsed, richContent), body, parsed.system());
             }
             SeenPlayers.remember(parsed.senderUuid(), parsed.profileName(), displayName);
             return;
@@ -332,7 +335,7 @@ public class ChatHudMixin {
         QuoteParser.Quote quote = atomchat$quoteOf(content);
         String body = quote != null ? quote.body() : content;
         if (quote != null) {
-            contentRich = RichText.literal(body).linkifyUrls();
+            contentRich = ChatPipeline.quoteBodyRich(contentRich, body);
         }
         senderRich = atomchat$ensureSenderColor(senderRich, meta.profileName());
         atomchat$addPublic(new ChatMessage(message, false, meta.system(),
@@ -599,11 +602,17 @@ public class ChatHudMixin {
         RichText senderRich = meta.senderComponent() != null
                 ? RichText.of(meta.senderComponent()).stripInteractions()
                 : RichText.literal(displayName);
-        RichText contentRich = quote != null
-                ? RichText.literal(body).linkifyUrls()
-                : meta.contentComponent() != null
-                        ? RichText.of(meta.contentComponent()).linkifyUrls()
-                        : RichText.literal(body != null ? body : message.getString()).linkifyUrls();
+        RichText contentRich;
+        if (quote != null) {
+            RichText richSource = meta.contentComponent() != null
+                    ? RichText.of(meta.contentComponent())
+                    : RichText.of(message);
+            contentRich = ChatPipeline.quoteBodyRich(richSource, body);
+        } else if (meta.contentComponent() != null) {
+            contentRich = RichText.of(meta.contentComponent()).linkifyUrls();
+        } else {
+            contentRich = RichText.literal(body != null ? body : message.getString()).linkifyUrls();
+        }
         ChatMessage privateMessage = new ChatMessage(message, own, false,
                 quote != null ? quote.quoteName() : null,
                 quote != null ? quote.quoteText() : null,
