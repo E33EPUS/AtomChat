@@ -225,8 +225,17 @@ def main() -> int:
         print(f"  · {n}")
 
     if args.matrix_out:
+        # 产物名后缀在这里算好，不交给工作流里的表达式：
+        # GitHub 表达式的 `a && '' || b` 因为空串是 falsy 会静默取到 b，
+        # 于是"没验证"的标记会贴到正式产物上（踩过一次）。
         matrix = [
-            {"target": name, "project": t["project"], "java": t["java"], "buildable": bool(t["buildable"])}
+            {
+                "target": name,
+                "project": t["project"],
+                "java": t["java"],
+                "buildable": bool(t["buildable"]),
+                "suffix": "" if t["buildable"] else "-未验证",
+            }
             for name, t in targets.items()
             if isinstance(t, dict) and (ROOT / t.get("project", "")).is_dir()
         ]

@@ -30,7 +30,7 @@ jobs:
     outputs:
       list: ${{ steps.matrix.outputs.list }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 本地与 CI 跑的是同一个脚本：矩阵是规则、mappings 必须一致、身份只有一份、
       # 工程目录与矩阵条目必须互相存在。红的原因会直接写在日志里。
@@ -51,7 +51,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.targets.outputs.list) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Skija 的 Linux 原生库链接 EGL/GL；测试的类路径里有它。
       - name: 安装 Skija 的 Linux 系统依赖
@@ -60,13 +60,13 @@ jobs:
           sudo apt-get install -y libegl1 libgl1
 
       - name: 设置 JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: "${{ matrix.java }}"
           distribution: temurin
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           # PR 只读缓存；推 main 才刷新它。
           cache-read-only: ${{ github.event_name == 'pull_request' }}
@@ -98,9 +98,10 @@ jobs:
           fi
 
       - name: 上传产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          # buildable: false 但工程存在的目标照样编，产物名上带出"未验证"
-          name: atomchat-${{ matrix.target }}${{ matrix.buildable && '' || '-未验证' }}
+          # buildable: false 但工程存在的目标照样编，名字上带出"未验证"。
+          # 后缀由 verify_targets.py 算好放进矩阵 —— 不在这里拼表达式。
+          name: atomchat-${{ matrix.target }}${{ matrix.suffix }}
           path: dist/*.jar
           if-no-files-found: error
