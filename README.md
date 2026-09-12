@@ -21,9 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Fabric Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Fabric-1.21.1"></a>
-  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="NeoForge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=NeoForge-1.21.1"></a>
-  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Forge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Forge-1.20.1"></a>
+  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=main"></a>
 </p>
 
 > **v0.2.9 已发布** · [下载 JAR](https://github.com/E33EPUS/AtomChat/releases) · [中文 Wiki](https://github.com/E33EPUS/AtomChat/wiki)
@@ -137,7 +135,7 @@ AtomChat 把原版聊天屏改造成一个独立的「手机 App」风格聊天�
 | [Wiki](https://github.com/E33EPUS/AtomChat/wiki) | 快速上手、图片与传输路线、表情包、外观与配置全表、**服主手册**、疑难排查、开发者说明 |
 | [Issues](https://github.com/E33EPUS/AtomChat/issues) | 报 bug、提建议（也可在百科 / 平台评论区留言） |
 | [Releases](https://github.com/E33EPUS/AtomChat/releases) | 三个平台的 JAR 与每个版本的更新说明 |
-| [CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/Fabric-1.21.1/CHANGELOG.md) | 完整变更历史（双语） |
+| [CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/main/CHANGELOG.md) | 完整变更历史（双语） |
 
 ## 开发与构建
 
@@ -148,7 +146,7 @@ AtomChat 把原版聊天屏改造成一个独立的「手机 App」风格聊天�
 
 产物在 `build/libs/`：Fabric 与 NeoForge 版本需 JDK 21，Forge 1.20.1 版本需 JDK 17；Forge 另有一个未内嵌依赖的 `-slim` 版本，**发版请用不带 `-slim` 的那个**。
 
-源码以三个分支维护（`Fabric-1.21.1` / `NeoForge-1.21.1` / `Forge-1.20.1`），三端功能同源。模块划分、包结构与测试说明见 [Wiki 开发者页](https://github.com/E33EPUS/AtomChat/wiki)。
+源码在**一个分支**里维护：能共用的代码在 `shared/`，按版本 / 加载器 / 映射家族分层的是 `layers/`，各目标自己的代码与构建脚本在 `platforms/<目标>/`。支持哪些目标写在 `versions/targets.json`；一次发版所有目标各出一个 jar，新增目标不必改构建脚本。模块划分、包结构与测试说明见 [Wiki 开发者页](https://github.com/E33EPUS/AtomChat/wiki)。
 
 ## 许可证
 

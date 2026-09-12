@@ -29,4 +29,4 @@
 
 ## 其他语言
 
-英文文档是仓库里的 [README_EN.md](https://github.com/E33EPUS/AtomChat/blob/Master/README_EN.md)；本 Wiki 目前只有中文版。
+英文文档是仓库里的 [README_EN.md](https://github.com/E33EPUS/AtomChat/blob/main/README_EN.md)；本 Wiki 目前只有中文版。

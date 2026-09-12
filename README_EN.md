@@ -21,9 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Fabric Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Fabric-1.21.1"></a>
-  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="NeoForge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=NeoForge-1.21.1"></a>
-  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Forge Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=Forge-1.20.1"></a>
+  <a href="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml"><img alt="Build" src="https://github.com/E33EPUS/AtomChat/actions/workflows/build.yml/badge.svg?branch=main"></a>
 </p>
 
 > **v0.2.9 is out** · [Download the JAR](https://github.com/E33EPUS/AtomChat/releases) · [Wiki](https://github.com/E33EPUS/AtomChat/wiki)
@@ -137,7 +135,7 @@ Hosted media is kept for 7 days by default (`retentionDays`, `0` = forever) and 
 | [Wiki](https://github.com/E33EPUS/AtomChat/wiki) | Quick start, images & transfer routes, stickers, appearance with the full config reference, the **host manual**, troubleshooting, developer notes |
 | [Issues](https://github.com/E33EPUS/AtomChat/issues) | Bug reports and suggestions (platform comments work too) |
 | [Releases](https://github.com/E33EPUS/AtomChat/releases) | JARs for all three platforms plus per-version release notes |
-| [CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/Fabric-1.21.1/CHANGELOG.md) | Complete change history (bilingual) |
+| [CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/main/CHANGELOG.md) | Complete change history (bilingual) |
 
 ## Development
 
@@ -148,7 +146,7 @@ Hosted media is kept for 7 days by default (`retentionDays`, `0` = forever) and 
 
 Artifacts land in `build/libs/`: the Fabric and NeoForge builds need JDK 21, the Forge 1.20.1 build needs JDK 17; Forge also emits a `-slim` jar without bundled dependencies — **use the non-slim one for releases**.
 
-The source lives on three branches (`Fabric-1.21.1` / `NeoForge-1.21.1` / `Forge-1.20.1`) that share the same implementation. Module layout, packages and testing are described on the [Wiki developer page](https://github.com/E33EPUS/AtomChat/wiki).
+The source lives on **a single branch**: code every target can use sits in `shared/`, code split by version / loader / mapping family sits in `layers/`, and each target's own code plus build files sit in `platforms/<target>/`. Which targets are supported is declared in `versions/targets.json`; one release produces a jar per target, and adding a target does not touch the build scripts. Module layout, packages and testing are described on the [Wiki developer page](https://github.com/E33EPUS/AtomChat/wiki).
 
 ## License
 
