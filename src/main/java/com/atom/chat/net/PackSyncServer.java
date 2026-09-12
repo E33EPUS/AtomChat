@@ -3,6 +3,7 @@ package com.atom.chat.net;
 import com.atom.chat.AtomChat;
 import com.atom.chat.config.AtomChatServerConfig;
 import com.atom.chat.pack.PackBuilder;
+import com.atom.chat.pack.ServerEmoteMigration;
 import com.atom.chat.pack.ServerPack;
 import com.atom.chat.util.CacheDirs;
 import net.minecraft.server.MinecraftServer;
@@ -42,6 +43,9 @@ public final class PackSyncServer {
     /** The pack each player was shown last, so a rebuild cannot change what we send mid-sync. */
     private static final Map<UUID, ServerPack> OFFERED = new ConcurrentHashMap<>();
     private static volatile Cached cached;
+    /** The legacy emote carry-over runs once per JVM, on the first pack build. */
+    private static final java.util.concurrent.atomic.AtomicBoolean LEGACY_CHECKED =
+            new java.util.concurrent.atomic.AtomicBoolean();
 
     private PackSyncServer() {
     }
@@ -108,7 +112,7 @@ public final class PackSyncServer {
             offered.put(entry.name(), entry);
         }
         Download download = new Download();
-        Path dir = CacheDirs.emotesDir();
+        Path dir = CacheDirs.serverEmotesDir();
         for (String name : names) {
             ServerPack.FileEntry entry = offered.get(name);
             if (entry == null) {
@@ -210,12 +214,28 @@ public final class PackSyncServer {
         if (current != null && now - current.builtAtMs() < CACHE_MS) {
             return current.pack();
         }
+        carryOverLegacyServerEmotes();
         AtomChatServerConfig config = AtomChatServerConfig.get();
-        ServerPack pack = PackBuilder.build(CacheDirs.emotesDir(), config.phrases, config.packName,
+        ServerPack pack = PackBuilder.build(CacheDirs.serverEmotesDir(), config.phrases, config.packName,
                 server == null ? "" : server.getMotd(), readIcon(),
                 config.packMaxFiles, config.packMaxBytes());
         cached = new Cached(pack, now);
         return pack;
+    }
+
+    /**
+     * A server used to hand out {@code config/atomchat/emotes/}, the folder a
+     * client also keeps its own stickers in. Dedicated servers therefore carry
+     * their files over into the server's own folder once; anywhere else those
+     * files belong to the player and must stay private.
+     */
+    private static void carryOverLegacyServerEmotes() {
+        if (!LEGACY_CHECKED.compareAndSet(false, true)) {
+            return;
+        }
+        ServerEmoteMigration.migrate(CacheDirs.emotesDir(), CacheDirs.serverEmotesDir(),
+                net.minecraftforge.fml.loading.FMLEnvironment.dist
+                        == net.minecraftforge.api.distmarker.Dist.DEDICATED_SERVER);
     }
 
     private static byte[] readIcon() {
