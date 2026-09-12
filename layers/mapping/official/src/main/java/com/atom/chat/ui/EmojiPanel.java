@@ -111,7 +111,7 @@ public final class EmojiPanel {
     public EmojiPanel(Host host) {
         this.host = host;
         this.emoteStore = new EmoteStore(
-                net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/emotes"));
+                com.atom.chat.platform.Platform.configDir().resolve("atomchat/emotes"));
     }
 
     public boolean isOpen() {
