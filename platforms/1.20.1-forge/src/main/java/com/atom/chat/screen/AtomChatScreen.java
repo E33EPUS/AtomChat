@@ -1344,6 +1344,19 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 endPhraseEdit(true);
                 quickPhrasePanel.pickRow(action.index());
             }
+            case QuickPhrasePanel.Action.INSERT_SERVER -> {
+                // The server's rows are read-only: they insert text and close,
+                // with no edit or delete path behind them.
+                // 这一支在 1.21.1 两端都有、1.20.1 这端一直缺 —— 缺的表现是
+                // 点服务端下发的常用语毫无反应（switch 落到 default 里什么都不做）。
+                endPhraseEdit(true);
+                java.util.List<String> serverPhrases =
+                        com.atom.chat.pack.ServerPackStore.current().phrases();
+                if (action.index() >= 0 && action.index() < serverPhrases.size()) {
+                    inputAppend(serverPhrases.get(action.index()));
+                }
+                quickPhrasePanel.close();
+            }
             default -> {
             }
         }
