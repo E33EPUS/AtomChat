@@ -13,7 +13,7 @@
 分组是编译期事实：甲组少一个类型，那个目标当场编不过。判据用简单名的词边界匹配
 （覆盖 import 全限定名与同包简单名两种写法），偏保守 —— 注释里的提及也算，宁可多列。
 
-当前：甲组 **90** 个，乙组 **39** 个。
+当前：甲组 **90** 个，乙组 **38** 个。
 
 ## 甲：共用代码引用了的（接缝）
 
@@ -99,7 +99,6 @@
 | 1.20.1-forge | `com.atom.chat.notification.NotificationController` |
 | 1.20.1-forge | `com.atom.chat.platform.ForgePlatform` |
 | 1.20.1-forge | `com.atom.chat.watut.WatutBridge` |
-| 1.20.1-forge | `mcp.client.Start` |
 | 1.20.1-forge | `com.atom.chat.net.AvatarCompanionServerTest` |
 | 1.20.1-forge | `com.atom.chat.net.ConfigPayloadsCodecTest` |
 | 1.20.1-forge | `com.atom.chat.net.PackPayloadsCodecTest` |

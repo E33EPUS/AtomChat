@@ -33,7 +33,17 @@ SHARED_ROOTS = ["shared/src", "layers"]
 
 
 def java_files(base: pathlib.Path):
-    return [p for p in base.rglob("*.java") if p.is_file()]
+    """只认源码根 `src/<...>/java` 下的 .java。
+
+    不这样过滤的话，`platforms/<目标>/build/` 里生成出来的 .java（ForgeGradle 会写、
+    本机有而 CI 全新检出时没有）也会进清单 —— 表现是「本地过、CI 红」。
+    """
+    out = []
+    for p in base.rglob("*.java"):
+        parts = p.parts
+        if any(parts[i] == "src" and parts[i + 2] == "java" for i in range(len(parts) - 2)):
+            out.append(p)
+    return out
 
 
 def fqn_of(path: pathlib.Path) -> str:
