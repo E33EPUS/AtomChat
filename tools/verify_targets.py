@@ -286,6 +286,81 @@ def check_layers(layers: dict) -> None:
                      f"要么翻成 true，要么把内容挪走")
 
 
+def read_lines(rel: str) -> list:
+    path = ROOT / rel
+    if not path.is_file():
+        fail(f"{rel} 不存在")
+        return []
+    return [l.strip() for l in path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if l.strip() and not l.strip().startswith("#")]
+
+
+def parse_accesswidener(rel: str) -> set:
+    """AW 行形如：accessible field <owner> <member> <desc>（命名空间在文件头的 named）。"""
+    out = set()
+    for line in read_lines(rel):
+        parts = line.split()
+        if len(parts) >= 4 and parts[0] == "accessible":
+            out.add(f"{parts[2]} {parts[3]}")
+    return out
+
+
+def parse_accesstransformer(rel: str) -> set:
+    """AT 行形如：public <owner.dotted> <member>。"""
+    out = set()
+    for line in read_lines(rel):
+        parts = line.split()
+        if len(parts) >= 3 and parts[0] in ("public", "public-f"):
+            out.add(f"{parts[1]} {parts[2]}")
+    return out
+
+
+def check_access_parity(parity: dict) -> None:
+    """三份访问扩宽文件必须覆盖同一批成员，各写自己家族的命名。
+
+    判据（不需要映射表也能咬住真实的漂移）：
+      · Fabric AW 的成员集合 == 声明表 yarn 侧
+      · NeoForge AT 的成员集合 == 声明表非 null 的 official 侧
+      · Forge AT 的**类名集合**与 NeoForge 相同、条数相同，成员名必须是 SRG 形状
+      · NeoForge AT 的成员名不许是 SRG 形状（写错家族的常见翻车）
+    """
+    files = parity.get("files", {})
+    members = parity.get("members", [])
+    if not files or not members:
+        fail("versions/access-parity.json 缺 files 或 members")
+        return
+
+    yarn = parse_accesswidener(files["yarn"])
+    official = parse_accesstransformer(files["official"])
+    srg = parse_accesstransformer(files["srg"])
+
+    declared_yarn = {m["yarn"] for m in members}
+    declared_official = {m["official"] for m in members if m.get("official")}
+
+    for label, actual, declared in (("Fabric AW", yarn, declared_yarn),
+                                    ("NeoForge AT", official, declared_official)):
+        for missing in sorted(declared - actual):
+            fail(f"{label} 里没有声明表写着的成员：{missing} —— 声明与文件不一致")
+        for extra in sorted(actual - declared):
+            fail(f"{label} 里有声明表没有的成员：{extra} —— "
+                 f"把它写进 versions/access-parity.json，并给出另一侧的对应项或说明为什么不需要")
+
+    srg_shape = re.compile(r"^f_\d+_$")
+    for entry in sorted(official):
+        if srg_shape.match(entry.split()[-1]):
+            fail(f"NeoForge 的 AT 写了 SRG 名（{entry}）—— 那一侧要写官方名；SRG 名只在 Forge 那侧")
+
+    official_owners = {e.split()[0] for e in official}
+    srg_owners = {e.split()[0] for e in srg}
+    if official_owners != srg_owners:
+        fail(f"两份 AT 的类名集合不一致：NeoForge {sorted(official_owners)} vs Forge {sorted(srg_owners)}")
+    if len(official) != len(srg):
+        fail(f"两份 AT 条数不一致：NeoForge {len(official)} 条，Forge {len(srg)} 条")
+    for entry in sorted(srg):
+        if not srg_shape.match(entry.split()[-1]):
+            fail(f"Forge 的 AT 写了非 SRG 名（{entry}）—— 那一侧运行时用 SRG 名，写官方名会静默不生效")
+
+
 def check_aliases(aliases: dict) -> None:
     """别名必须指向真实存在的层内文件 —— 别名的价值在于它可检查，腐坏的别名会静默失效。"""
     for layer_rel, mapping in aliases.items():
@@ -304,6 +379,7 @@ def main() -> int:
     layers_raw = load_json("versions/layers.json")
     load_json("versions/third-party-apis.json")
     aliases_raw = load_json("versions/mapping-aliases.json")
+    parity_raw = load_json("versions/access-parity.json")
     targets = entries_of(targets_raw)
     layers = entries_of(layers_raw)
     aliases = {k: v for k, v in aliases_raw.items() if not k.startswith("_")}
@@ -311,6 +387,7 @@ def main() -> int:
     check_root_identity()
     check_layers(layers)
     check_aliases(aliases)
+    check_access_parity(parity_raw)
     check_targets(targets, layers, aliases)
 
     # 摘要（CI 日志里看这一份）
