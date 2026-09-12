@@ -195,5 +195,10 @@
   "atomchat.settings.about.debug": "调试模式",
   "atomchat.settings.about.debug.desc": "输出额外诊断信息以便排查问题",
   "atomchat.conversation.private_group": "私聊",
-  "atomchat.conversation.no_players": "无在线玩家"
+  "atomchat.conversation.no_players": "无在线玩家",
+  "atomchat.panel.server_pack": "本服",
+  "atomchat.panel.server_pack.synced": "✓ 已同步",
+  "atomchat.panel.server_pack.fetching": "同步中…",
+  "atomchat.panel.server_pack.none": "未接收本服内容",
+  "atomchat.panel.server_pack.failed": "同步失败"
 }

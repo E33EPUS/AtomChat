@@ -195,5 +195,10 @@
   "atomchat.settings.about.debug": "Debug mode",
   "atomchat.settings.about.debug.desc": "Enable extra diagnostic output",
   "atomchat.conversation.private_group": "Private",
-  "atomchat.conversation.no_players": "No players online"
+  "atomchat.conversation.no_players": "No players online",
+  "atomchat.panel.server_pack": "This server",
+  "atomchat.panel.server_pack.synced": "synced",
+  "atomchat.panel.server_pack.fetching": "syncing…",
+  "atomchat.panel.server_pack.none": "server packs off",
+  "atomchat.panel.server_pack.failed": "sync failed"
 }
