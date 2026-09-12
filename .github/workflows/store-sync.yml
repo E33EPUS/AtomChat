@@ -1,0 +1,42 @@
+name: 同步商店文案
+
+# 【为什么只有 Modrinth 一条腿】CurseForge 的官方 Upload API 只有四个端点
+# （upload-file / update-file / maven / 本地化导入导出），**没有改项目描述的接口** ——
+# 那边的正文只能人工贴。证据：
+# https://support.curseforge.com/support/solutions/articles/9000197321-curseforge-api
+#
+# 【为什么不放在 release.yml 里】正文同步与「发一个版本」是两件事，触发时机也不同：
+# 正文改的是项目页，发版改的是文件列表。分开之后，改文案不必发版，发版也不必带着文案改动。
+#
+# 【默认只演练】真写外部系统要显式勾选 apply —— 与 CF/Modrinth 那两条 onlyIf 闸同一个思路：
+# 没配令牌就什么都不做，而且不红。
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 真的把 docs/modrinth-description.md 推到 Modrinth（不勾只演练）
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  modrinth-body:
+    name: 同步 Modrinth 项目正文
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 演练（读远端、比差异，不发）
+        if: ${{ !inputs.apply }}
+        run: python3 tools/store_sync.py
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+
+      - name: 应用（发 PATCH，只改 body）
+        if: ${{ inputs.apply }}
+        run: python3 tools/store_sync.py --apply
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}

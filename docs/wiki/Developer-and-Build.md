@@ -111,6 +111,17 @@ Release checklist:
 
 To rehearse the flow without touching the stores, push a suffixed tag (`vX.Y.Z-rc1`); the store job is skipped entirely.
 
+> ⚠️ **A rehearsal only covers the first three stages.** A `-rc` tag makes the `if` skip the publish job before its `matrix` is even evaluated. 0.2.10 hit exactly that on its real release: the publish job read `needs.targets.outputs.list` while declaring only `needs: build`, so GitHub dropped the whole job — the run went red, the log stayed empty, and the jobs list was one short. Fixing the workflow file is not enough: **the tag has to move with it** (`git tag -f` and `git push --force origin vX.Y.Z`), because a tag push runs the workflow file as it exists in that tag's tree.
+
+### Store publishing and project copy
+
+| Store | How a release goes out | How the project copy is changed |
+|---|---|---|
+| CurseForge | the `:curseforge` leg of `release.yml` (curseforgegradle; it runs when `CURSEFORGE_TOKEN` exists) | **Pasted by hand**: the official Upload API has exactly four endpoints (`upload-file`, `update-file`, maven, localization) and none for a project description ([docs](https://support.curseforge.com/support/solutions/articles/9000197321-curseforge-api)). The source of truth is `docs/curseforge-description.md` |
+| Modrinth | the `:modrinth` leg of `release.yml` (minotaur); needs `modrinth_project_id` in `gradle.properties` plus the `MODRINTH_TOKEN` secret, and is SKIPPED without either | `python3 tools/store_sync.py` (a **dry run** unless you pass `--apply`) → `PATCH /v2/project/{id}`, **changing only the `body` field**; the `同步商店文案` workflow does the same from the Actions tab |
+
+`tools/test_store_sync.py` runs every branch of that script against a local fake Modrinth (when it sends requests, how many, with what, when it sends nothing, and what it exits with on failure). Whether a real token works is the one thing that cannot be checked locally, so everything else is checked.
+
 ## Documentation and translation
 
 - User docs: `README.md` (Chinese) / `README_EN.md` (English), **section-for-section mirrors** — change one and change the other;
