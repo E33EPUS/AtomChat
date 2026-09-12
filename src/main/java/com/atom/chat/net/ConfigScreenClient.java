@@ -39,6 +39,11 @@ public final class ConfigScreenClient {
         if (open != null) {
             open.onResult(result.ok(), result.error());
         }
+        if (result.ok()) {
+            // A saved change may alter the pack (phrases, server name), so pull a
+            // fresh manifest - the panel reads the stored one.
+            PackSyncClient.resync();
+        }
     }
 
     /** The screen telling us it is gone, so a late answer cannot touch it. */

@@ -91,6 +91,17 @@ public final class PackSyncClient {
         PackPayloads.CHANNEL.sendToServer(new PackPayloads.Hello());
     }
 
+    /**
+     * Re-runs the join handshake for the world we are already in.
+     *
+     * <p>Needed after a config save: phrases and the server name live in the
+     * manifest rather than in files, so a saved change only reaches the panel
+     * once a fresh manifest has been fetched.
+     */
+    public static void resync() {
+        onJoin(Minecraft.getInstance());
+    }
+
     /** Disconnect hook: nothing carries over between worlds. */
     public static void onDisconnect() {
         reset();
