@@ -1,0 +1,106 @@
+name: Build
+
+# 单分支多目标：支持哪些目标写在 versions/targets.json 里，这个工作流里没有分支名。
+# 新增一个目标 = 加一条 JSON + 建工程目录，不必碰这个文件。
+#
+# 旧分支（Fabric-1.21.1 / NeoForge-1.21.1 / Forge-1.20.1）仍各自带着自己那份 build.yml，
+# 那三份在分支退休时一起删掉；发版（release.yml）同样等到收尾那一刀再改 —— 现在
+# main 上的构建不发布任何东西。
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  pull_request:
+    branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targets:
+    name: 校验矩阵
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.matrix.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 本地与 CI 跑的是同一个脚本：矩阵是规则、mappings 必须一致、身份只有一份、
+      # 工程目录与矩阵条目必须互相存在。红的原因会直接写在日志里。
+      - name: 校验 versions/ 与各平台的身份来源
+        run: python3 tools/verify_targets.py --matrix-out "$RUNNER_TEMP/matrix.json"
+
+      - name: 导出矩阵
+        id: matrix
+        run: echo "list=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: 构建 ${{ matrix.target }}
+    needs: targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Skija 的 Linux 原生库链接 EGL/GL；测试的类路径里有它。
+      - name: 安装 Skija 的 Linux 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
+
+      - name: 设置 JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: "${{ matrix.java }}"
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # PR 只读缓存；推 main 才刷新它。
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: 构建并测试
+        working-directory: ${{ matrix.project }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --no-daemon
+
+      # -slim 那个包不含内嵌依赖，发出去的表现是"缺库"而不是构建失败 ——
+      # 取件规则必须把排除写死，取完再断言一次，两道都要有。
+      - name: 取产物（-slim 与 sources 一律不要）
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" \
+            -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          ls -la "$GITHUB_WORKSPACE/dist"
+          count=$(find "$GITHUB_WORKSPACE/dist" -name "*.jar" | wc -l)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::期望恰好一个发布 jar，实际 $count 个 —— 产物名有歧义时取件规则要重新定"
+            exit 1
+          fi
+          if find "$GITHUB_WORKSPACE/dist" -name "*-slim*" | grep -q .; then
+            echo "::error::取到的是 -slim 包（不含内嵌依赖）"
+            exit 1
+          fi
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          # buildable: false 但工程存在的目标照样编，产物名上带出"未验证"
+          name: atomchat-${{ matrix.target }}${{ matrix.buildable && '' || '-未验证' }}
+          path: dist/*.jar
+          if-no-files-found: error

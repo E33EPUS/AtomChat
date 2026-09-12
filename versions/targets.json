@@ -3,11 +3,11 @@
     "【支持哪些目标，一处声明】CI 遍历这里所有 buildable 的条目逐个构建，把全部 jar 挂在同一个 Release 上。",
     "",
     "【矩阵是规则，不是清单】每个 Minecraft 版本都要有 Fabric / NeoForge / Forge 三个条目。缺了哪个",
-    "应该在这里看得见（buildable: false + note 写明卡在哪儿），而不是想不起来。",
+    "应该在这里看得见（buildable: false + note 写明卡在哪儿或为什么不做），而不是想不起来。这条由 CI 校验。",
     "",
     "【mappings 所有目标必须一致】shared/ 里有几十个文件 import net.minecraft.*，那些名字来自映射：",
-    "用 Mojang 官方名时它们叫这些名字，换成 Yarn 就全部改名，那一百多个文件在那个目标上一个都编不过。",
-    "这条由 CI 校验（每个目标都要写，而且必须一模一样）。",
+    "用 Mojang 官方名时它们叫这些名字，换成 Yarn 就全部改名，那一批文件在那个目标上一个都编不过。",
+    "这条也由 CI 校验（每个目标都要写，而且必须一模一样）。",
     "",
     "【layers：这个目标挂哪几层共享代码】层的定义在 versions/layers.json。层名是「这套 API 从哪个",
     "Minecraft 版本开始有」，所以 1.21.1 与将来的更高版本都挂 1.21+，而 1.20.1 在它之前，一层版本层都不挂。",
@@ -19,8 +19,10 @@
     "所以不强行统一；各目标在自己的工程目录里各建各的。",
     "",
     "【unverified：这一行里哪些字段是猜的】还没真正建起来的目标，只能靠推断填占位值，而填出来的东西",
-    "跟实测值长得一模一样。把猜的字段名列出来，接手的人一眼就知道哪几个要自己查过再改。"
+    "跟实测值长得一模一样。把猜的字段名列出来，接手的人一眼就知道哪几个要自己查过再改；",
+    "buildable: true 的目标不许留 unverified（CI 会拦）。"
   ],
+
   "1.21.1-fabric": {
     "minecraft": "1.21.1",
     "loader": "Fabric",
@@ -45,7 +47,7 @@
     "project": "platforms/1.21.1-neoforge",
     "buildable": true,
     "layers": ["1.21+", "neoforge"],
-    "note": "ModDevGradle。未挂 Parchment（它只补参数名，不影响能不能编过）。"
+    "note": "ModDevGradle。未挂 Parchment（它只补参数名，不影响能不能编过）。配置缓存已开。"
   },
   "1.20.1-forge": {
     "minecraft": "1.20.1",
@@ -59,5 +61,48 @@
     "buildable": true,
     "layers": ["forge"],
     "note": "Java 17 与 Gradle 8.8 是硬约束（ForgeGradle 6 不吃 Gradle 9）。运行时是 SRG 名，refmap 由 ForgeGradle 生成。"
+  },
+
+  "1.21.1-forge": {
+    "minecraft": "1.21.1",
+    "loader": "Forge",
+    "loader_version": null,
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 21,
+    "gradle": "8.8",
+    "project": "platforms/1.21.1-forge",
+    "buildable": false,
+    "layers": ["1.21+", "forge"],
+    "unverified": ["loader_version", "java", "gradle"],
+    "note": "没做，也先不做：1.21.1 的 Forge 目标现在没有需求（本仓 1.21.1 走 Fabric 与 NeoForge）。此条目的意义是让「这个组合没做」在这里看得见。真要做时：工程目录建起来 CI 就会编它，loader_version / java / gradle 三个值要按实测定，然后把 unverified 清掉。"
+  },
+  "1.20.1-fabric": {
+    "minecraft": "1.20.1",
+    "loader": "Fabric",
+    "loader_version": null,
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 17,
+    "gradle": "8.8",
+    "project": "platforms/1.20.1-fabric",
+    "buildable": false,
+    "layers": ["fabric"],
+    "unverified": ["loader_version", "java", "gradle"],
+    "note": "没做，也先不做：1.20.1 上玩家主要走 Forge。要做时同 1.21.1-forge 的流程。"
+  },
+  "1.20.1-neoforge": {
+    "minecraft": "1.20.1",
+    "loader": "NeoForge",
+    "loader_version": null,
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 17,
+    "gradle": "8.8",
+    "project": "platforms/1.20.1-neoforge",
+    "buildable": false,
+    "layers": ["neoforge"],
+    "unverified": ["loader_version", "java", "gradle"],
+    "note": "没做，也先不做。1.20.1 的 NeoForge 是 20.4 线，与 1.21.1 的 NeoForge 不是一批 API；要做时先把这个目标的 layers 重新量一遍。"
   }
 }
