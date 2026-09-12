@@ -1,0 +1,19 @@
+# 仓库统一的行尾策略：blob 里存 LF，工作区按平台原生。
+# 之前靠每个克隆自己的 core.autocrlf，换个机器就变 —— 这份文件把它钉在仓库里。
+
+* text=auto
+
+# 明确钉住的两类：Windows 批处理要 CRLF，shell 脚本要 LF
+*.bat text eol=crlf
+gradlew text eol=lf
+
+# 二进制：不做任何转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ogg binary
+*.otf binary
+*.ttf binary
+*.jar binary
+*.zip binary

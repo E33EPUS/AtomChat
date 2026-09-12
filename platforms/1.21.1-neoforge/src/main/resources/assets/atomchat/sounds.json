@@ -1,0 +1,7 @@
+{
+  "notification": {
+    "sounds": [
+      "atomchat:notification"
+    ]
+  }
+}

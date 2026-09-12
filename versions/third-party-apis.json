@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "【共享层允许出现的第三方 API】shared/ 里出现的每个非原版包名，都要在这张表里。",
+    "它不是白名单制度，是一张「我确实依赖了这个」的声明表：shared/ 一旦引用了表外的第三方类，",
+    "那个目标就必须也带上这个依赖，而漏带的表现是运行时 NoClassDefFoundError —— 编得过、跑不起来。",
+    "",
+    "【原版与加载器不在此列】net.minecraft.* / com.mojang.* / net.fabricmc.* / net.neoforged.* /",
+    "net.minecraftforge.* / org.lwjgl.* / com.google.gson.* 由加载器或原版提供，不必声明；",
+    "其中加载器包名本身就禁止出现在 shared/（由 verifySharedIsTargetNeutral 接住）。",
+    "",
+    "【本仓现状】AtomChat 的第三方依赖全部是「嵌进 jar」的，因此这条声明同时是打包清单：",
+    "改这里要同时改各平台的 build.gradle（Fabric 用 include()，NeoForge/Forge 用 jarJar()）。"
+  ],
+  "io.github.humbleui": {
+    "artifact": "skija-shared / skija-windows-x64 / types",
+    "license": "Apache-2.0",
+    "why": "Skija：Skia 的 Java 绑定，整个界面由它矢量绘制；windows-x64 原生库一起嵌进 jar"
+  },
+  "com.formdev.flatlaf": {
+    "artifact": "flatlaf",
+    "license": "Apache-2.0",
+    "why": "文件选择器（Swing JFileChooser）的现代外观；不嵌的话会退回 Metal 旧样式"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.minecraft.client.gui.screen.atomchat",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ChatInputSuggestorAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
