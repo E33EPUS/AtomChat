@@ -361,6 +361,23 @@ def check_access_parity(parity: dict) -> None:
             fail(f"Forge 的 AT 写了非 SRG 名（{entry}）—— 那一侧运行时用 SRG 名，写官方名会静默不生效")
 
 
+def check_seams_doc() -> None:
+    """接缝清单必须与代码同步。
+
+    清单是生成物（tools/gen_seams.py 扫 platforms/ 与 shared/layers 产出），
+    这里只调它的 --check，免得同一套渲染逻辑写两份。
+    """
+    import subprocess
+
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "tools/gen_seams.py"), "--check"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        fail("shared/PLATFORM-SEAMS.md 与代码不同步 —— 跑 python3 tools/gen_seams.py 重新生成"
+             + (f"（{detail[0]}）" if detail else ""))
+
+
 def check_aliases(aliases: dict) -> None:
     """别名必须指向真实存在的层内文件 —— 别名的价值在于它可检查，腐坏的别名会静默失效。"""
     for layer_rel, mapping in aliases.items():
@@ -388,6 +405,7 @@ def main() -> int:
     check_layers(layers)
     check_aliases(aliases)
     check_access_parity(parity_raw)
+    check_seams_doc()
     check_targets(targets, layers, aliases)
 
     # 摘要（CI 日志里看这一份）
