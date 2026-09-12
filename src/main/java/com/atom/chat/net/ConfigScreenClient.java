@@ -34,6 +34,11 @@ public final class ConfigScreenClient {
                     if (open != null) {
                         open.onResult(payload.ok(), payload.error());
                     }
+                    if (payload.ok()) {
+                        // A saved change may alter the pack (phrases, server name),
+                        // so pull a fresh manifest - the panel reads the stored one.
+                        PackSyncClient.resync();
+                    }
                 }));
     }
 

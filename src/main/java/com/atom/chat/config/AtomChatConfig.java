@@ -172,6 +172,14 @@ public class AtomChatConfig {
      * from the panel; hand-editing this array works too.
      */
     public java.util.List<String> quickPhrases = new java.util.ArrayList<>();
+    /**
+     * Whether the one-time {@link #GUI_TIP} entry has been seeded into
+     * {@link #quickPhrases}. Seeded once so a host finds the server screen
+     * without reading the readme, and never again once they delete it.
+     */
+    public boolean guiTipSeeded = false;
+    /** Default first quick phrase: the command that opens the server settings. */
+    public static final String GUI_TIP = "/atomchat gui";
     /** Hard cap for {@link #quickPhrases}; the panel refuses additions past it. */
     public static final int MAX_QUICK_PHRASES = 20;
     /** Matches Minecraft's chat limit — a longer phrase could never be sent. */
@@ -216,6 +224,24 @@ public class AtomChatConfig {
         instance = load();
     }
 
+    /**
+     * Puts {@link #GUI_TIP} into a config that has never seen it, exactly once:
+     * after that the flag is saved, so a player who deletes the entry keeps it
+     * deleted across restarts.
+     */
+    private static void seedGuiTip(AtomChatConfig config) {
+        if (config.guiTipSeeded) {
+            return;
+        }
+        config.guiTipSeeded = true;
+        if (config.quickPhrases == null) {
+            config.quickPhrases = new java.util.ArrayList<>();
+        }
+        if (!config.quickPhrases.contains(GUI_TIP)) {
+            config.quickPhrases.add(GUI_TIP);
+        }
+    }
+
     private static AtomChatConfig load() {
         Path path = FabricLoader.getInstance().getConfigDir().resolve("atomchat/atomchat-client.json");
         if (Files.exists(path)) {
@@ -231,6 +257,7 @@ public class AtomChatConfig {
                     // unknown keys — so without this a new option could never be
                     // switched on by editing the file, it simply would not be
                     // there. Existing values are preserved by the round trip.
+                    seedGuiTip(config);
                     save(config);
                     return config;
                 }
@@ -239,6 +266,7 @@ public class AtomChatConfig {
             }
         }
         AtomChatConfig config = new AtomChatConfig();
+        seedGuiTip(config);
         save(config);
         return config;
     }
