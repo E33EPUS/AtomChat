@@ -359,10 +359,10 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
     /** Draft for the public world channel; kept separately because the hidden
      *  EditBox is shared by every chat page. */
     private String worldDraft = "";
-    /** Scroll state for root pages; shared across the root tabs. */
-    private final ScrollController rootScroll = new ScrollController();
-    /** Scroll state for a pushed settings sub-page; reset on every push/pop. */
-    private final ScrollController detailScroll = new ScrollController();
+    /** Scroll state for root pages; shared across the root tabs, opening at the top. */
+    private final ScrollController rootScroll = new ScrollController(false);
+    /** Scroll state for pushed detail pages (settings/profile), opening at the top. */
+    private final ScrollController detailScroll = new ScrollController(false);
     private ChatMessage replyTarget;
     private ChatMessage contextMessage;
     private PlayerRef contextPlayer;
