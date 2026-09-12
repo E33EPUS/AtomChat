@@ -26,6 +26,10 @@ public class AtomChat implements ModInitializer {
         // entrypoint pattern and master hosting switch as the avatar side.
         com.atom.chat.net.MediaPayloads.register();
         com.atom.chat.net.MediaCompanionServer.register();
+        // Server pack distribution (0.2.9): emotes, phrases and the server
+        // identity, on its own channel so it can be switched off alone.
+        com.atom.chat.net.PackPayloads.register();
+        com.atom.chat.net.PackSyncServer.register();
         // Retention and lifecycle housekeeping for the two hosted stores
         // (atomchat-data/media and /avatars). The start and tick hooks only run
         // for a server - a dedicated one, or the integrated one of a

@@ -27,6 +27,10 @@ import java.util.stream.Stream;
  *       uploads (one PNG per player, trimmed by the server config)</li>
  *   <li>{@code <gameDir>/atomchat-data/media/} — companion server hosted chat
  *       media (content-addressed, trimmed by the server config)</li>
+ *   <li>{@code <gameDir>/atomchat-data/packs/<key>/} — emote packs downloaded
+ *       from a server (re-verified on every join, safe to delete)</li>
+ *   <li>{@code config/atomchat/emotes/} — the local emotes; on a server the
+ *       same folder is the pack it hands to clients (admin content)</li>
  * </ul>
  *
  * <p>Old v0.2.3 locations under {@code config/atomchat/} are migrated once on
@@ -50,6 +54,26 @@ public final class CacheDirs {
     /** Companion server's uploaded custom-avatar PNGs. */
     public static Path avatarDataDir() {
         return dataRoot().resolve("avatars");
+    }
+
+    /** Game directory root; {@code server-icon.png} lives here. */
+    public static Path gameDir() {
+        return FabricLoader.getInstance().getGameDir();
+    }
+
+    /** Root of the downloaded server packs, one folder per {@code PackKeys} key. */
+    public static Path packsRoot() {
+        return dataRoot().resolve("packs");
+    }
+
+    /** One server's downloaded pack. */
+    public static Path packDir(String key) {
+        return packsRoot().resolve(key);
+    }
+
+    /** Local emotes; on a server this doubles as the distributed emote pack. */
+    public static Path emotesDir() {
+        return FabricLoader.getInstance().getConfigDir().resolve("atomchat/emotes");
     }
 
     /** Companion server's hosted chat media (images / animated GIFs). */
