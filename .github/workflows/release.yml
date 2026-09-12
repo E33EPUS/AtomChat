@@ -1,0 +1,234 @@
+name: Release
+
+# 单分支多目标：发什么由 versions/targets.json 决定，本文件里没有分支名。
+#
+# 【标签分两类】
+#   vX.Y.Z        正式版 —— 建 Release，并发布到 CurseForge（Modrinth 未配置 token / 项目 id 时自动跳过）
+#   vX.Y.Z-rc1    预发布 —— 只建 prerelease，**不发布到商店**；演练与候选版走这条
+# 分这两类是为了让"走一遍完整流程"不必污染商店：pre 标签会把发布那一段整段跳过。
+#
+# 【workflow_dispatch】用来在不动标签的情况下重跑发布（token 换了、商店侧卡住），
+# target 输入可以只发某一个目标；dry_run 只构建与校验，不建 Release、不发商店。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 只发布某个目标（手动触发时）
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - 1.21.1-fabric
+          - 1.21.1-neoforge
+          - 1.20.1-forge
+      dry_run:
+        description: 只构建与校验，不建 Release、不发布到商店
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  targets:
+    name: 校验矩阵
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.matrix.outputs.list }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 校验 versions/ 与各平台的身份来源
+        run: python3 tools/verify_targets.py --matrix-out "$RUNNER_TEMP/matrix.json"
+
+      - name: 导出矩阵
+        id: matrix
+        run: echo "list=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: 构建 ${{ matrix.target }}
+    needs: targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Skija 的 Linux 原生库链接 EGL/GL；测试的类路径里有它。
+      - name: 安装 Skija 的 Linux 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
+
+      - name: 设置 JDK ${{ matrix.java }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: "${{ matrix.java }}"
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # 版本号只有一处（仓库根 gradle.properties），所以标签只需要跟这一处对齐 ——
+      # 旧流程要在三个分支上各校验一次，那是"身份有三份"的直接后果。
+      - name: 校验仓库版本号与标签一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          EXPECTED="${GITHUB_REF_NAME#v}"
+          ACTUAL="$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '\r')"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::仓库根的 mod_version=${ACTUAL} 与标签 ${EXPECTED} 不一致"
+            exit 1
+          fi
+          echo "版本 ${ACTUAL} 与标签一致"
+
+      - name: 构建并测试
+        working-directory: ${{ matrix.project }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --no-daemon
+
+      - name: 取产物（-slim 与 sources 一律不要）
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" \
+            -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          ls -la "$GITHUB_WORKSPACE/dist"
+          count=$(find "$GITHUB_WORKSPACE/dist" -name "*.jar" | wc -l)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::期望恰好一个发布 jar，实际 $count 个 —— 产物名有歧义时取件规则要重新定"
+            exit 1
+          fi
+          if find "$GITHUB_WORKSPACE/dist" -name "*-slim*" | grep -q .; then
+            echo "::error::取到的是 -slim 包（不含内嵌依赖）"
+            exit 1
+          fi
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: jar-${{ matrix.target }}${{ matrix.suffix }}
+          path: dist/*.jar
+          if-no-files-found: error
+
+  release:
+    name: 建 Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 取回三个 jar
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 汇总并校验数量
+        run: |
+          set -euo pipefail
+          mkdir -p release-out
+          find artifacts -name "*.jar" ! -name "*sources*" ! -name "*-slim*" -exec cp {} release-out/ \;
+          ls -la release-out
+          count=$(find release-out -name "*.jar" | wc -l)
+          echo "Release 将挂上 ${count} 个 jar"
+          if [ "$count" -lt 1 ]; then
+            echo "::error::一个 jar 都没有"
+            exit 1
+          fi
+
+      # 发布说明取自仓库根的 RELEASE_NOTES.md（单分支之后它只有一份）
+      - name: 摘出版本对应的说明
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" python3 - <<'PY'
+          import os
+          version = os.environ["VERSION"]
+          with open("RELEASE_NOTES.md", encoding="utf-8") as f:
+              notes = f.read()
+          start = notes.find("## v" + version)
+          if start < 0:
+              # 预发布/hotfix 标签复用基础版本的段落（v0.2.92-rc1 → v0.2.92）
+              start = notes.find("## v" + version.split("-")[0])
+          if start < 0:
+              raise SystemExit(f"ERROR: RELEASE_NOTES.md 里没有 '## v{version}' 段落 —— 打标签前先写它")
+          end = notes.find("\n## ", start + 1)
+          section = (notes[start:end] if end > start else notes[start:]).strip()
+          with open("release-notes.md", "w", encoding="utf-8") as f:
+              f.write(section + "\n")
+          print(section[:400])
+          PY
+
+      - name: 建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-out/*.jar
+          body_path: release-notes.md
+          draft: false
+          # 带后缀的标签（-rc1 / -beta / -alpha）就是预发布
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # 商店发布与建 Release 分开：手动重发时不必重新建 Release。
+  # 预发布标签整段跳过 —— 候选版不该出现在商店里。
+  #
+  # ⚠ job 级的 if 里没有 matrix 上下文（它只在 step 级可用），所以「只发某个目标」
+  # 这个过滤写在下面的 step 上：写成 job 级会让整个工作流在校验阶段就被拒掉，
+  # 表现是 0 秒失败、日志为空，只说"workflow file issue"。
+  publish:
+    name: 发布到商店 ${{ matrix.target }}
+    needs: build
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/tags/v') &&
+        !contains(github.ref_name, '-') &&
+        inputs.dry_run != true
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Skija 的 Linux 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
+
+      - name: 设置 JDK ${{ matrix.java }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: "${{ matrix.java }}"
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # publishMods 由各平台自己的 build.gradle 定义（dependsOn modrinth / curseforge），
+      # 两个商店各自带 onlyIf 闸：没 token 或项目 id 没填就 SKIPPED，不会红。
+      - name: 构建并发布到 Modrinth 与 CurseForge
+        if: >-
+          ${{
+            inputs.target == '' ||
+            inputs.target == 'all' ||
+            inputs.target == matrix.target
+          }}
+        working-directory: ${{ matrix.project }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build publishMods --no-daemon
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
