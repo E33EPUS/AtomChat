@@ -188,6 +188,11 @@ def check_platform_toolchain(name: str, project: pathlib.Path, t: dict) -> None:
                  f"但 wrapper 是 {m.group(1)}")
 
 
+def _root_of(line: str) -> str:
+    """从「包名  — 说明」这种声明行里取出包名。"""
+    return line.split(" — ")[0].strip()
+
+
 def layer_axes(d: dict) -> list:
     return [a for a in ("since", "loader", "mappings") if a in d]
 
@@ -467,6 +472,39 @@ def check_server_side(cfg: dict) -> None:
         fail(f"服务端侧只扫到 {seen} 个文件（声明的下限 {minimum}）—— 匹配式或布局出问题了")
 
 
+def check_shared_dependencies(apis: dict) -> None:
+    """共享层与各层里出现的第三方包，必须落在声明表内。
+
+    这不是白名单制度，而是一张「我确实依赖了这个」的声明表：漏声明的表现是某个目标没带上
+    那个库 —— 编得过、跑起来 NoClassDefFoundError。原版与加载器提供的包单列一档（不必声明），
+    测试框架也单列（不进产物）。
+    """
+    import re
+
+    declared = [k for k in apis if not k.startswith("_")]
+    provided = [_root_of(line) for line in apis.get("_provided", []) if " — " in line]
+    test_only = [_root_of(line) for line in apis.get("_test_only", []) if " — " in line]
+    allowed = declared + provided
+    if not declared:
+        fail("versions/third-party-apis.json 里一个第三方包都没声明")
+        return
+
+    imports = re.compile(r"^\s*import\s+(?:static\s+)?([A-Za-z_][A-Za-z0-9_.]*)"
+                        r"(?:\.([A-Za-z_][A-Za-z0-9_.]*))?;", re.M)
+    for base in ("shared/src", "layers"):
+        for f in sorted((ROOT / base).rglob("*.java")):
+            is_test = "/test/" in f.as_posix()
+            ok_prefixes = list(allowed) + (test_only if is_test else [])
+            for m in imports.finditer(f.read_text(encoding="utf-8", errors="replace")):
+                pkg = m.group(1) + ("." + m.group(2) if m.group(2) else "")
+                if pkg.startswith(("java.", "javax.", "com.atom.")):
+                    continue
+                if any(pkg == pre or pkg.startswith(pre + ".") for pre in ok_prefixes):
+                    continue
+                fail(f"{f.relative_to(ROOT).as_posix()} 引用了未声明的第三方包 {pkg} —— "
+                     f"把它写进 versions/third-party-apis.json（@provided 那一档是原版/加载器提供的）")
+
+
 def check_seams_doc() -> None:
     """接缝清单必须与代码同步。
 
@@ -514,6 +552,7 @@ def main() -> int:
     check_aliases(aliases)
     check_access_parity(parity_raw)
     check_resource_paths(paths_raw)
+    check_shared_dependencies(load_json("versions/third-party-apis.json"))
     check_server_side(server_raw)
     check_seams_doc()
     check_targets(targets, layers, aliases)
