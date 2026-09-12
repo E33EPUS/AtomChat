@@ -179,4 +179,93 @@ class PackManifestFileTest {
         assertFalse(Files.exists(dir.resolve(PackManifestFile.EMOTES_DIR).resolve("a.png")));
         assertTrue(Files.exists(dir.resolve(PackManifestFile.EMOTES_DIR).resolve("b.gif")));
     }
+
+    @Test
+    void anIncrementalInstallFoldsInTheFilesItDidNotFetch() throws Exception {
+        // The bug this covers: a diff only carries the files that differ, so the
+        // installer used to refuse the whole pack for the files it kept.
+        Map<String, byte[]> contents = contents();
+        ServerPack pack = pack(contents);
+        Path packs = root.resolve("packs");
+        String key = PackKeys.serverKey("host:1");
+        PackManifestFile.install(packs, key, pack, contents);
+
+        Files.delete(packs.resolve(key).resolve(PackManifestFile.EMOTES_DIR).resolve("a.png"));
+        Files.write(packs.resolve(key).resolve(PackManifestFile.EMOTES_DIR).resolve("b.gif"),
+                bytes("corrupted"));
+
+        Map<String, byte[]> downloaded = new LinkedHashMap<>();
+        downloaded.put("a.png", contents.get("a.png"));
+        downloaded.put("b.gif", contents.get("b.gif"));
+
+        Map<String, byte[]> complete = PackManifestFile.completeWithExisting(
+                packs.resolve(key), pack, downloaded);
+        PackManifestFile.install(packs, key, pack, complete);
+
+        assertEquals(2, complete.size());
+        ServerPack reloaded = PackManifestFile.read(packs.resolve(key));
+        assertNotNull(reloaded);
+        assertArrayEquals(contents.get("a.png"), Files.readAllBytes(
+                packs.resolve(key).resolve(PackManifestFile.EMOTES_DIR).resolve("a.png")));
+        assertArrayEquals(contents.get("b.gif"), Files.readAllBytes(
+                packs.resolve(key).resolve(PackManifestFile.EMOTES_DIR).resolve("b.gif")));
+        assertFalse(Files.exists(packs.resolve(key + ".tmp")));
+    }
+
+    @Test
+    void aKeptFileThatChangedUnderUsFailsTheSync() throws Exception {
+        Map<String, byte[]> contents = contents();
+        ServerPack pack = pack(contents);
+        Path dir = root.resolve("pack");
+        Files.createDirectories(dir);
+        PackManifestFile.write(dir, pack, contents);
+
+        // "b.gif" is not part of the download and no longer matches the manifest.
+        Files.write(dir.resolve(PackManifestFile.EMOTES_DIR).resolve("b.gif"), bytes("swapped"));
+
+        boolean threw = false;
+        try {
+            PackManifestFile.completeWithExisting(dir, pack, Map.of("a.png", contents.get("a.png")));
+        } catch (Exception e) {
+            threw = true;
+        }
+        assertTrue(threw, "a kept file that no longer verifies must fail the sync");
+    }
+
+    @Test
+    void aMissingKeptFileFailsTheSync() throws Exception {
+        Map<String, byte[]> contents = contents();
+        ServerPack pack = pack(contents);
+        Path dir = root.resolve("pack");
+        Files.createDirectories(dir);
+        PackManifestFile.write(dir, pack, contents);
+        Files.delete(dir.resolve(PackManifestFile.EMOTES_DIR).resolve("b.gif"));
+
+        boolean threw = false;
+        try {
+            PackManifestFile.completeWithExisting(dir, pack, Map.of("a.png", contents.get("a.png")));
+        } catch (Exception e) {
+            threw = true;
+        }
+        assertTrue(threw);
+    }
+
+    @Test
+    void aFailedInstallLeavesNoTemporaryDirectory() throws Exception {
+        Map<String, byte[]> contents = contents();
+        ServerPack pack = pack(contents);
+        Path packs = root.resolve("packs");
+        String key = PackKeys.serverKey("host:2");
+
+        boolean threw = false;
+        try {
+            // One manifest file has no bytes: write() refuses, install() must clean up.
+            PackManifestFile.install(packs, key, pack, Map.of("a.png", contents.get("a.png")));
+        } catch (Exception e) {
+            threw = true;
+        }
+
+        assertTrue(threw);
+        assertFalse(Files.exists(packs.resolve(key + ".tmp")), "a failed install must not leave junk");
+    }
 }
