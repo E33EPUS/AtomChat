@@ -1,0 +1,39 @@
+{
+  "_comment": [
+    "【服务端侧的类不许碰客户端类型】AtomChat 是客户端与服务端同一个 jar：专用服务端会加载",
+    "「公共入口」那一支的类。这些类一旦引用客户端类型（net.minecraft.client.* 等），在专用服务端上",
+    "的表现是 NoClassDefFoundError/NoSuchMethodError —— 而且往往只在真正开服时才炸，开发时看不出来。",
+    "",
+    "【这份表怎么用】patterns 是**匹配式**而不是清单：`*Server.java` 这种写法让新加的服务端类",
+    "自动被覆盖，不必记得来登记（矩阵是规则，不是清单）。另外校验每个 pattern 至少命中一个文件 ——",
+    "匹配式写错、或布局变了导致命中为零时，会红，而不是悄悄什么都不查。",
+    "",
+    "【判据的近似】mcphone 是靠编译后的 class 文件判断（凡路径不含 /client/ 的类都不准引用客户端类型），",
+    "我们还没有 /client/ 这样的目录约定，所以先用**源码级标记扫描**近似，并显式列出服务端侧的类。",
+    "两者的差别要说清楚：源码扫描会被注释绕过（所以这里先剥注释），也管不到间接调用。",
+    "",
+    "【markers】Yarn 与官方名两套都列，因为同一份检查要覆盖三个目标。"
+  ],
+
+  "markers": [
+    "net.minecraft.client.",
+    "MinecraftClient",
+    "Minecraft.getInstance",
+    "ClientPacketListener",
+    "net.minecraft.client.multiplayer"
+  ],
+
+  "patterns": [
+    "platforms/*/src/main/java/com/atom/chat/AtomChat.java",
+    "platforms/*/src/main/java/com/atom/chat/net/*Server.java",
+    "shared/src/main/java/com/atom/chat/net/CompanionMaintenance.java",
+    "shared/src/main/java/com/atom/chat/config/ServerConfigValues.java",
+    "shared/src/main/java/com/atom/chat/config/AtomChatServerConfig.java",
+    "shared/src/main/java/com/atom/chat/pack/PackBuilder.java",
+    "shared/src/main/java/com/atom/chat/pack/ServerPack.java",
+    "shared/src/main/java/com/atom/chat/pack/ServerPackStore.java",
+    "shared/src/main/java/com/atom/chat/pack/ServerEmoteMigration.java"
+  ],
+
+  "min_files": 10
+}

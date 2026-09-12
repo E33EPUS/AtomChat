@@ -402,6 +402,71 @@ def check_resource_paths(paths: dict) -> None:
                  f"或删掉它（多出来的资源不会被加载，只会让人以为生效了）")
 
 
+def _strip_comments(text):
+    """逐行剥掉注释（块注释 + 行注释）。
+
+    不用正则：这份文件要跨三端与 CI 跑到，少一层转义就少一类「本地能跑、CI 不能跑」的麻烦。
+    近似：字符串字面量里的 // 也会被剥掉，但服务端侧这些类里没有那种写法。
+    """
+    NL = chr(10)  # 不写字面量反斜杠：这份文件要跨三端与 CI，少一层转义少一类环境差异
+    out = []
+    in_block = False
+    for line in text.split(NL):
+        if in_block:
+            idx = line.find('*/')
+            if idx < 0:
+                continue
+            line = line[idx + 2:]
+            in_block = False
+        start = line.find('/*')
+        while start >= 0:
+            idx = line.find('*/', start + 2)
+            if idx < 0:
+                line = line[:start]
+                in_block = True
+                break
+            line = line[:start] + line[idx + 2:]
+            start = line.find('/*', start)
+        cut = line.find('//')
+        if cut >= 0:
+            line = line[:cut]
+        out.append(line)
+    return NL.join(out)
+
+
+def check_server_side(cfg: dict) -> None:
+    """服务端侧的类不许引用客户端类型（专用服务端上会 NoClassDefFoundError）。
+
+    判据是源码级标记扫描（先剥注释）。patterns 是匹配式而不是清单 —— 新加的服务端类自动
+    被覆盖，不必记得来登记；每个匹配式至少命中一个文件，命中为零说明匹配式坏了或布局变了，
+    那也要红（否则这类检查会悄悄变成什么都不查）。
+    """
+    markers = cfg.get("markers", [])
+    patterns = cfg.get("patterns", [])
+    if not markers or not patterns:
+        fail("versions/server-side.json 缺 markers 或 patterns")
+        return
+
+    seen = 0
+    for pattern in patterns:
+        hits = sorted(ROOT.glob(pattern))
+        if not hits:
+            fail(f"server-side.json 的匹配式一个文件都没命中：{pattern} —— 布局变了？")
+            continue
+        for f in hits:
+            if not f.is_file():
+                continue
+            seen += 1
+            text = _strip_comments(f.read_text(encoding="utf-8", errors="replace"))
+            for marker in markers:
+                if marker in text:
+                    fail(f"{f.relative_to(ROOT).as_posix()} 是服务端侧的类，却引用了客户端类型 "
+                         f"{marker} —— 专用服务端上会 NoClassDefFoundError")
+    minimum = int(cfg.get("min_files", 1))
+    if seen < minimum:
+        fail(f"服务端侧只扫到 {seen} 个文件（声明的下限 {minimum}）—— 匹配式或布局出问题了")
+
+
 def check_seams_doc() -> None:
     """接缝清单必须与代码同步。
 
@@ -439,6 +504,7 @@ def main() -> int:
     aliases_raw = load_json("versions/mapping-aliases.json")
     parity_raw = load_json("versions/access-parity.json")
     paths_raw = load_json("versions/resource-paths.json")
+    server_raw = load_json("versions/server-side.json")
     targets = entries_of(targets_raw)
     layers = entries_of(layers_raw)
     aliases = {k: v for k, v in aliases_raw.items() if not k.startswith("_")}
@@ -448,6 +514,7 @@ def main() -> int:
     check_aliases(aliases)
     check_access_parity(parity_raw)
     check_resource_paths(paths_raw)
+    check_server_side(server_raw)
     check_seams_doc()
     check_targets(targets, layers, aliases)
 
