@@ -11,14 +11,26 @@ import com.atom.chat.render.Easing;
  * <p>This class deliberately contains no Minecraft or Skija types. UiLayout is
  * allowed because it is pure layout math used for hit-testing and drawing
  * geometry.
+ *
+ * <p>Controllers are bottom-anchored by default, which is what chat logs want:
+ * the first frame snaps to the newest message. Settings and profile lists pass
+ * {@code false} to {@link #ScrollController(boolean)} so they open at the top.
  */
 public final class ScrollController {
     private static final float BOTTOM_TOLERANCE = 3.0F;
     private static final float WHEEL_STEP = 45.0F;
 
+    /**
+     * Anchor policy for {@link #reset()}: chat logs re-arm the first-frame
+     * bottom snap so the newest message is visible immediately, while settings
+     * and profile lists stay at the top. {@link #scrollToBottom(boolean)} still
+     * overrides the anchor for explicit jumps.
+     */
+    private final boolean bottomAnchor;
+
     private float scrollY;
     private float maxScroll;
-    private boolean scrollToBottom = true;
+    private boolean scrollToBottom;
     private float scrollTarget;
     private boolean scrollAnimActive;
     private float scrollAnimFrom;
@@ -35,9 +47,9 @@ public final class ScrollController {
     private float dragStartScroll;
     private long lastScrollbarFrame;
 
-    // Content/viewport change detection. A fresh controller snaps to the bottom
-    // on its first update, mirroring the screen-level first-frame behaviour.
-    private boolean firstFrameBottomSnap = true;
+    // Content/viewport change detection. A fresh chat controller snaps to the
+    // bottom on its first update; top-anchored controllers skip the snap.
+    private boolean firstFrameBottomSnap;
     private float lastViewportHeight = -1.0F;
 
     /**
@@ -48,18 +60,35 @@ public final class ScrollController {
      */
     private boolean decorativeMotion = true;
 
+    /** Creates a chat-style controller that opens at the newest message. */
     public ScrollController() {
+        this(true);
+    }
+
+    /**
+     * @param bottomAnchor {@code true} for chat logs that must start at the
+     *                     bottom, {@code false} for settings/profile lists
+     *                     that must start at the top
+     */
+    public ScrollController(boolean bottomAnchor) {
+        this.bottomAnchor = bottomAnchor;
+        this.scrollToBottom = bottomAnchor;
+        this.firstFrameBottomSnap = bottomAnchor;
     }
 
     public void setDecorativeMotion(boolean enabled) {
         this.decorativeMotion = enabled;
     }
 
-    /** Clears every piece of scroll state, including drag and scrollbar fade. */
+    /**
+     * Clears every piece of scroll state, including drag and scrollbar fade.
+     * The controller's anchor decides whether the next first frame snaps to the
+     * bottom (chat) or stays at the top (settings/profile).
+     */
     public void reset() {
         scrollY = 0.0F;
         maxScroll = 0.0F;
-        scrollToBottom = true;
+        scrollToBottom = bottomAnchor;
         scrollTarget = 0.0F;
         scrollAnimActive = false;
         scrollAnimFrom = 0.0F;
@@ -73,7 +102,7 @@ public final class ScrollController {
         dragStartY = 0.0F;
         dragStartScroll = 0.0F;
         lastScrollbarFrame = 0L;
-        firstFrameBottomSnap = true;
+        firstFrameBottomSnap = bottomAnchor;
         lastViewportHeight = -1.0F;
     }
 
