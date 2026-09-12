@@ -30,6 +30,10 @@ public class AtomChat implements ModInitializer {
         // identity, on its own channel so it can be switched off alone.
         com.atom.chat.net.PackPayloads.register();
         com.atom.chat.net.PackSyncServer.register();
+        // Server config screen (0.2.9): /atomchat gui + the save path. The screen
+        // itself is built by the editing player's client, never by the server.
+        com.atom.chat.net.ConfigPayloads.register();
+        com.atom.chat.net.ConfigScreenServer.register();
         // Retention and lifecycle housekeeping for the two hosted stores
         // (atomchat-data/media and /avatars). The start and tick hooks only run
         // for a server - a dedicated one, or the integrated one of a

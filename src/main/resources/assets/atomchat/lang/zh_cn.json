@@ -203,5 +203,7 @@
   "atomchat.panel.server_pack.failed": "同步失败",
   "atomchat.quick.server": "本服",
   "atomchat.settings.privacy.server_packs": "接收本服下发内容",
-  "atomchat.settings.privacy.server_packs.desc": "进服时同步服务器提供的表情包、常用语与服务器名；关闭后不再请求任何内容"
+  "atomchat.settings.privacy.server_packs.desc": "进服时同步服务器提供的表情包、常用语与服务器名；关闭后不再请求任何内容",
+  "atomchat.server.console_only": "该命令需要在游戏内以玩家身份执行（控制台没有可绘制的界面）",
+  "atomchat.server.saved": "AtomChat 服务端配置已保存"
 }

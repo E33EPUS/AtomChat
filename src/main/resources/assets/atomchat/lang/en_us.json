@@ -203,5 +203,7 @@
   "atomchat.panel.server_pack.failed": "sync failed",
   "atomchat.quick.server": "This server",
   "atomchat.settings.privacy.server_packs": "Accept server packs",
-  "atomchat.settings.privacy.server_packs.desc": "Sync the emotes, phrases and server name this server offers on join; off means nothing is requested"
+  "atomchat.settings.privacy.server_packs.desc": "Sync the emotes, phrases and server name this server offers on join; off means nothing is requested",
+  "atomchat.server.console_only": "Run this in game as a player - a console has no screen to draw on",
+  "atomchat.server.saved": "AtomChat server config saved"
 }
