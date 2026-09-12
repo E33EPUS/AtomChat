@@ -132,6 +132,43 @@ public final class ChatPipeline {
     }
 
     /**
+     * Slices the reply body out of a quote-prefixed rich content line.
+     *
+     * <p>The wire carries quotes as the plain-text prefix
+     * {@code 「引用 @Name: quoted」body}; rebuilding {@code body} with
+     * {@link RichText#literal} kept the visible text but dropped every run
+     * style inside the reply (server rich content, coloured mentions). The rich
+     * line already carries the same text, so slice after the closing bracket
+     * instead. Falls back to a literal when the rich line does not contain the
+     * parsed body verbatim (translated prefixes, whitespace drift, plain-only
+     * sources).
+     */
+    public static RichText quoteBodyRich(RichText content, String body) {
+        String plainBody = body == null ? "" : body;
+        if (content == null || content.isEmpty()) {
+            return RichText.literal(plainBody).linkifyUrls();
+        }
+        String full = content.getString();
+        int open = full.indexOf("「引用");
+        int close = open < 0 ? -1 : full.indexOf('」', open + 2);
+        if (close < 0) {
+            return RichText.literal(plainBody).linkifyUrls();
+        }
+        int start = close + 1;
+        while (start < full.length() && Character.isWhitespace(full.charAt(start))) {
+            start++;
+        }
+        int end = full.length();
+        while (end > start && Character.isWhitespace(full.charAt(end - 1))) {
+            end--;
+        }
+        if (!full.substring(start, end).equals(plainBody)) {
+            return RichText.literal(plainBody).linkifyUrls();
+        }
+        return content.slice(start, end).linkifyUrls();
+    }
+
+    /**
      * Slices the final decorated line into styled sender and content parts.
      * Only returns a result when the line parses as a player line for the
      * sender/profile names carried by {@code meta}; otherwise returns empty so
