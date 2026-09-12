@@ -76,6 +76,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija). Every interface is ve
 *   Local images you send are uploaded to a third-party host (uguu.se by default) or, when the server has hosting enabled, stored on that server's disk; either way others can save or forward them — do not send sensitive or private content
 *   Server-side hosting moves bytes only over the game connection: no HTTP port is opened and nothing is exposed to players who are not connected
 *   A hosting server keeps a copy under `<server dir>/atomchat-data/media/`, pruned by its `maxTotalMb` / `retentionDays` settings or deleted by the admin at any time
+*   Servers that run AtomChat can also offer their own emotes, phrases and identity (`server-icon.png` + MOTD): clients sync them on join with per-file SHA-256 verification, see them in a read-only section of the emote panel, and can opt out in Settings -> Privacy; operators edit it in game with `/atomchat gui`
 *   Your messages can be saved by players who enabled chat history — do not send sensitive or private content
 *   The mod uploads no telemetry / personal information
 *   Image uploads happen only when you actively pick / paste / drop an image
@@ -101,7 +102,7 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija). Every interface is ve
 
 ## Changelog
 
-See the [GitHub CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/Fabric-1.21.1/CHANGELOG.md) — or the [v0.2.8 release notes](https://github.com/E33EPUS/AtomChat/releases/tag/v0.2.8).
+See the [GitHub CHANGELOG](https://github.com/E33EPUS/AtomChat/blob/Fabric-1.21.1/CHANGELOG.md) — or the [v0.2.9 release notes](https://github.com/E33EPUS/AtomChat/releases/tag/v0.2.9).
 
 ## Feedback
 

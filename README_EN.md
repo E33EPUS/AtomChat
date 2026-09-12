@@ -29,7 +29,7 @@ AtomChat is a brand-new chat beautification mod developed in the spirit of [E33C
 
 Rendering uses [Skija](https://github.com/HumbleUI/skija). The whole UI is vector-drawn instead of using vanilla chat textures.
 
-> Status: **v0.2.8 released (Fabric / NeoForge 1.21.1, Forge 1.20.1)**. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
+> Status: **v0.2.9 released (Fabric / NeoForge 1.21.1, Forge 1.20.1)**. Download from [Releases](https://github.com/E33EPUS/AtomChat/releases); this is an intentional clean rewrite in the spirit of E33Chat, not a fork.
 
 ---
 
@@ -98,7 +98,8 @@ Rendering uses [Skija](https://github.com/HumbleUI/skija). The whole UI is vecto
 - 🖼️ **Image messages** — renders `[[CICode]]` natively (interoperable with E33Chat / ChatImage), keeps the source aspect ratio and **plays animated GIFs on a loop inside the bubble**; transparent PNG / GIFs show the panel behind them instead of a grey plate; placeholder while loading; right-click an image bubble to save the original file
 - 📤 **Local image sending** — the FlatLaf picker defaults to Details view with inline thumbnails; supports drag & drop and Ctrl+V paste; uploads are converted into CICode automatically, falling back to the external host when the server cannot take them
 - 📦 **Server-side media hosting** — when the server also runs AtomChat, images and GIFs upload there and are distributed from there: content-addressed deduplication, chunked on-demand delivery, everything over the game connection and **no HTTP port opened**. Falls back to the external host when the server lacks the mod, hosting is off, the file is oversized or the upload fails. The same `hostingEnabled` master switch also governs custom-avatar sync
-- 😀 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist in `<config>/atomchat/emotes/` (png/jpg/jpeg/gif, max 10), added through the `+` cell and deleted by hovering `×`; GIF stickers show their first frame in the grid (keeping the grid smooth) and animate once sent
+- 🎁 **Server-offered packs** — joining a server that runs AtomChat syncs its content: the emotes its admin dropped into `config/atomchat/emotes/`, the phrases in its config, and its identity (`server-icon.png` plus MOTD). The emote panel gains a read-only "this server" section (name and sync state) and the phrase panel a read-only group; the transfer verifies every file by SHA-256 and only fetches the difference (one deleted emote costs one file next join), the client refuses anything past 200 files / 16 MB, and every failure lands in the server log with a reason. Operators edit all of it in game with `/atomchat gui` (OP level 2; single-player needs no permission)
+- 😀 **Emoji / Kaomoji / Stickers** — three tabs with a sliding indicator and full-width push transitions; stickers persist in `<config>/atomchat/emotes/` (png/jpg/jpeg/gif, max 20 and the grid scrolls; server-offered emotes sit in their own read-only section below and do not use these slots), added through the `+` cell and deleted by hovering `×`; GIF stickers show their first frame in the grid (keeping the grid smooth) and animate once sent
 - ⚡ **Quick phrases** — a lightning button opens a phrase list above the composer; tapping inserts into the input (never sends on its own), with add / inline-edit / delete, capped at 256 characters and 20 entries
 - 🔗 **Rich-text messages** — player names/bodies support colors, underlines, clicks and hover tooltips: `/tell`, coordinates, FTB accept/deny and external links are clickable; bare URLs become links automatically
 - 📋 **Copy / Quote / Save** — right-click to copy or quote; image messages can be saved; the context menu uses 20×20 SVG line icons
@@ -210,6 +211,13 @@ When the server (or the server side of a single-player / LAN host) runs AtomChat
 | `maxAvatarTotalMb` | `64` | Total avatar store budget in MB; the oldest files are deleted first |
 | `retentionDays` | `7` | How long hosted media and avatars are kept; `0` keeps them forever |
 | `uploadCooldownMs` | `3000` | Minimum interval between two uploads from the same player, in milliseconds |
+| `packEnabled` | `true` | Master switch: offer this server's emotes, phrases and identity to clients |
+| `packMaxFiles` | `32` | Largest number of emote files offered |
+| `packMaxMb` | `8` | Total emote bytes offered, in MB |
+| `packName` | `""` | Server name shown in the client panel; blank uses the cleaned first line of the MOTD |
+| `phrases` | `[]` | Phrases offered to clients (at most 20, each at most 200 characters) |
+
+All of these can also be edited in game with `/atomchat gui` (OP level 2; no permission needed in single-player): the screen is drawn by the **editing player's own client**, so a rented server, a panel-hosted server, a single-player world and a LAN host all work; a console is told there is no screen to draw on.
 
 Hosted media is stored in `<server game dir>/atomchat-data/media/`, named by content hash and therefore deduplicated by content.
 
