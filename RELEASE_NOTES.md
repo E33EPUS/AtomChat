@@ -4,6 +4,12 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
+## v0.2.10
+
+修复：打开设置界面（设置首页与各设置子页）会直接停在底部——滚动控制器的「首帧吸底」本来是给聊天记录用的（打开要立刻看到最新消息），设置 / 资料列表也复用了它；现在聊天列表保持底部锚点，设置与资料列表使用顶部锚点，打开与重置后都停在顶部。
+
+Fixed settings opening scrolled to the bottom: the first-frame bottom snap exists so chat logs open at the newest message, but the settings and profile lists reused the same controller. Chat lists keep the bottom anchor; settings and profile lists now use a top anchor and open/reset at the top.
+
 ## v0.2.91
 
 修复：玩家卡片右键菜单的「取消屏蔽」点不到——绘制按 3 行、点击判定只按 2 行，第三行永远在判定区外；现在绘制与三个点击入口共用同一行数计算。
