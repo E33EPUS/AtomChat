@@ -4,7 +4,6 @@
 
 _A phone-app style chat experience for Minecraft, powered by Skia._
 
-![MC](https://img.shields.io/badge/MC-1.21.1%20%7C%201.20.1-green) ![Loader](https://img.shields.io/badge/Loader-Fabric-orange) ![Loader](https://img.shields.io/badge/Loader-NeoForge-blue) ![Loader](https://img.shields.io/badge/Loader-Forge-red) ![Side](https://img.shields.io/badge/Side-Client%20%7C%20Server-blue) ![OS](https://img.shields.io/badge/OS-Windows%20x64-lightgrey) ![Java](https://img.shields.io/badge/Java-17%2B-yellow)
 
 AtomChat turns the vanilla chat screen into a standalone "phone app" style chat panel: rounded bubbles, real player names with round skin avatars, emoji / kaomoji / stickers, image and animated GIF messages, server-side media hosting, copy and quote, multi-line input and QQ-style motion.
 
