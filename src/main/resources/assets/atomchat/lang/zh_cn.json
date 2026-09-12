@@ -55,6 +55,7 @@
   "atomchat.picker.filter.emote": "表情包 (png, jpg, jpeg)",
   "atomchat.picker.preview.none": "无预览",
   "atomchat.picker.preview.loading": "加载中…",
+  "atomchat.picker.headless": "AtomChat 无法打开文件选择窗口：Java 的窗口工具包已被锁成无界面（headless）模式，多半是其他模组抢先初始化了 AWT。详见游戏日志。",
   "atomchat.input.save_failed": "图片保存失败",
   "key.atomchat.open": "打开 AtomChat 继承页",
   "key.atomchat.category": "AtomChat",

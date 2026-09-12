@@ -5,6 +5,7 @@ import com.atom.chat.image.ImageLoader;
 import com.atom.chat.notification.NotificationBanner;
 import com.atom.chat.notification.NotificationController;
 import com.atom.chat.render.PanelBlurRenderer;
+import com.atom.chat.util.AwtDisplay;
 import com.atom.chat.util.CacheDirs;
 import com.atom.chat.wallpaper.WallpaperStore;
 import net.fabricmc.api.ClientModInitializer;
@@ -32,10 +33,9 @@ public class AtomChatClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        // The AWT/Swing image picker needs a real toolkit, not the headless
-        // AWT some launchers/other mods select. This must run before any AWT
-        // class initialises, so it lives here at the very start of client init.
-        System.setProperty("java.awt.headless", "false");
+        // Second, idempotent call: the mixin plugin already claimed AWT before
+        // any mod was constructed. See AwtDisplay for why being first matters.
+        AwtDisplay.claim();
         AtomChatConfig.get();
         CacheDirs.migrateFromOldConfigPaths();
         WallpaperStore.init(

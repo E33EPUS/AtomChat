@@ -2,6 +2,7 @@ package com.atom.chat.util;
 
 import com.atom.chat.AtomChat;
 import com.formdev.flatlaf.FlatLightLaf;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 
 import javax.swing.Action;
@@ -69,14 +70,18 @@ public final class FilePicker {
      *                   pick a file the store will silently refuse.
      */
     public static Path pickImage(Runnable beforeShow, Runnable afterShow, Predicate<String> nameFilter) {
-        // Second line of defence: the launcher may pass
-        // -Djava.awt.headless=true. If no AWT class has initialised yet this
-        // restores a real toolkit; AtomChatClient also does it earlier.
-        System.setProperty("java.awt.headless", "false");
+        // The claim normally happened at startup (AwtDisplay, via the mixin
+        // plugin, before any other mod could reach AWT); repeating it is free
+        // and covers a process where the picker is the first AWT user.
+        AwtDisplay.claim();
         AtomicReference<Path> result = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
         SwingUtilities.invokeLater(() -> {
             try {
+                if (!AwtDisplay.usable()) {
+                    reportHeadless();
+                    return;
+                }
                 if (beforeShow != null) {
                     beforeShow.run();
                 }
@@ -107,16 +112,20 @@ public final class FilePicker {
      * {@code null} when the user cancels.
      */
     public static Path pickSavePath(String suggestedName) {
-        System.setProperty("java.awt.headless", "false");
+        AwtDisplay.claim();
         AtomicReference<Path> result = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
         SwingUtilities.invokeLater(() -> {
             try {
+                if (!AwtDisplay.usable()) {
+                    reportHeadless();
+                    return;
+                }
                 installLookAndFeel();
                 JFileChooser chooser = new JFileChooser();
                 chooser.setDialogTitle(tr("atomchat.picker.save.title"));
                 chooser.setAcceptAllFileFilterUsed(true);
-                chooser.setSelectedFile(new File(defaultDirectory(), safeFileName(suggestedName)));
+                chooser.setSelectedFile(new File(defaultDirectory(), ImageFileNames.sanitize(suggestedName)));
 
                 JFrame frame = new JFrame(tr("atomchat.picker.save.title"));
                 frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -152,17 +161,43 @@ public final class FilePicker {
         return result.get();
     }
 
-    /** Strips path separators so a URL's last segment can become a file name. */
-    private static String safeFileName(String name) {
-        if (name == null || name.isBlank()) {
-            return "image.png";
-        }
-        String cleaned = name.replaceAll("[/\\\\:*?\"<>|]", "_");
-        return cleaned.isBlank() ? "image.png" : cleaned;
-    }
-
     private static String tr(String key) {
         return Text.translatable(key).getString();
+    }
+
+    /**
+     * AWT is unusable in this process - either a mod reached it before we did
+     * (its headless answer is cached for the life of the JVM; see
+     * {@link AwtDisplay}) or the machine has no display. Nothing can be shown,
+     * so say why instead of leaving the player staring at a button that does
+     * nothing.
+     */
+    private static void reportHeadless() {
+        Throwable failure = AwtDisplay.failure();
+        if (failure != null) {
+            AtomChat.LOGGER.error("Image picker unavailable: AWT could not be initialised ({}). "
+                    + "Headless state: {}", AwtDisplay.outcome(), failure.toString(), failure);
+        } else {
+            AtomChat.LOGGER.error("Image picker unavailable: AWT is headless ({}). "
+                    + "Another mod most likely reached AWT first.", AwtDisplay.outcome());
+        }
+        try {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client == null) {
+                return;
+            }
+            client.execute(() -> {
+                try {
+                    if (client.inGameHud != null) {
+                        client.inGameHud.getChatHud().addMessage(Text.translatable("atomchat.picker.headless"));
+                    }
+                } catch (Throwable t) {
+                    AtomChat.LOGGER.warn("Could not tell the player the picker is unavailable", t);
+                }
+            });
+        } catch (Throwable t) {
+            AtomChat.LOGGER.warn("Could not reach the client to report the headless picker", t);
+        }
     }
 
     private static Path showChooser(Predicate<String> nameFilter) {
