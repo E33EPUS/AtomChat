@@ -78,7 +78,7 @@ def check_root_identity() -> None:
         fail(f"仓库根的 gradle.properties 缺身份键：{', '.join(missing)}")
 
 
-def check_targets(targets: dict, layers: dict) -> None:
+def check_targets(targets: dict, layers: dict, aliases: dict) -> None:
     if not targets:
         fail("versions/targets.json 里一个目标都没有 —— 文件坏了或被改空了")
         return
@@ -134,7 +134,8 @@ def check_targets(targets: dict, layers: dict) -> None:
                      f"它们本可共用一份，现在只能各存一份没人盯着的手抄副本")
                 continue
             for layer_name in declared:
-                check_mapping_twins(layer_name, layers[layer_name], targets, family)
+                check_mapping_twins(layer_name, layers[layer_name], targets, family,
+                                    aliases.get(f"layers/mapping/{layer_name}", {}))
 
     # 反方向：某一家族已经有映射层了，同家族的目标就必须挂它 —— 否则它会留一份私藏副本，
     # 而那份副本与层里的内容本应逐字相同，没有任何东西会告诉你它慢慢不一样了。
@@ -227,9 +228,13 @@ def digest(path: pathlib.Path) -> str:
     return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
-def check_mapping_twins(layer_name: str, d: dict, targets: dict, family: str) -> None:
+def check_mapping_twins(layer_name: str, d: dict, targets: dict, family: str, aliases: dict) -> None:
     """映射层的代价是「另一个家族保留同路径的孪生副本」。这份副本是手抄的，
-    所以必须有人在盯着：少一个、或者其实逐字相同（那它本该进 shared/）都要红。"""
+    所以必须有人在盯着：少一个、或者其实逐字相同（那它本该进 shared/）都要红。
+
+    aliases 是路径别名：有的类在两个家族上包路径不同（Fabric 侧故意住在原版包下，
+    借包私有访问达成与 AT 同样的目的）。别名把这一处写下来，检查照样按对应路径去找，
+    找不到一样红 —— 别名不是豁免，只是让例外变成可检查的声明。"""
     base = layer_dir(layer_name, d)
     if not base.is_dir():
         return
@@ -237,21 +242,21 @@ def check_mapping_twins(layer_name: str, d: dict, targets: dict, family: str) ->
     for rel in sorted(files):
         if not rel.startswith(("src/main/java/", "src/test/java/")):
             continue
-        sub, short = rel.split("/java/", 1)
-        sub = sub + "/java"
+        twin_rel = aliases.get(rel, rel)
         for name, t in targets.items():
             if t.get("mappings") == family:
                 continue
             project = ROOT / t["project"]
             if not project.is_dir():
                 continue  # 还没建起来的目标不欠副本
-            twin = project / sub / short
+            twin = project / twin_rel
             if not twin.is_file():
-                fail(f"映射层 {layer_name} 里有 {short}，但目标 {name}"
-                     f"（mappings={t.get('mappings')}）的平台目录里没有同路径的孪生副本 —— "
+                hint = f"（按别名找的是 {twin_rel}）" if twin_rel != rel else ""
+                fail(f"映射层 {layer_name} 里有 {rel}，但目标 {name}"
+                     f"（mappings={t.get('mappings')}）的平台目录里没有对应的孪生副本{hint} —— "
                      f"这条路线的代价就是那份平行副本，少了它意味着这个类在那个目标上根本不存在")
             elif digest(twin) == digest(base / rel):
-                fail(f"{short} 的孪生副本与映射层里那份【逐字相同】—— 它其实是映射中立的，"
+                fail(f"{rel} 的孪生副本与映射层里那份【逐字相同】—— 它其实是映射中立的，"
                      f"应该进 shared/，不必在这里共存两份")
 
 
@@ -275,6 +280,15 @@ def check_layers(layers: dict) -> None:
                      f"要么翻成 true，要么把内容挪走")
 
 
+def check_aliases(aliases: dict) -> None:
+    """别名必须指向真实存在的层内文件 —— 别名的价值在于它可检查，腐坏的别名会静默失效。"""
+    for layer_rel, mapping in aliases.items():
+        for key, value in mapping.items():
+            if not (ROOT / layer_rel / key).is_file():
+                fail(f"versions/mapping-aliases.json 里的 {layer_rel}/{key} 不存在 —— "
+                     f"别名指向了一个没有的文件，这条对应关系已经腐坏")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--matrix-out", help="把 CI 矩阵写成 JSON 到这个路径")
@@ -283,12 +297,15 @@ def main() -> int:
     targets_raw = load_json("versions/targets.json")
     layers_raw = load_json("versions/layers.json")
     load_json("versions/third-party-apis.json")
+    aliases_raw = load_json("versions/mapping-aliases.json")
     targets = entries_of(targets_raw)
     layers = entries_of(layers_raw)
+    aliases = {k: v for k, v in aliases_raw.items() if not k.startswith("_")}
 
     check_root_identity()
     check_layers(layers)
-    check_targets(targets, layers)
+    check_aliases(aliases)
+    check_targets(targets, layers, aliases)
 
     # 摘要（CI 日志里看这一份）
     print(f"目标 {len(targets)} 条：")
