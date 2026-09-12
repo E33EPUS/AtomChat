@@ -200,5 +200,8 @@
   "atomchat.panel.server_pack.synced": "synced",
   "atomchat.panel.server_pack.fetching": "syncing…",
   "atomchat.panel.server_pack.none": "server packs off",
-  "atomchat.panel.server_pack.failed": "sync failed"
+  "atomchat.panel.server_pack.failed": "sync failed",
+  "atomchat.quick.server": "This server",
+  "atomchat.settings.privacy.server_packs": "Accept server packs",
+  "atomchat.settings.privacy.server_packs.desc": "Sync the emotes, phrases and server name this server offers on join; off means nothing is requested"
 }

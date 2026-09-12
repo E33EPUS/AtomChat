@@ -1341,6 +1341,17 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                 endPhraseEdit(true);
                 quickPhrasePanel.pickRow(action.index());
             }
+            case QuickPhrasePanel.Action.INSERT_SERVER -> {
+                // The server's rows are read-only: they insert text and close,
+                // with no edit or delete path behind them.
+                endPhraseEdit(true);
+                java.util.List<String> serverPhrases =
+                        com.atom.chat.pack.ServerPackStore.current().phrases();
+                if (action.index() >= 0 && action.index() < serverPhrases.size()) {
+                    inputAppend(serverPhrases.get(action.index()));
+                }
+                quickPhrasePanel.close();
+            }
             default -> {
             }
         }

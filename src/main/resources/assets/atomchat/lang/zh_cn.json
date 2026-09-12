@@ -200,5 +200,8 @@
   "atomchat.panel.server_pack.synced": "✓ 已同步",
   "atomchat.panel.server_pack.fetching": "同步中…",
   "atomchat.panel.server_pack.none": "未接收本服内容",
-  "atomchat.panel.server_pack.failed": "同步失败"
+  "atomchat.panel.server_pack.failed": "同步失败",
+  "atomchat.quick.server": "本服",
+  "atomchat.settings.privacy.server_packs": "接收本服下发内容",
+  "atomchat.settings.privacy.server_packs.desc": "进服时同步服务器提供的表情包、常用语与服务器名；关闭后不再请求任何内容"
 }
