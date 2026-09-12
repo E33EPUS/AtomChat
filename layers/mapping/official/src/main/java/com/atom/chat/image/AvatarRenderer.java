@@ -134,7 +134,7 @@ public final class AvatarRenderer {
         }
         dumped = true;
         try {
-            Path dir = net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get().resolve("atomchat/debug");
+            Path dir = com.atom.chat.platform.Platform.configDir().resolve("atomchat/debug");
             Files.createDirectories(dir);
             NativeImage rawImg = new NativeImage(SKIN_SIZE, SKIN_SIZE, false);
             for (int y = 0; y < SKIN_SIZE; y++) {
