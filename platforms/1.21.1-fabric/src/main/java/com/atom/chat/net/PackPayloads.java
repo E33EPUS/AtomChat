@@ -1,7 +1,6 @@
 package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
-import io.netty.handler.codec.DecoderException;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
@@ -27,25 +26,105 @@ import java.util.List;
  *       (decision 28: there is no /atomchat info command to fall back on).</li>
  * </ul>
  *
- * <p>Every read path validates before allocating: a peer that sends an absurd
- * file count, name or hash is a protocol violation, not something to store.
+ * <p>The byte format, its limits and its validation live in {@link Wire}, so the
+ * three targets cannot drift apart field by field; this file keeps what is
+ * genuinely Fabric's - the payload ids, the codec registration, and the
+ * conversion to and from the neutral {@link PackMessage}. Every read path still
+ * validates before allocating: a peer that sends an absurd file count, name or
+ * hash is a protocol violation, not something to store.
  */
 public final class PackPayloads {
-    /** Files a manifest may declare; well above the server cap, low enough to refuse nonsense. */
-    public static final int MAX_WIRE_FILES = 512;
-    /** Phrases a manifest may carry. */
-    public static final int MAX_WIRE_PHRASES = 64;
-    /** Longest name, hash or detail string we accept off the wire. */
-    private static final int MAX_NAME_CHARS = 96;
-    private static final int MAX_HASH_CHARS = 80;
-    private static final int MAX_DETAIL_CHARS = 120;
-
     private PackPayloads() {
     }
 
     /** One manifest entry: name, content hash and size. */
     public record PackFile(String name, String sha256, int size) {
     }
+
+    // ------------------------------------------------------- neutral conversion
+
+    static PackMessage.Hello toMessage(Hello payload) {
+        return new PackMessage.Hello();
+    }
+
+    static PackMessage.Need toMessage(Need payload) {
+        return new PackMessage.Need(payload.names());
+    }
+
+    static PackMessage.Ack toMessage(Ack payload) {
+        return new PackMessage.Ack(payload.ok(), payload.detail());
+    }
+
+    static PackMessage.Manifest toMessage(Manifest payload) {
+        return new PackMessage.Manifest(payload.enabled(), payload.packHash(), payload.serverName(),
+                payload.icon(), filesToMessage(payload.files()), payload.phrases());
+    }
+
+    static PackMessage.Chunk toMessage(Chunk payload) {
+        return new PackMessage.Chunk(payload.name(), payload.offset(), payload.totalBytes(),
+                payload.data());
+    }
+
+    static PackMessage.Done toMessage(Done payload) {
+        return new PackMessage.Done(payload.fileCount());
+    }
+
+    static Hello fromMessage(PackMessage.Hello message) {
+        return new Hello();
+    }
+
+    static Need fromMessage(PackMessage.Need message) {
+        return new Need(message.names());
+    }
+
+    static Ack fromMessage(PackMessage.Ack message) {
+        return new Ack(message.ok(), message.detail());
+    }
+
+    static Manifest fromMessage(PackMessage.Manifest message) {
+        List<PackFile> files = new ArrayList<>(message.files().size());
+        for (PackMessage.PackFile file : message.files()) {
+            files.add(new PackFile(file.name(), file.sha256(), file.size()));
+        }
+        return new Manifest(message.enabled(), message.packHash(), message.serverName(),
+                message.icon(), files, message.phrases());
+    }
+
+    static Chunk fromMessage(PackMessage.Chunk message) {
+        return new Chunk(message.name(), message.offset(), message.totalBytes(), message.data());
+    }
+
+    static Done fromMessage(PackMessage.Done message) {
+        return new Done(message.fileCount());
+    }
+
+    private static List<PackMessage.PackFile> filesToMessage(List<PackFile> files) {
+        List<PackMessage.PackFile> converted =
+                new ArrayList<>(files == null ? 0 : files.size());
+        for (PackFile file : files == null ? List.<PackFile>of() : files) {
+            converted.add(new PackMessage.PackFile(file.name(), file.sha256(), file.size()));
+        }
+        return converted;
+    }
+
+    /** Direction-wide dispatch for the send port; sealed interfaces keep it exhaustive. */
+    static CustomPayload fromMessage(PackMessage.C2S message) {
+        return switch (message) {
+            case PackMessage.Hello hello -> fromMessage(hello);
+            case PackMessage.Need need -> fromMessage(need);
+            case PackMessage.Ack ack -> fromMessage(ack);
+        };
+    }
+
+    static CustomPayload fromMessage(PackMessage.S2C message) {
+        return switch (message) {
+            case PackMessage.Manifest manifest -> fromMessage(manifest);
+            case PackMessage.Chunk chunk -> fromMessage(chunk);
+            case PackMessage.Done done -> fromMessage(done);
+        };
+    }
+
+    // ---------------------------------------------------------------- payloads
 
     /** "Send me your manifest." */
     public record Hello() implements CustomPayload {
@@ -55,10 +134,11 @@ public final class PackPayloads {
                 PacketCodec.of(Hello::write, Hello::read);
 
         private static void write(Hello payload, RegistryByteBuf buf) {
+            Wire.writeHello(new FabricWireIo(buf), toMessage(payload));
         }
 
         private static Hello read(RegistryByteBuf buf) {
-            return new Hello();
+            return fromMessage(Wire.readHello(new FabricWireIo(buf)));
         }
 
         @Override
@@ -75,23 +155,11 @@ public final class PackPayloads {
                 PacketCodec.of(Need::write, Need::read);
 
         private static void write(Need payload, RegistryByteBuf buf) {
-            List<String> names = payload.names() == null ? List.of() : payload.names();
-            buf.writeVarInt(names.size());
-            for (String name : names) {
-                buf.writeString(name == null ? "" : name, MAX_NAME_CHARS);
-            }
+            Wire.writeNeed(new FabricWireIo(buf), toMessage(payload));
         }
 
         private static Need read(RegistryByteBuf buf) {
-            int count = buf.readVarInt();
-            if (count < 0 || count > MAX_WIRE_FILES) {
-                throw new DecoderException("AtomChat pack need: bad file count " + count);
-            }
-            List<String> names = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                names.add(buf.readString(MAX_NAME_CHARS));
-            }
-            return new Need(names);
+            return fromMessage(Wire.readNeed(new FabricWireIo(buf)));
         }
 
         @Override
@@ -108,12 +176,11 @@ public final class PackPayloads {
                 PacketCodec.of(Ack::write, Ack::read);
 
         private static void write(Ack payload, RegistryByteBuf buf) {
-            buf.writeBoolean(payload.ok());
-            buf.writeString(payload.detail() == null ? "" : payload.detail(), MAX_DETAIL_CHARS);
+            Wire.writeAck(new FabricWireIo(buf), toMessage(payload));
         }
 
         private static Ack read(RegistryByteBuf buf) {
-            return new Ack(buf.readBoolean(), buf.readString(MAX_DETAIL_CHARS));
+            return fromMessage(Wire.readAck(new FabricWireIo(buf)));
         }
 
         @Override
@@ -131,47 +198,11 @@ public final class PackPayloads {
                 PacketCodec.of(Manifest::write, Manifest::read);
 
         private static void write(Manifest payload, RegistryByteBuf buf) {
-            buf.writeBoolean(payload.enabled());
-            buf.writeString(payload.packHash() == null ? "" : payload.packHash(), MAX_HASH_CHARS);
-            buf.writeString(payload.serverName() == null ? "" : payload.serverName());
-            buf.writeByteArray(payload.icon() == null ? new byte[0] : payload.icon());
-            List<PackFile> files = payload.files() == null ? List.of() : payload.files();
-            buf.writeVarInt(files.size());
-            for (PackFile file : files) {
-                buf.writeString(file.name() == null ? "" : file.name(), MAX_NAME_CHARS);
-                buf.writeString(file.sha256() == null ? "" : file.sha256(), MAX_HASH_CHARS);
-                buf.writeVarInt(file.size());
-            }
-            List<String> phrases = payload.phrases() == null ? List.of() : payload.phrases();
-            buf.writeVarInt(phrases.size());
-            for (String phrase : phrases) {
-                buf.writeString(phrase == null ? "" : phrase);
-            }
+            Wire.writeManifest(new FabricWireIo(buf), toMessage(payload));
         }
 
         private static Manifest read(RegistryByteBuf buf) {
-            boolean enabled = buf.readBoolean();
-            String packHash = buf.readString(MAX_HASH_CHARS);
-            String serverName = buf.readString();
-            byte[] icon = buf.readByteArray();
-            int fileCount = buf.readVarInt();
-            if (fileCount < 0 || fileCount > MAX_WIRE_FILES) {
-                throw new DecoderException("AtomChat pack manifest: bad file count " + fileCount);
-            }
-            List<PackFile> files = new ArrayList<>(fileCount);
-            for (int i = 0; i < fileCount; i++) {
-                files.add(new PackFile(buf.readString(MAX_NAME_CHARS), buf.readString(MAX_HASH_CHARS),
-                        buf.readVarInt()));
-            }
-            int phraseCount = buf.readVarInt();
-            if (phraseCount < 0 || phraseCount > MAX_WIRE_PHRASES) {
-                throw new DecoderException("AtomChat pack manifest: bad phrase count " + phraseCount);
-            }
-            List<String> phrases = new ArrayList<>(phraseCount);
-            for (int i = 0; i < phraseCount; i++) {
-                phrases.add(buf.readString());
-            }
-            return new Manifest(enabled, packHash, serverName, icon, files, phrases);
+            return fromMessage(Wire.readManifest(new FabricWireIo(buf)));
         }
 
         @Override
@@ -188,18 +219,11 @@ public final class PackPayloads {
                 PacketCodec.of(Chunk::write, Chunk::read);
 
         private static void write(Chunk payload, RegistryByteBuf buf) {
-            buf.writeString(payload.name() == null ? "" : payload.name(), MAX_NAME_CHARS);
-            buf.writeVarInt(payload.offset());
-            buf.writeVarInt(payload.totalBytes());
-            buf.writeByteArray(payload.data() == null ? new byte[0] : payload.data());
+            Wire.writeChunk(new FabricWireIo(buf), toMessage(payload));
         }
 
         private static Chunk read(RegistryByteBuf buf) {
-            String name = buf.readString(MAX_NAME_CHARS);
-            int offset = buf.readVarInt();
-            int total = buf.readVarInt();
-            byte[] data = buf.readByteArray(MediaIds.CHUNK_BYTES);
-            return new Chunk(name, offset, total, data);
+            return fromMessage(Wire.readChunk(new FabricWireIo(buf)));
         }
 
         @Override
@@ -216,11 +240,11 @@ public final class PackPayloads {
                 PacketCodec.of(Done::write, Done::read);
 
         private static void write(Done payload, RegistryByteBuf buf) {
-            buf.writeVarInt(payload.fileCount());
+            Wire.writeDone(new FabricWireIo(buf), toMessage(payload));
         }
 
         private static Done read(RegistryByteBuf buf) {
-            return new Done(buf.readVarInt());
+            return fromMessage(Wire.readDone(new FabricWireIo(buf)));
         }
 
         @Override

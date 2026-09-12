@@ -2,18 +2,12 @@ package com.atom.chat.net;
 
 import com.atom.chat.AtomChat;
 import com.atom.chat.config.ServerConfigValues;
-import io.netty.handler.codec.DecoderException;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.simple.SimpleChannel;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.fml.loading.FMLEnvironment;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Payloads behind {@code /atomchat gui} (0.2.9): the server hands a client its
@@ -31,12 +25,11 @@ import java.util.List;
  *   <li>S2C {@code Result(ok, error)} - the verdict, so a refused save stays on
  *       screen with a reason instead of closing.</li>
  * </ul>
+ *
+ * <p>The value list, its limits, its truncation and its validation live in
+ * {@link Wire}; this file keeps the packet ids and the channel wiring.
  */
 public final class ConfigPayloads {
-    /** Longest phrase list a payload may carry; the real cap is validated server-side. */
-    public static final int MAX_WIRE_PHRASES = 64;
-
-
     /** Bumped when the packet layout changes; the channel rejects mismatches. */
     private static final String PROTOCOL = "1";
 
@@ -62,64 +55,24 @@ public final class ConfigPayloads {
     // ------------------------------------------------------------ value codec
 
     private static void writeValues(ServerConfigValues values, FriendlyByteBuf buf) {
-        buf.writeBoolean(values.hostingEnabled());
-        buf.writeBoolean(values.packEnabled());
-        buf.writeVarInt(values.maxFileKb());
-        buf.writeVarInt(values.maxTotalMb());
-        buf.writeVarInt(values.maxAvatarTotalMb());
-        buf.writeVarInt(values.retentionDays());
-        buf.writeVarInt(values.uploadCooldownMs());
-        buf.writeVarInt(values.packMaxFiles());
-        buf.writeVarInt(values.packMaxMb());
-        buf.writeUtf(truncate(values.packName(), ServerConfigValues.MAX_NAME_CHARS),
-                ServerConfigValues.MAX_NAME_CHARS);
-        List<String> phrases = values.phrases();
-        int count = Math.min(phrases.size(), MAX_WIRE_PHRASES);
-        buf.writeVarInt(count);
-        for (int i = 0; i < count; i++) {
-            buf.writeUtf(truncate(phrases.get(i), ServerConfigValues.MAX_PHRASE_CHARS),
-                    ServerConfigValues.MAX_PHRASE_CHARS);
-        }
+        Wire.writeValues(new ForgeWireIo(buf), values);
     }
 
     private static ServerConfigValues readValues(FriendlyByteBuf buf) {
-        boolean hosting = buf.readBoolean();
-        boolean packs = buf.readBoolean();
-        int fileKb = buf.readVarInt();
-        int totalMb = buf.readVarInt();
-        int avatarMb = buf.readVarInt();
-        int days = buf.readVarInt();
-        int cooldown = buf.readVarInt();
-        int packFiles = buf.readVarInt();
-        int packMb = buf.readVarInt();
-        String name = buf.readUtf(ServerConfigValues.MAX_NAME_CHARS);
-        int count = buf.readVarInt();
-        if (count < 0 || count > MAX_WIRE_PHRASES) {
-            throw new DecoderException("AtomChat config: bad phrase count " + count);
-        }
-        List<String> phrases = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            phrases.add(buf.readUtf(ServerConfigValues.MAX_PHRASE_CHARS));
-        }
-        return new ServerConfigValues(hosting, packs, fileKb, totalMb, avatarMb, days, cooldown,
-                packFiles, packMb, name, phrases);
-    }
-
-    private static String truncate(String value, int max) {
-        if (value == null) {
-            return "";
-        }
-        return value.length() > max ? value.substring(0, max) : value;
+        return Wire.readValues(new ForgeWireIo(buf));
     }
 
     private static void writeStatus(PackStatus status, FriendlyByteBuf buf) {
-        buf.writeVarInt(status.files());
-        buf.writeVarLong(status.bytes());
-        buf.writeUtf(status.packHash() == null ? "" : status.packHash(), 80);
+        Wire.writePackSummary(new ForgeWireIo(buf), summary(status));
     }
 
     private static PackStatus readStatus(FriendlyByteBuf buf) {
-        return new PackStatus(buf.readVarInt(), buf.readVarLong(), buf.readUtf(80));
+        Wire.PackSummary summary = Wire.readPackSummary(new ForgeWireIo(buf));
+        return new PackStatus(summary.files(), summary.bytes(), summary.packHash());
+    }
+
+    private static Wire.PackSummary summary(PackStatus status) {
+        return new Wire.PackSummary(status.files(), status.bytes(), status.packHash());
     }
 
     // ---------------------------------------------------------------- records

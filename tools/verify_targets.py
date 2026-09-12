@@ -472,6 +472,41 @@ def check_server_side(cfg: dict) -> None:
         fail(f"服务端侧只扫到 {seen} 个文件（声明的下限 {minimum}）—— 匹配式或布局出问题了")
 
 
+def check_shared_java_level() -> None:
+    """共享层必须能在**最低**的编译级别上编过，否则某个目标才炸。
+
+    shared/ 一份源码进所有目标，而各目标的 java 级别不同（本仓是 17 与 21）。Java 17 上
+    「模式匹配 switch」还只是预览特性 —— 用了它的后果不是这里报错，而是 Java 17 那个目标的
+    `./gradlew build` 突然红（踩过一次：Wire.write 里的 sealed 分派）。
+
+    判据是源码级的形状扫描：`case <类型> <名字> ->`／`:` 这种开关分支。写在注释里的例子会被
+    先剥掉；真要用这类语法，就说明这段代码属于映射层或平台层，不属于共享层。
+    """
+    import re
+
+    pattern = re.compile(r"^\s*case\s+[A-Za-z_][\w.]*(<[^>]*>)?\s+[a-z_]\w*\s*(->|:)", re.M)
+    levels = [t.get("java") for t in entries_of(load_json("versions/targets.json")).values()
+              if isinstance(t, dict) and t.get("java")]
+    if not levels:
+        fail("versions/targets.json 里没有任何目标声明 java 级别")
+        return
+    lowest = min(int(v) for v in levels)
+    if lowest >= 21:
+        notes.append(f"所有目标的 java 级别都 ≥ {lowest}，共享层不受 17 的预览特性限制")
+        return
+    scanned = 0
+    for f in sorted((ROOT / "shared" / "src").rglob("*.java")):
+        scanned += 1
+        text = _strip_comments(f.read_text(encoding="utf-8", errors="replace"))
+        for m in pattern.finditer(text):
+            line = text[:m.start()].count("\n") + 1
+            fail(f"{f.relative_to(ROOT).as_posix()}:{line} 在共享层里用了模式匹配 switch —— "
+                 f"java {lowest} 的目标编不过（那边这还是预览特性）。"
+                 f"把它挪到映射层/平台层，或在共享层改用 instanceof 链")
+    if scanned < 20:
+        fail(f"共享层只扫到 {scanned} 个文件 —— 路径或布局变了？")
+
+
 def check_shared_dependencies(apis: dict) -> None:
     """共享层与各层里出现的第三方包，必须落在声明表内。
 
@@ -553,6 +588,7 @@ def main() -> int:
     check_access_parity(parity_raw)
     check_resource_paths(paths_raw)
     check_shared_dependencies(load_json("versions/third-party-apis.json"))
+    check_shared_java_level()
     check_server_side(server_raw)
     check_seams_doc()
     check_targets(targets, layers, aliases)

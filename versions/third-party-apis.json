@@ -29,6 +29,7 @@
     "org.slf4j      — 日志门面，由加载器提供",
     "org.lwjgl      — GLFW / OpenGL 绑定，由原版提供",
     "it.unimi       — fastutil，由原版捆绑",
+    "io.netty       — 网络栈，由原版捆绑；共享层用它的 DecoderException 表示「对端送来的东西坏了」",
     "org.objectweb  — ASM，mixin 运行时需要",
     "org.spongepowered — mixin 注解（mixin 类要写它）"
   ],
