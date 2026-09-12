@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "【资源落点声明】同一份资源在不同目标上的命名空间不同，放错了不会报错 —— 表现是运行期",
+    "「模糊没了」「界面退回英文」这类静默降级。这张表把落点写下来，由 CI 逐目标比对。",
+    "",
+    "【本仓的现实】着色器必须放在原版命名空间下才被 Fabric 的加载器找到（assets/minecraft/…），",
+    "而 NeoForge/Forge 两端用的是自己的命名空间（assets/atomchat/…）。语言文件与 sounds.json",
+    "三端都在 assets/atomchat/ 下。",
+    "",
+    "【判据】每个目标的实际文件集合必须与声明**逐项相等**（多一个少一个都红）：",
+    "着色器按 <shaders_root>/<名字><扩展名> 展开，语言文件按两种语言各一份。"
+  ],
+
+  "shader_names": ["atomchat_kawase_blur", "atomchat_panel_blur"],
+  "shader_extensions": [".json", ".vsh", ".fsh"],
+
+  "targets": {
+    "1.21.1-fabric": {
+      "shaders_root": "assets/minecraft/shaders/core",
+      "lang_root": "assets/atomchat/lang",
+      "note": "Fabric 侧着色器必须落在原版命名空间下"
+    },
+    "1.21.1-neoforge": {
+      "shaders_root": "assets/atomchat/shaders/core",
+      "lang_root": "assets/atomchat/lang",
+      "note": "ModDevGradle 侧用本模组命名空间"
+    },
+    "1.20.1-forge": {
+      "shaders_root": "assets/atomchat/shaders/core",
+      "lang_root": "assets/atomchat/lang",
+      "note": "ForgeGradle 侧与 NeoForge 一致"
+    }
+  },
+
+  "languages": ["zh_cn", "en_us"],
+  "also_required": ["assets/atomchat/sounds.json"]
+}

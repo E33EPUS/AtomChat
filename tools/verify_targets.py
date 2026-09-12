@@ -361,6 +361,47 @@ def check_access_parity(parity: dict) -> None:
             fail(f"Forge 的 AT 写了非 SRG 名（{entry}）—— 那一侧运行时用 SRG 名，写官方名会静默不生效")
 
 
+def check_resource_paths(paths: dict) -> None:
+    """逐目标比对资源落点：着色器命名空间、语言文件、sounds.json。
+
+    放错命名空间不会报错，只会在运行期静默降级（模糊没了 / 界面退回英文），
+    所以这里按声明逐项相等来卡 —— 多一个少一个都红。
+    """
+    targets = paths.get("targets", {})
+    if not targets:
+        fail("versions/resource-paths.json 缺 targets")
+        return
+    names = paths.get("shader_names", [])
+    exts = paths.get("shader_extensions", [])
+    langs = paths.get("languages", [])
+    also = paths.get("also_required", [])
+
+    for name, t in targets.items():
+        res = ROOT / "platforms" / name / "src/main/resources"
+        if not res.is_dir():
+            continue  # 还没建起来的目标
+        expected = set(also)
+        for shader in names:
+            for ext in exts:
+                expected.add(f"{t['shaders_root']}/{shader}{ext}")
+        for lang in langs:
+            expected.add(f"{t['lang_root']}/{lang}.json")
+
+        # 只比声明的两类根（着色器 / 语言）与显式列出的文件 —— 元数据与 mixin 配置
+        # （fabric.mod.json、atomchat.*.mixins.json）不属于这里，早先按「所有 .json」
+        # 过滤会把它们算成「多出来的资源」。
+        def interesting(rel: str) -> bool:
+            return ("/shaders/" in rel or "/lang/" in rel or rel in also)
+
+        actual = {p.relative_to(res).as_posix() for p in res.rglob("*")
+                  if p.is_file() and interesting(p.relative_to(res).as_posix())}
+        for missing in sorted(expected - actual):
+            fail(f"目标 {name} 缺资源 {missing} —— 放错命名空间是静默失效，不报错")
+        for extra in sorted(actual - expected):
+            fail(f"目标 {name} 多出未声明的资源 {extra} —— 写进 versions/resource-paths.json，"
+                 f"或删掉它（多出来的资源不会被加载，只会让人以为生效了）")
+
+
 def check_seams_doc() -> None:
     """接缝清单必须与代码同步。
 
@@ -397,6 +438,7 @@ def main() -> int:
     load_json("versions/third-party-apis.json")
     aliases_raw = load_json("versions/mapping-aliases.json")
     parity_raw = load_json("versions/access-parity.json")
+    paths_raw = load_json("versions/resource-paths.json")
     targets = entries_of(targets_raw)
     layers = entries_of(layers_raw)
     aliases = {k: v for k, v in aliases_raw.items() if not k.startswith("_")}
@@ -405,6 +447,7 @@ def main() -> int:
     check_layers(layers)
     check_aliases(aliases)
     check_access_parity(parity_raw)
+    check_resource_paths(paths_raw)
     check_seams_doc()
     check_targets(targets, layers, aliases)
 
