@@ -166,6 +166,30 @@ public final class RichText {
     }
 
     /**
+     * Returns a copy with {@code [from, to)} replaced by {@code replacement}.
+     * Indices are clamped and adjusted off surrogate pairs exactly like
+     * {@link #slice}. The root style of this text is kept.
+     */
+    public RichText splice(int from, int to, RichText replacement) {
+        String full = getString();
+        int start = Math.max(0, Math.min(from, full.length()));
+        int end = Math.max(0, Math.min(to, full.length()));
+        start = adjustStartBoundary(full, start);
+        end = adjustEndBoundary(full, end);
+        if (start > end) {
+            int swap = start;
+            start = end;
+            end = swap;
+        }
+        List<RichRun> out = new ArrayList<>(slice(0, start).runs());
+        if (replacement != null) {
+            out.addAll(replacement.runs());
+        }
+        out.addAll(slice(end, full.length()).runs());
+        return new RichText(mergeRuns(out), rootStyle);
+    }
+
+    /**
      * Returns a copy with click/hover interactions and underlines removed, while
      * keeping colours and other visible styling. Used for private-chat sender
      * names, where vanilla /msg click actions would otherwise turn the name into
