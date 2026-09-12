@@ -133,6 +133,27 @@ class ServerPackStoreTest {
     }
 
     @Test
+    void aPackWithNothingToShowIsTreatedAsNoDistribution() throws Exception {
+        install(Map.of(), List.of());
+        ServerPackStore.refresh(root, key);
+
+        assertTrue(ServerPackStore.current().isPresent());
+        assertFalse(ServerPackStore.current().hasContent(),
+                "an empty pack must not make the panels grow server-only rows");
+    }
+
+    @Test
+    void aPackWithEitherEmotesOrPhrasesHasContent() throws Exception {
+        install(emotes("cat.png"), List.of());
+        ServerPackStore.refresh(root, key);
+        assertTrue(ServerPackStore.current().hasContent());
+
+        install(Map.of(), List.of("hi"));
+        ServerPackStore.refresh(root, key);
+        assertTrue(ServerPackStore.current().hasContent());
+    }
+
+    @Test
     void aPackWithOnlyPhrasesStillCounts() throws Exception {
         install(Map.of(), List.of("hi"));
 

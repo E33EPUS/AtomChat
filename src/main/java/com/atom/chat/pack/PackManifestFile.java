@@ -65,9 +65,48 @@ public final class PackManifestFile {
         Path temp = packsRoot.resolve(key + TEMP_SUFFIX);
         deleteTree(temp);
         Files.createDirectories(temp);
-        write(temp, pack, contents);
+        try {
+            write(temp, pack, contents);
+        } catch (IOException | RuntimeException e) {
+            // Never leave a half-written pack lying next to the good one.
+            deleteTree(temp);
+            throw e;
+        }
         deleteTree(target);
         Files.move(temp, target);
+    }
+
+    /**
+     * Completes a downloaded set with the files that were already correct on
+     * disk, so an incremental sync can install a whole pack.
+     *
+     * <p>The diff only asks for what differs (decision 21), which means the
+     * download alone never covers the manifest - without this step the installer
+     * would refuse the pack for the files it deliberately did not fetch. Every
+     * kept file is re-hashed here, so a file that changed since the diff is a
+     * failed sync rather than a silently mixed pack.
+     *
+     * @throws IOException when a kept file is missing or no longer matches
+     */
+    public static Map<String, byte[]> completeWithExisting(Path dir, ServerPack pack,
+                                                           Map<String, byte[]> downloaded)
+            throws IOException {
+        Map<String, byte[]> contents = new LinkedHashMap<>();
+        Path emotes = dir.resolve(EMOTES_DIR);
+        for (ServerPack.FileEntry entry : pack.files()) {
+            byte[] fetched = downloaded.get(entry.name());
+            if (fetched != null) {
+                contents.put(entry.name(), fetched);
+                continue;
+            }
+            byte[] existing = Files.readAllBytes(emotes.resolve(entry.name()));
+            if (existing.length != entry.size()
+                    || !ServerPack.sha256Hex(existing).equals(entry.sha256Hex())) {
+                throw new IOException("kept pack file changed under us: " + entry.name());
+            }
+            contents.put(entry.name(), existing);
+        }
+        return contents;
     }
 
     /** Reads a stored pack, or null when it is absent, unreadable or malformed. */

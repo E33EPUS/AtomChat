@@ -95,7 +95,9 @@ public final class QuickPhrasePanel {
 
     /** The joined server's phrases; never written to, only inserted (decision 9). */
     private static List<String> serverPhrases() {
-        return com.atom.chat.pack.ServerPackStore.current().phrases();
+        com.atom.chat.pack.ServerPackStore store = com.atom.chat.pack.ServerPackStore.current();
+        // Nothing to offer means no group label and no rows at all.
+        return store.hasContent() ? store.phrases() : List.of();
     }
 
     private static int rowCount() {
@@ -477,10 +479,11 @@ public final class QuickPhrasePanel {
             return;
         }
         if (kind == ROW_SERVER) {
-            // Read-only: no hover capsule, no edit glow and no icon buttons.
+            // Same colour as the player's own phrases - the group label and the
+            // missing buttons are what mark it read-only, not a dimmer text.
             String theirs = SkiaFontRenderer.truncate(font, rowTextAt(position), r.getWidth() - s(24));
             SkiaFontRenderer.drawText(canvas, font, theirs, r.getLeft() + s(12),
-                    SkiaFontRenderer.centerBaselineY(font, r.getTop() + r.getHeight() / 2.0F), SUBTEXT);
+                    SkiaFontRenderer.centerBaselineY(font, r.getTop() + r.getHeight() / 2.0F), TEXT);
             return;
         }
         int index = position;
