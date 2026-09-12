@@ -100,4 +100,51 @@ class ScrollControllerTest {
         assertEquals(0.0F, scroll.getTarget(), EPS);
         assertEquals(0.0F, scroll.getMaxScroll(), EPS);
     }
+
+    @Test
+    void defaultControllerSnapsToBottomOnFirstFrame() {
+        ScrollController scroll = new ScrollController();
+        scroll.setContent(1000.0F, 200.0F);
+        scroll.updateAnimation(System.currentTimeMillis());
+        assertEquals(800.0F, scroll.getScrollY(), EPS);
+        assertEquals(800.0F, scroll.getTarget(), EPS);
+    }
+
+    @Test
+    void topAnchoredControllerStaysAtTopOnFirstFrame() {
+        ScrollController scroll = new ScrollController(false);
+        scroll.setContent(1000.0F, 200.0F);
+        scroll.updateAnimation(System.currentTimeMillis());
+        assertEquals(0.0F, scroll.getScrollY(), EPS);
+        assertEquals(0.0F, scroll.getTarget(), EPS);
+    }
+
+    @Test
+    void topAnchoredResetKeepsTopAnchor() {
+        ScrollController scroll = new ScrollController(false);
+        scroll.setContent(1000.0F, 200.0F);
+        scroll.scrollToBottom(false);
+        assertEquals(800.0F, scroll.getScrollY(), EPS);
+
+        scroll.reset();
+        scroll.setContent(1000.0F, 200.0F);
+        scroll.updateAnimation(System.currentTimeMillis());
+        assertEquals(0.0F, scroll.getScrollY(), EPS);
+        assertEquals(0.0F, scroll.getTarget(), EPS);
+    }
+
+    @Test
+    void chatResetRearmsFirstFrameBottomSnap() {
+        ScrollController scroll = new ScrollController();
+        scroll.setContent(1000.0F, 200.0F);
+        scroll.updateAnimation(System.currentTimeMillis());
+        scroll.wheel(100.0F);
+        scroll.updateAnimation(System.currentTimeMillis() + 10_000L);
+        assertEquals(0.0F, scroll.getScrollY(), EPS);
+
+        scroll.reset();
+        scroll.setContent(1000.0F, 200.0F);
+        scroll.updateAnimation(System.currentTimeMillis() + 20_000L);
+        assertEquals(800.0F, scroll.getScrollY(), EPS);
+    }
 }
