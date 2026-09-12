@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "【访问扩宽的覆盖声明】Fabric 用 access widener、NeoForge/Forge 用 access transformer，",
+    "两套文件是同一件事的三种写法，而且成员名分属三套命名：",
+    "  Fabric  accesswidener 的命名空间是 named（Yarn）        → TextFieldWidget selectionStart",
+    "  NeoForge AT  写官方名                                    → net.minecraft.client.gui.components.EditBox cursorPos",
+    "  Forge AT     写 SRG 名（ForgeGradle 的产线名）           → net.minecraft.client.gui.components.EditBox f_94101_",
+    "所以「两份 AT 必须一致」是错的 —— 它们本来就只该在**类名**上一致、在成员名上各写各的家族。",
+    "",
+    "【这份表钉住什么】把 Fabric 的 Yarn 名与官方名一一对上，于是三份文件可以被机器对齐：",
+    "任何一侧加了成员而没进这张表，CI 就红。这挡住的是「一端扩宽了、另一端忘了」——",
+    "它的表现可能是目标编不过（还算是好情况），也可能是两端都编得过但行为不同。",
+    "",
+    "【official 为 null 的意思】该成员只在 Fabric 侧需要。允许，但 why 里要写明理由。",
+    "本仓两条都是「官方名侧改用 accessor mixin，不扩宽原版类」。",
+    "",
+    "【为什么不列描述符】描述符也跟着映射变（`I` / `Lnet/...`），列进来只会多一处要维护的映射。"
+  ],
+
+  "files": {
+    "yarn": "platforms/1.21.1-fabric/src/main/resources/atomchat.accesswidener",
+    "official": "platforms/1.21.1-neoforge/src/main/resources/META-INF/accesstransformer.cfg",
+    "srg": "platforms/1.20.1-forge/src/main/resources/META-INF/accesstransformer.cfg"
+  },
+
+  "members": [
+    {
+      "yarn": "net/minecraft/client/gui/widget/TextFieldWidget selectionStart",
+      "official": "net.minecraft.client.gui.components.EditBox cursorPos",
+      "why": "多行输入与跨消息选择要读写输入框的光标与选区"
+    },
+    {
+      "yarn": "net/minecraft/client/gui/widget/TextFieldWidget selectionEnd",
+      "official": "net.minecraft.client.gui.components.EditBox highlightPos",
+      "why": "同上：选区的另一端"
+    },
+    {
+      "yarn": "net/minecraft/stat/StatHandler statMap",
+      "official": "net.minecraft.stats.StatsCounter stats",
+      "why": "离线玩家「上次在线」排序要读原版统计表"
+    },
+    {
+      "yarn": "net/minecraft/client/gui/screen/ChatScreen chatField",
+      "official": null,
+      "why": "官方名侧不扩宽：那一侧用 accessor mixin 取（ChatInputSuggestorAccessor 一族），Fabric 侧直接在 mixin 里读这个字段"
+    },
+    {
+      "yarn": "net/minecraft/client/gui/screen/ChatScreen chatInputSuggestor",
+      "official": null,
+      "why": "同上一行"
+    }
+  ]
+}
