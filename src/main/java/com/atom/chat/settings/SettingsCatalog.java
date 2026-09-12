@@ -111,7 +111,19 @@ public final class SettingsCatalog {
                             "atomchat.settings.privacy.hide",
                             "atomchat.settings.privacy.hide.desc",
                             () -> AtomChatConfig.get().hideBlockedMessages,
-                            v -> AtomChatConfig.get().hideBlockedMessages = v));
+                            v -> AtomChatConfig.get().hideBlockedMessages = v),
+                    new SettingsItem("server_packs",
+                            "atomchat.settings.privacy.server_packs",
+                            "atomchat.settings.privacy.server_packs.desc",
+                            () -> AtomChatConfig.get().serverPacksEnabled,
+                            v -> {
+                                AtomChatConfig.get().serverPacksEnabled = v;
+                                if (!v) {
+                                    // Dropping the view (not the folder) keeps the
+                                    // panel honest the moment the switch goes off.
+                                    com.atom.chat.pack.ServerPackStore.clear();
+                                }
+                            }));
             case ABOUT -> List.of(
                     new SettingsItem("debug",
                             "atomchat.settings.about.debug",

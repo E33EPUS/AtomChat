@@ -35,6 +35,10 @@ public class AtomChat {
             // Media companion: server-hosted chat images / GIFs, same dual
             // entrypoint pattern and master hosting switch as the avatar side.
             com.atom.chat.net.MediaPayloads.register();
+            // Server pack distribution (0.2.9) and the config screen's
+            // snapshot/save pair; both are common-side channels.
+            com.atom.chat.net.PackPayloads.register();
+            com.atom.chat.net.ConfigPayloads.register();
         }));
 
         // Retention and lifecycle housekeeping for the two hosted stores
@@ -45,8 +49,11 @@ public class AtomChat {
         MinecraftForge.EVENT_BUS.addListener((TickEvent.ServerTickEvent event) -> {
             if (event.phase == TickEvent.Phase.END) {
                 com.atom.chat.net.CompanionMaintenance.tick();
+                // The pack download queue: a few chunks per player per tick.
+                com.atom.chat.net.PackSyncServer.tick(event.getServer());
             }
         });
+        com.atom.chat.net.ConfigScreenServer.register();
         MinecraftForge.EVENT_BUS.addListener((ServerStartedEvent event) ->
                 com.atom.chat.net.CompanionMaintenance.onServerStarted());
         MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> {

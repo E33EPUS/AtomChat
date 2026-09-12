@@ -151,4 +151,72 @@ class EmoteStoreTest {
         assertEquals(1, store.count());
         assertEquals("manual.png", store.list().get(0).getName());
     }
+
+    @Test
+    void localCapIsTwentyAndUnrelatedToTheServerSource() throws IOException {
+        EmoteStore store = newStore();
+        for (int i = 0; i < EmoteStore.MAX + 3; i++) {
+            touch(store.dir(), String.format("l%02d.png", i), "x".getBytes(StandardCharsets.UTF_8));
+        }
+        store.refresh();
+
+        assertEquals(20, EmoteStore.MAX);
+        assertEquals(EmoteStore.MAX, store.count());
+        assertTrue(store.isFull());
+    }
+
+    @Test
+    void serverEmotesAreListedSeparatelyAndNeverTouchTheLocalCap() throws IOException {
+        EmoteStore store = newStore();
+        Path server = tmp.resolve("pack/emotes");
+        for (int i = 0; i < 5; i++) {
+            touch(server, String.format("s%02d.png", i), "x".getBytes(StandardCharsets.UTF_8));
+        }
+        touch(store.dir(), "mine.png", "x".getBytes(StandardCharsets.UTF_8));
+        store.refresh();
+
+        store.setServerDir(server);
+
+        assertEquals(1, store.count(), "the server source is not part of the local list");
+        assertEquals(5, store.serverCount());
+        assertEquals("s00.png", store.serverList().get(0).getName());
+        assertFalse(store.isFull(), "twenty local slots stay twenty");
+    }
+
+    @Test
+    void serverEmotesAreCappedAtServerMax() throws IOException {
+        EmoteStore store = newStore();
+        Path server = tmp.resolve("pack/emotes");
+        for (int i = 0; i < EmoteStore.SERVER_MAX + 6; i++) {
+            touch(server, String.format("s%02d.png", i), "x".getBytes(StandardCharsets.UTF_8));
+        }
+
+        store.setServerDir(server);
+
+        assertEquals(EmoteStore.SERVER_MAX, store.serverCount());
+    }
+
+    @Test
+    void aServerEmoteCannotBeDeletedThroughThePanel() throws IOException {
+        EmoteStore store = newStore();
+        Path server = tmp.resolve("pack/emotes");
+        File theirs = touch(server, "theirs.png", "x".getBytes(StandardCharsets.UTF_8));
+        store.setServerDir(server);
+
+        assertFalse(store.remove(theirs), "the server folder is read-only");
+        assertTrue(theirs.exists());
+        assertEquals(1, store.serverCount());
+    }
+
+    @Test
+    void clearingTheServerSourceLeavesTheLocalEmotesAlone() throws IOException {
+        EmoteStore store = newStore();
+        touch(store.dir(), "mine.png", "x".getBytes(StandardCharsets.UTF_8));
+        store.setServerDir(tmp.resolve("pack/emotes"));
+
+        store.setServerDir(null);
+
+        assertEquals(1, store.count());
+        assertEquals(0, store.serverCount());
+    }
 }

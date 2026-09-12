@@ -4,6 +4,8 @@ import com.atom.chat.config.AtomChatConfig;
 import com.atom.chat.emote.EmoteImageCache;
 import com.atom.chat.emote.EmoteStore;
 import com.atom.chat.font.FontManager;
+import com.atom.chat.net.PackSyncClient;
+import com.atom.chat.pack.ServerPackStore;
 import com.atom.chat.render.Animator;
 import com.atom.chat.render.Easing;
 import com.atom.chat.render.SkiaDraw;
@@ -84,8 +86,11 @@ public final class EmojiPanel {
     };
 
     private final Host host;
-    /** Local emote pack; see {@link EmoteStore} for the persistence rules. */
+    /** Local emote pack plus the joined server's read-only one; see {@link EmoteStore}. */
     private final EmoteStore emoteStore;
+    /** Cached {@code server-icon.png} decode, keyed by the pack it came from. */
+    private String iconHash = "";
+    private Image iconImage;
     private final EmoteImageCache emoteImageCache = new EmoteImageCache();
 
     private boolean open;
@@ -113,6 +118,16 @@ public final class EmojiPanel {
         return open;
     }
 
+    /** The grid model for the current sources; hover, click and draw all use it. */
+    private EmoteGridLayout emoteLayout() {
+        return new EmoteGridLayout(UiTokens.EMOTE_COLS, emoteStore.count(), emoteStore.serverCount());
+    }
+
+    /** Re-scans the local folder and re-points the server half at the installed pack. */
+    private void refreshEmotes() {
+        emoteStore.setServerDir(ServerPackStore.current().emotesDir());
+    }
+
     public void close() {
         open = false;
     }
@@ -124,7 +139,7 @@ public final class EmojiPanel {
     public void toggle() {
         open = !open;
         if (open) {
-            emoteStore.refresh();
+            refreshEmotes();
             cellHover.clear();
         }
     }
@@ -180,7 +195,7 @@ public final class EmojiPanel {
                 cellHover.clear();
                 if (t == 2) {
                     // Rescan so files dropped into the emote dir by hand show up.
-                    emoteStore.refresh();
+                    refreshEmotes();
                 }
                 startTabTransition(from, t);
             }
@@ -356,9 +371,10 @@ public final class EmojiPanel {
 
     private int maxScroll() {
         if (tab == 2) {
-            // 10 emotes in six columns fill two rows and never exceed the fixed
-            // content height, so the emote grid never scrolls.
-            return 0;
+            // Two sources share the grid now (mine plus the server's), so the
+            // emote tab scrolls like the text tabs do.
+            float totalH = emoteLayout().rows() * UiTokens.EMOTE_CELL;
+            return Math.max(0, (int) Math.ceil(totalH - contentH()));
         }
         String[] items = tab == 1 ? KAOMOJI : EMOJIS;
         int cols = tab == 1 ? 2 : UiTokens.EMOJI_COLS;
@@ -421,13 +437,18 @@ public final class EmojiPanel {
         }
         float colW = contentW / UiTokens.EMOTE_COLS;
         int col = (int) ((mx - contentX) / colW);
-        int row = (int) ((my - contentY) / UiTokens.EMOTE_CELL);
+        int row = (int) ((my - contentY + scroll) / UiTokens.EMOTE_CELL);
         if (col < 0 || col >= UiTokens.EMOTE_COLS) {
             return -1;
         }
-        int idx = row * UiTokens.EMOTE_COLS + col;
-        int total = emoteStore.count() + 1;
-        return idx >= 0 && idx < total ? idx : -1;
+        EmoteGridLayout.Cell cell = emoteLayout().cellAt(row, col);
+        // Only the player's own cells and the add slot react to hover; the
+        // server's section is read-only and the header is not a target.
+        return switch (cell.kind()) {
+            case LOCAL -> cell.index();
+            case ADD -> emoteStore.count();
+            default -> -1;
+        };
     }
 
     /**
@@ -565,12 +586,13 @@ public final class EmojiPanel {
         }
     }
 
-    /**
-     * Click handling for the emote (sticker) tab: tapping an emote sends it —
-     * upload the local file, drop its CICode into the draft — and closes the
-     * panel so the user cannot accidentally fire several uploads. The trailing
-     * "+" slot opens the picker; the hovered × deletes. Always returns "" because
-     * nothing here is inserted as plain text.
+        /**
+     * Click handling for the emote (sticker) tab. Tapping one of the player's own
+     * emotes sends it (upload the file, drop its CICode into the draft) and
+     * closes the panel so a second tap cannot fire another upload; the trailing
+     * "+" opens the picker and the hovered x deletes. Tapping one of the
+     * server's emotes sends it too - it is read-only, so there is no remove
+     * button to hit first. Always returns "" because nothing is inserted here.
      */
     private String emotePanelClick(UiLayout layout, float mx, float my) {
         float px = panelX(layout);
@@ -580,106 +602,204 @@ public final class EmojiPanel {
         float contentY = py + UiTokens.EMOJI_TAB_H + s(2);
         float contentW = pw - UiTokens.EMOJI_PANEL_PAD * 2.0F;
         float contentH = contentH();
-        float colW = contentW / UiTokens.EMOTE_COLS;
         if (mx < contentX || mx > contentX + contentW
                 || my < contentY || my > contentY + contentH) {
             return "";
         }
+        float colW = contentW / UiTokens.EMOTE_COLS;
         int col = Math.max(0, Math.min(UiTokens.EMOTE_COLS - 1, (int) ((mx - contentX) / colW)));
-        int row = (int) ((my - contentY) / UiTokens.EMOTE_CELL);
-        int idx = row * UiTokens.EMOTE_COLS + col;
-        List<File> emotes = emoteStore.list();
-        if (idx < emotes.size()) {
-            File emote = emotes.get(idx);
-            float ex = contentX + col * colW;
-            float ey = contentY + row * UiTokens.EMOTE_CELL;
-            float rs = UiTokens.EMOTE_REMOVE_SIZE;
-            // Remove button (top-right corner of the cell), hit before send.
-            if (mx >= ex + colW - rs - s(2) && mx <= ex + colW - s(2)
-                    && my >= ey + s(2) && my <= ey + s(2) + rs) {
-                emoteStore.remove(emote);
-                emoteImageCache.invalidate(emote);
-                cellHover.clear();
+        int row = (int) ((my - contentY + scroll) / UiTokens.EMOTE_CELL);
+        EmoteGridLayout.Cell cell = emoteLayout().cellAt(row, col);
+        float ex = contentX + col * colW;
+        float ey = contentY - scroll + row * UiTokens.EMOTE_CELL;
+        switch (cell.kind()) {
+            case LOCAL -> {
+                File emote = emoteStore.list().get(cell.index());
+                float rs = UiTokens.EMOTE_REMOVE_SIZE;
+                // Remove button (top-right corner of the cell), hit before send.
+                if (mx >= ex + colW - rs - s(2) && mx <= ex + colW - s(2)
+                        && my >= ey + s(2) && my <= ey + s(2) + rs) {
+                    emoteStore.remove(emote);
+                    emoteImageCache.invalidate(emote);
+                    cellHover.clear();
+                    return "";
+                }
+                open = false;
+                host.sendSticker(emote.toPath());
                 return "";
             }
-            // Send: upload and close the panel (one sticker per tap).
-            open = false;
-            host.sendSticker(emote.toPath());
-            return "";
+            case ADD -> {
+                if (!emoteStore.isFull()) {
+                    host.pickEmoteFile();
+                }
+                return "";
+            }
+            case SERVER -> {
+                open = false;
+                host.sendSticker(emoteStore.serverList().get(cell.index()).toPath());
+                return "";
+            }
+            default -> {
+                return "";
+            }
         }
-        // The trailing "+" add slot, disabled once the pack is full.
-        if (idx == emotes.size() && !emoteStore.isFull()) {
-            host.pickEmoteFile();
-        }
-        return "";
     }
 
     /**
-     * Emote (sticker) grid: six columns of {@code s(44)} cells. Each emote is
-     * fitted (never upscaled) into its cell; hovering highlights the cell and
-     * shows the × remove button; the last cell is the "+" add slot, grayed out
-     * when the pack is full.
+     * Emote (sticker) grid: six columns of {@code s(44)} cells. The player's own
+     * emotes come first with a trailing "+" slot; when a server pack is installed
+     * a header row (its icon, name and sync state) introduces that server's
+     * read-only emotes. Every cell is resolved through {@link EmoteGridLayout},
+     * so the drawing, the hover wash and the click handling cannot disagree
+     * about where "mine" ends and "theirs" begins.
      */
     private void drawEmoteGrid(Canvas canvas, float contentX, float contentY, float contentW, float contentH,
                                boolean interactive) {
-        List<File> emotes = emoteStore.list();
+        EmoteGridLayout layout = emoteLayout();
         float cell = UiTokens.EMOTE_CELL;
         float colW = contentW / UiTokens.EMOTE_COLS;
         float pad = s(4);
-        int total = emotes.size() + 1; // trailing "+" add slot
-        for (int i = 0; i < total; i++) {
-            int col = i % UiTokens.EMOTE_COLS;
-            int row = i / UiTokens.EMOTE_COLS;
-            float ex = contentX + col * colW;
-            float ey = contentY + row * cell;
+        List<File> emotes = emoteStore.list();
+        List<File> serverEmotes = emoteStore.serverList();
+        int rows = layout.rows();
+        int addKey = emoteStore.count();
+        for (int row = 0; row < rows; row++) {
+            float ey = contentY - scroll + row * cell;
             if (ey + cell < contentY || ey > contentY + contentH) {
                 continue;
             }
-            float hov = interactive ? cellHover.getOrDefault(gridHoverKey(2, i), 0.0F) : 0.0F;
-            if (i < emotes.size()) {
-                File emote = emotes.get(i);
-                // Image first, then the hover wash and remove button on top, so
-                // the × can never be buried under the picture.
-                Image img = emoteImageCache.image(emote);
-                float avail = cell - pad * 2.0F;
-                if (img != null) {
-                    // Fit into the cell, never upscale, centred.
-                    float scale = Math.min(1.0F, Math.min(avail / img.getWidth(), avail / img.getHeight()));
-                    float dw = Math.max(1.0F, img.getWidth() * scale);
-                    float dh = Math.max(1.0F, img.getHeight() * scale);
-                    SkiaDraw.drawRoundedImage(canvas, img,
-                            ex + (colW - dw) / 2.0F, ey + (cell - dh) / 2.0F, dw, dh, s(6));
-                } else {
-                    Font qFont = FontManager.font(UiTokens.FONT_QUOTE);
-                    SkiaFontRenderer.drawTextCentered(canvas, qFont, "?", ex + colW / 2.0F, ey + cell / 2.0F,
-                            textSecondary());
+            if (layout.cellAt(row, 0).kind() == EmoteGridLayout.Kind.SERVER_HEADER) {
+                drawServerHeader(canvas, contentX, ey, cell, contentW);
+                continue;
+            }
+            for (int col = 0; col < UiTokens.EMOTE_COLS; col++) {
+                EmoteGridLayout.Cell c = layout.cellAt(row, col);
+                float ex = contentX + col * colW;
+                switch (c.kind()) {
+                    case LOCAL -> {
+                        float hover = cellHover.getOrDefault(gridHoverKey(2, c.index()), 0.0F);
+                        drawEmoteImage(canvas, emotes.get(c.index()), ex, ey, colW, cell, pad);
+                        if (interactive) {
+                            drawCellActions(canvas, ex, ey, colW, cell, hover);
+                        }
+                    }
+                    case SERVER -> drawEmoteImage(canvas, serverEmotes.get(c.index()), ex, ey, colW, cell, pad);
+                    case ADD -> drawAddSlot(canvas, ex, ey, colW, cell,
+                            interactive ? cellHover.getOrDefault(gridHoverKey(2, addKey), 0.0F) : 0.0F);
+                    default -> {
+                    }
                 }
-                if (hov > 0.01F) {
-                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
-                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
-                    // Remove button.
-                    float rs = UiTokens.EMOTE_REMOVE_SIZE;
-                    SkiaDraw.drawRoundedRect(canvas, ex + colW - rs - s(2), ey + s(2), rs, rs, s(4),
-                            Color.makeARGB((int) (200.0F * hov), 214, 48, 48));
-                    Font xFont = FontManager.font(UiTokens.FONT_QUOTE);
-                    SkiaFontRenderer.drawTextCentered(canvas, xFont, "×",
-                            ex + colW - rs / 2.0F - s(2), ey + s(2) + rs / 2.0F,
-                            Color.makeARGB((int) (255.0F * hov), 255, 255, 255));
-                }
-            } else {
-                boolean disabled = emoteStore.isFull();
-                if (hov > 0.01F && !disabled) {
-                    SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
-                            Color.makeARGB((int) (60.0F * hov), 255, 255, 255));
-                }
-                Font addFont = FontManager.font(UiTokens.FONT_EMOJI);
-                SkiaFontRenderer.drawTextCentered(canvas, addFont, "+", ex + colW / 2.0F, ey + cell / 2.0F,
-                        disabled ? Color.makeARGB(90, 255, 255, 255) : textPrimary());
             }
         }
     }
 
+    /** Hover wash and the x button of one of the player's own emotes. */
+    private void drawCellActions(Canvas canvas, float ex, float ey, float colW, float cell, float hover) {
+        if (hover <= 0.01F) {
+            return;
+        }
+        SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
+                Color.makeARGB((int) (60.0F * hover), 255, 255, 255));
+        // The wash and the x sit above the picture, so the button can never be
+        // buried under the emote itself.
+        float rs = UiTokens.EMOTE_REMOVE_SIZE;
+        SkiaDraw.drawRoundedRect(canvas, ex + colW - rs - s(2), ey + s(2), rs, rs, s(4),
+                Color.makeARGB((int) (200.0F * hover), 214, 48, 48));
+        Font xFont = FontManager.font(UiTokens.FONT_QUOTE);
+        SkiaFontRenderer.drawTextCentered(canvas, xFont, "×",
+                ex + colW - rs / 2.0F - s(2), ey + s(2) + rs / 2.0F,
+                Color.makeARGB((int) (255.0F * hover), 255, 255, 255));
+    }
+
+    /** Fits an emote into its cell, never upscaling; "?" stands in for a broken file. */
+    private void drawEmoteImage(Canvas canvas, File emote, float ex, float ey, float colW, float cell, float pad) {
+        Image img = emoteImageCache.image(emote);
+        if (img == null) {
+            Font qFont = FontManager.font(UiTokens.FONT_QUOTE);
+            SkiaFontRenderer.drawTextCentered(canvas, qFont, "?", ex + colW / 2.0F, ey + cell / 2.0F,
+                    textSecondary());
+            return;
+        }
+        float avail = cell - pad * 2.0F;
+        float scale = Math.min(1.0F, Math.min(avail / img.getWidth(), avail / img.getHeight()));
+        float dw = Math.max(1.0F, img.getWidth() * scale);
+        float dh = Math.max(1.0F, img.getHeight() * scale);
+        SkiaDraw.drawRoundedImage(canvas, img,
+                ex + (colW - dw) / 2.0F, ey + (cell - dh) / 2.0F, dw, dh, s(6));
+    }
+
+    /** The trailing "+" slot, greyed out once the player's own pack is full. */
+    private void drawAddSlot(Canvas canvas, float ex, float ey, float colW, float cell, float hover) {
+        boolean disabled = emoteStore.isFull();
+        if (hover > 0.01F && !disabled) {
+            SkiaDraw.drawRoundedRect(canvas, ex + s(2), ey + s(2), colW - s(4), cell - s(4), s(8),
+                    Color.makeARGB((int) (60.0F * hover), 255, 255, 255));
+        }
+        Font addFont = FontManager.font(UiTokens.FONT_EMOJI);
+        SkiaFontRenderer.drawTextCentered(canvas, addFont, "+", ex + colW / 2.0F, ey + cell / 2.0F,
+                disabled ? Color.makeARGB(90, 255, 255, 255) : textPrimary());
+    }
+
     /**
+     * Header of the server section: its icon and name on the left, the sync state
+     * on the right (decision 22). Nothing here is interactive - rescanning is the
+     * server-side /atomchat gui screen, not a client button.
+     */
+    private void drawServerHeader(Canvas canvas, float contentX, float ey, float cell, float contentW) {
+        ServerPackStore store = ServerPackStore.current();
+        float textX = contentX;
+        Image icon = serverIcon();
+        if (icon != null) {
+            float size = Math.min(cell * 0.5F, icon.getWidth());
+            SkiaDraw.drawRoundedImage(canvas, icon, contentX, ey + (cell - size) / 2.0F, size, size, s(4));
+            textX = contentX + size + s(8);
+        }
+        String name = store.serverName().isEmpty()
+                ? Component.translatable("atomchat.panel.server_pack").getString()
+                : store.serverName();
+        Font font = FontManager.font(UiTokens.FONT_QUOTE);
+        float baseline = SkiaFontRenderer.centerBaselineY(font, ey + cell / 2.0F);
+        SkiaFontRenderer.drawText(canvas, font, name, textX, baseline, textPrimary());
+        String status = syncStatusText();
+        float statusW = SkiaFontRenderer.getStringWidth(font, status);
+        SkiaFontRenderer.drawText(canvas, font, status, contentX + contentW - statusW, baseline,
+                textSecondary());
+    }
+
+    /** The one line of sync state the panel shows for the server section. */
+    private static String syncStatusText() {
+        String key = switch (PackSyncClient.detail()) {
+            case "synced", "up_to_date" -> "atomchat.panel.server_pack.synced";
+            case "fetching" -> "atomchat.panel.server_pack.fetching";
+            case "disabled", "no_server_mod" -> "atomchat.panel.server_pack.none";
+            default -> "atomchat.panel.server_pack.failed";
+        };
+        return Component.translatable(key).getString();
+    }
+
+    /** Decodes and caches server-icon.png for the pack on display. */
+    private Image serverIcon() {
+        ServerPackStore store = ServerPackStore.current();
+        byte[] bytes = store.icon();
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+        if (!store.packHash().equals(iconHash)) {
+            if (iconImage != null) {
+                iconImage.close();
+                iconImage = null;
+            }
+            try {
+                iconImage = Image.makeFromEncoded(bytes);
+            } catch (Throwable ignored) {
+                // A broken icon is cosmetic; the name still shows.
+            }
+            iconHash = store.packHash();
+        }
+        return iconImage;
+    }
+
+/**
      * The panel is an overlay with its own opaque dark surface, so its text
      * pins the overlay palette instead of following the interface text
      * colour settings (same rule as the context menus).

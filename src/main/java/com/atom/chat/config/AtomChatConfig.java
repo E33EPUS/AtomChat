@@ -177,6 +177,12 @@ public class AtomChatConfig {
     public static final int MAX_QUICK_PHRASE_LENGTH = 256;
 
     /**
+     * Whether this client accepts the emote pack, phrases and server identity a
+     * server offers on join (0.2.9). Off means no request is ever sent and
+     * nothing is written; the Settings -> Privacy switch controls this.
+     */
+    public boolean serverPacksEnabled = true;
+    /**
      * Whether chat history is kept per world on disk under
      * {@code <config>/atomchat/history/} and restored when you rejoin that
      * world. Off by default: chat (including private conversations) is written

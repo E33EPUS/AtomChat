@@ -48,6 +48,8 @@ public final class QuickPhrasePanel {
         public static final int EDIT = 2;
         public static final int ADD = 3;
         public static final int INSERT = 4;
+        /** Insert one of the joined server's phrases (read-only, decision 9). */
+        public static final int INSERT_SERVER = 5;
     }
 
     /** No row is being added/edited. */
@@ -84,6 +86,44 @@ public final class QuickPhrasePanel {
 
     private static float s(float v) {
         return UiTokens.s(v);
+    }
+
+    /** Rows of the scrolling list: the player's phrases, a group label, the server's. */
+    private static final int ROW_LOCAL = 0;
+    private static final int ROW_HEADER = 1;
+    private static final int ROW_SERVER = 2;
+
+    /** The joined server's phrases; never written to, only inserted (decision 9). */
+    private static List<String> serverPhrases() {
+        return com.atom.chat.pack.ServerPackStore.current().phrases();
+    }
+
+    private static int rowCount() {
+        int local = phrases().size();
+        int server = serverPhrases().size();
+        return local + (server > 0 ? 1 + server : 0);
+    }
+
+    private static int rowKind(int position) {
+        int local = phrases().size();
+        if (position < local) {
+            return ROW_LOCAL;
+        }
+        return position == local ? ROW_HEADER : ROW_SERVER;
+    }
+
+    /** Component of one row: the player's phrase, the group label, or the server's phrase. */
+    public String rowTextAt(int position) {
+        int local = phrases().size();
+        return switch (rowKind(position)) {
+            case ROW_LOCAL -> position >= 0 && position < local ? phrases().get(position) : "";
+            case ROW_HEADER -> tr("atomchat.quick.server");
+            default -> {
+                List<String> server = serverPhrases();
+                int index = position - local - 1;
+                yield index >= 0 && index < server.size() ? server.get(index) : "";
+            }
+        };
     }
 
     private static List<String> phrases() {
@@ -145,7 +185,7 @@ public final class QuickPhrasePanel {
     }
 
     private int maxScroll() {
-        return Math.max(0, phrases().size() - VISIBLE_ROWS);
+        return Math.max(0, rowCount() - VISIBLE_ROWS);
     }
 
     /** skija's types.Rect has no contains(float,float); hand-rolled here. */
@@ -304,23 +344,34 @@ public final class QuickPhrasePanel {
         if (contains(addRow, (float) mx, (float) my)) {
             return new Action(Action.ADD, 0);
         }
-        List<String> list = phrases();
+        int local = phrases().size();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
-            int index = scroll + i;
-            if (index >= list.size()) {
+            int position = scroll + i;
+            if (position >= rowCount()) {
                 break;
             }
             Rect r = rowRect(layout, i);
             if (my < r.getTop() || my > r.getBottom() || mx < r.getLeft() || mx > r.getRight()) {
                 continue;
             }
-            if (contains(btnRect(r, 1), (float) mx, (float) my)) {
-                return new Action(Action.DELETE, index);
+            switch (rowKind(position)) {
+                case ROW_LOCAL -> {
+                    if (contains(btnRect(r, 1), (float) mx, (float) my)) {
+                        return new Action(Action.DELETE, position);
+                    }
+                    if (contains(btnRect(r, 0), (float) mx, (float) my)) {
+                        return new Action(Action.EDIT, position);
+                    }
+                    return new Action(Action.INSERT, position);
+                }
+                // The server's rows carry no buttons: they can be sent, not edited.
+                case ROW_SERVER -> {
+                    return new Action(Action.INSERT_SERVER, position - local - 1);
+                }
+                default -> {
+                    return new Action(Action.NONE, 0);
+                }
             }
-            if (contains(btnRect(r, 0), (float) mx, (float) my)) {
-                return new Action(Action.EDIT, index);
-            }
-            return new Action(Action.INSERT, index);
         }
         return new Action(Action.NONE, 0);
     }
@@ -336,14 +387,18 @@ public final class QuickPhrasePanel {
         hoveredRow = -1;
         hoveredBtn = -1;
         hoverAdd = contains(addRowRect(layout), vmx, vmy);
-        List<String> list = phrases();
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int index = scroll + i;
-            if (index >= list.size()) {
+            if (index >= rowCount()) {
                 break;
             }
             Rect r = rowRect(layout, i);
             if (vmx >= r.getLeft() && vmx <= r.getRight() && vmy >= r.getTop() && vmy <= r.getBottom()) {
+                // The server's rows and the group label are not targets, so no
+                // hover capsule appears over them.
+                if (rowKind(index) != ROW_LOCAL) {
+                    break;
+                }
                 hoveredRow = index;
                 rowHover.putIfAbsent(index, 0.0F);
                 if (contains(btnRect(r, 1), vmx, vmy)) {
@@ -388,19 +443,21 @@ public final class QuickPhrasePanel {
             Font font = FontManager.font(UiTokens.FONT_BUTTON);
             List<String> list = phrases();
 
-            if (list.isEmpty()) {
+            // The empty hint only belongs on a truly empty panel: a server
+            // section counts as content even with no phrases of one's own.
+            if (list.isEmpty() && serverPhrases().isEmpty()) {
                 SkiaFontRenderer.drawTextCentered(canvas, font, tr("atomchat.quick.empty"),
                         px + pw / 2.0F,
                         py + UiTokens.EMOJI_PANEL_PAD + VISIBLE_ROWS * rowH() / 2.0F, SUBTEXT);
             }
 
             for (int i = 0; i < VISIBLE_ROWS; i++) {
-                int index = scroll + i;
-                if (index >= list.size()) {
+                int position = scroll + i;
+                if (position >= rowCount()) {
                     break;
                 }
                 Rect r = rowRect(layout, i);
-                drawRow(canvas, r, font, index);
+                drawRow(canvas, r, font, position);
             }
 
             drawAddRow(canvas, layout, font);
@@ -411,7 +468,22 @@ public final class QuickPhrasePanel {
         }
     }
 
-    private void drawRow(Canvas canvas, Rect r, Font font, int index) {
+    private void drawRow(Canvas canvas, Rect r, Font font, int position) {
+        int kind = rowKind(position);
+        if (kind == ROW_HEADER) {
+            // Group label: the boundary between "mine" and "the server's".
+            SkiaFontRenderer.drawText(canvas, font, tr("atomchat.quick.server"), r.getLeft() + s(12),
+                    SkiaFontRenderer.centerBaselineY(font, r.getTop() + r.getHeight() / 2.0F), SUBTEXT);
+            return;
+        }
+        if (kind == ROW_SERVER) {
+            // Read-only: no hover capsule, no edit glow and no icon buttons.
+            String theirs = SkiaFontRenderer.truncate(font, rowTextAt(position), r.getWidth() - s(24));
+            SkiaFontRenderer.drawText(canvas, font, theirs, r.getLeft() + s(12),
+                    SkiaFontRenderer.centerBaselineY(font, r.getTop() + r.getHeight() / 2.0F), SUBTEXT);
+            return;
+        }
+        int index = position;
         float rowA = rowHover.getOrDefault(index, 0.0F);
         boolean editing = editingIndex == index;
         if (rowA > 0.01F) {
