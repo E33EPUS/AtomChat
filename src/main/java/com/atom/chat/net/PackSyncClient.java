@@ -7,6 +7,7 @@ import com.atom.chat.pack.PackDiff;
 import com.atom.chat.pack.PackKeys;
 import com.atom.chat.pack.PackManifestFile;
 import com.atom.chat.pack.ServerPack;
+import com.atom.chat.pack.ServerPackStore;
 import com.atom.chat.util.CacheDirs;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
@@ -96,6 +97,8 @@ public final class PackSyncClient {
             detail = "no_world_key";
             return;
         }
+        // Show whatever is already installed while the handshake runs.
+        ServerPackStore.refresh(CacheDirs.packsRoot(), key);
         active = true;
         deadline = System.currentTimeMillis() + HELLO_TIMEOUT_MS;
         ClientPlayNetworking.send(new PackPayloads.Hello());
@@ -107,6 +110,7 @@ public final class PackSyncClient {
     }
 
     private static void reset() {
+        ServerPackStore.clear();
         key = null;
         expected = null;
         wanted = Set.of();
@@ -122,8 +126,11 @@ public final class PackSyncClient {
             return;
         }
         if (!payload.enabled()) {
+            // The server stopped offering packs: drop the copy so the panel does
+            // not keep showing content that is no longer served.
             detail = "server_disabled";
             active = false;
+            ServerPackStore.clear();
             return;
         }
         ServerPack manifest;
@@ -153,6 +160,7 @@ public final class PackSyncClient {
                     if (plan.isUpToDate()) {
                         detail = "up_to_date";
                         active = false;
+                        ServerPackStore.refresh(CacheDirs.packsRoot(), key);
                         send(new PackPayloads.Ack(true, "up_to_date"));
                     } else {
                         // Something was deleted or edited behind our back.
@@ -217,6 +225,7 @@ public final class PackSyncClient {
             client.execute(() -> {
                 detail = "up_to_date";
                 active = false;
+                ServerPackStore.refresh(CacheDirs.packsRoot(), key);
                 send(new PackPayloads.Ack(true, "metadata"));
             });
         });
@@ -279,6 +288,7 @@ public final class PackSyncClient {
             client.execute(() -> {
                 detail = "synced";
                 active = false;
+                ServerPackStore.refresh(CacheDirs.packsRoot(), installKey);
                 send(new PackPayloads.Ack(true, count + " file(s) " + hash));
                 AtomChat.LOGGER.info("Server pack {} synced ({} file(s), {} KB)", hash, count,
                         pack.totalBytes() / 1024);

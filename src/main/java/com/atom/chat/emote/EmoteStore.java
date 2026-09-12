@@ -11,10 +11,16 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Local emote pack: images in {@code <configDir>/atomchat/emotes/}
- * (png/jpg/jpeg/gif; gif plays in the grid). Adding a file copies it in (the source is kept),
- * duplicates overwrite by name, the list is sorted by file name and capped at
- * {@link #MAX} entries — mirroring e33chat's EmoteStore.
+ * Emotes in two sources: the player's own folder at
+ * {@code <configDir>/atomchat/emotes/} (png/jpg/jpeg/gif; gif plays in the grid)
+ * and, since 0.2.9, the emotes of a downloaded server pack.
+ *
+ * <p>The local half keeps the original rules — adding a file copies it in (the
+ * source is kept), duplicates overwrite by name, sorted by name, capped at
+ * {@link #MAX} entries. The server half is a read-only mirror of whatever the
+ * joined server offered, capped at {@link #SERVER_MAX}: {@link #remove} refuses
+ * anything outside the local folder, so a server's emote can never be deleted
+ * from the panel.
  *
  * <p>This class is deliberately pure {@code java.nio}: no Skia and no
  * Minecraft/Fabric imports, so the scan/sort/cap/add/remove logic is
@@ -22,12 +28,16 @@ import java.util.List;
  * is the separate {@link EmoteImageCache} concern.
  */
 public final class EmoteStore {
-    public static final int MAX = 10;
+    public static final int MAX = 20;
+    /** Emotes a downloaded server pack may contribute; read-only. */
+    public static final int SERVER_MAX = 32;
 
     private static final String[] EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif"};
 
     private final Path dir;
     private List<File> cached = Collections.emptyList();
+    private Path serverDir;
+    private List<File> serverCached = Collections.emptyList();
 
     public EmoteStore(Path dir) {
         this.dir = dir;
@@ -36,6 +46,28 @@ public final class EmoteStore {
 
     public Path dir() {
         return dir;
+    }
+
+    /**
+     * Points the read-only half at a downloaded server pack, or null for none.
+     * The next scan picks it up.
+     */
+    public void setServerDir(Path dir) {
+        this.serverDir = dir;
+        refresh();
+    }
+
+    public Path serverDir() {
+        return serverDir;
+    }
+
+    /** Server emotes, sorted by name and capped at {@value #SERVER_MAX}. Never null. */
+    public List<File> serverList() {
+        return serverCached;
+    }
+
+    public int serverCount() {
+        return serverCached.size();
     }
 
     public static boolean isSupportedName(String name) {
@@ -51,22 +83,33 @@ public final class EmoteStore {
         return false;
     }
 
-    /** Re-scans the emote dir, sorts by name and truncates to {@link #MAX}. */
+    /** Re-scans both folders, sorts by name and applies the two caps. */
     public void refresh() {
+        cached = Collections.unmodifiableList(scan(dir, MAX));
+        serverCached = serverDir == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(scan(serverDir, SERVER_MAX));
+    }
+
+    private static List<File> scan(Path source, int cap) {
         List<File> files = new ArrayList<>();
-        File[] listed = dir.toFile().listFiles();
-        if (listed != null) {
-            for (File f : listed) {
-                if (f.isFile() && isSupportedName(f.getName())) {
-                    files.add(f);
-                }
-            }
-            files.sort(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
-            while (files.size() > MAX) {
-                files.remove(files.size() - 1);
+        if (source == null) {
+            return files;
+        }
+        File[] listed = source.toFile().listFiles();
+        if (listed == null) {
+            return files;
+        }
+        for (File f : listed) {
+            if (f.isFile() && isSupportedName(f.getName())) {
+                files.add(f);
             }
         }
-        cached = Collections.unmodifiableList(files);
+        files.sort(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+        while (files.size() > cap) {
+            files.remove(files.size() - 1);
+        }
+        return files;
     }
 
     /** Current emotes, sorted by name. Never null. */
@@ -107,7 +150,10 @@ public final class EmoteStore {
         }
     }
 
-    /** Deletes one of our emote files. Refuses anything outside the emote dir. */
+    /**
+     * Deletes one of the player's own emote files. Refuses anything outside the
+     * local folder — which is what keeps a server's emotes read-only.
+     */
     public boolean remove(File emote) {
         if (emote == null) {
             return false;
