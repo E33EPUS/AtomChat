@@ -77,6 +77,24 @@ jobs:
           chmod +x ./gradlew
           ./gradlew build --no-daemon
 
+      # 构建戳是拿到 jar 的人判断「这些字节来自哪次提交」的唯一依据，而它只在 checkout
+      # 真的干净时才说真话。这一步既把戳打进日志（验收时看得见），也在它说谎时让构建红。
+      # 假脏过一次，而且不是靠人发现的：三个 gradlew 的 exec 位不在索引里，这句 chmod
+      # 于是成了「已跟踪文件被改动」，每个发行 jar 都写着 +dirty —— 本机 core.fileMode=false，
+      # 所以只有下载产物的人看得到那个假标记。
+      - name: 断言构建戳没说谎
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          jar=$(find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" | head -1)
+          test -n "$jar"
+          echo "构建戳（$jar）："
+          unzip -p "$jar" atomchat-build.properties
+          if unzip -p "$jar" atomchat-build.properties | grep -q '^git_dirty=true'; then
+            echo "::error::发行 jar 的构建戳写着 git_dirty=true，但 CI 是从干净的 checkout 构建的 —— 拿到它的人会以为这些字节来自未提交的源码"
+            exit 1
+          fi
+
       # -slim 那个包不含内嵌依赖，发出去的表现是"缺库"而不是构建失败 ——
       # 取件规则必须把排除写死，取完再断言一次，两道都要有。
       - name: 取产物（-slim 与 sources 一律不要）

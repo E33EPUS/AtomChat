@@ -96,6 +96,21 @@ jobs:
           chmod +x ./gradlew
           ./gradlew build --no-daemon
 
+      # 发出去的字节更要查这一条：标签是在干净 checkout 上检出的，所以戳里的
+      # git_dirty 只有 true 一种错法，而它会让人以为发行版来自未提交的源码。
+      - name: 断言构建戳没说谎
+        working-directory: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          jar=$(find build/libs -name "*.jar" ! -name "*sources*" ! -name "*-slim*" | head -1)
+          test -n "$jar"
+          echo "构建戳（$jar）："
+          unzip -p "$jar" atomchat-build.properties
+          if unzip -p "$jar" atomchat-build.properties | grep -q '^git_dirty=true'; then
+            echo "::error::发行 jar 的构建戳写着 git_dirty=true，但标签是在干净的 checkout 上检出的"
+            exit 1
+          fi
+
       - name: 取产物（-slim 与 sources 一律不要）
         working-directory: ${{ matrix.project }}
         run: |
