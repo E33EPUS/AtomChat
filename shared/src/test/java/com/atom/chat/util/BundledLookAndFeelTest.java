@@ -4,8 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.awt.GraphicsEnvironment;
+import java.awt.Toolkit;
 import javax.swing.UIManager;
 import org.junit.jupiter.api.Test;
 
@@ -51,8 +53,36 @@ class BundledLookAndFeelTest {
     void theLookAndFeelInstalls() throws Exception {
         assumeFalse(GraphicsEnvironment.isHeadless(),
                 "a look and feel cannot be installed without a display");
+        assumeTrue(toolkitWorks(),
+                "the AWT toolkit cannot initialise here: the platform reports a display "
+                        + "but the X toolkit does not come up (headless Linux CI runners do this)");
         Class<?> laf = Class.forName(SHADED + ".FlatLightLaf");
         laf.getMethod("setup").invoke(null);
         assertEquals(SHADED + ".FlatLightLaf", UIManager.getLookAndFeel().getClass().getName());
+    }
+
+    /**
+     * Whether a display can actually be used, asked of the toolkit rather than
+     * inferred from {@link GraphicsEnvironment#isHeadless()}.
+     *
+     * <p><strong>Why the inference is not enough</strong>: a machine can claim to
+     * have a display and not have one. The Linux CI runner sets {@code DISPLAY},
+     * so {@code isHeadless()} answers "no, there is a display" — and the X11
+     * toolkit then fails to initialise anyway, taking the assertion down with an
+     * {@code ExceptionInInitializerError}. The first version of this test trusted
+     * {@code isHeadless()} and failed the whole build on all three targets, on a
+     * commit whose real verification was fine.
+     *
+     * <p>Asking the toolkit is decisive: if it starts, a failure below is ours and
+     * must fail the build; if it does not, installing a look and feel is simply
+     * not testable here and the test skips.
+     */
+    private static boolean toolkitWorks() {
+        try {
+            Toolkit.getDefaultToolkit();
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 }
