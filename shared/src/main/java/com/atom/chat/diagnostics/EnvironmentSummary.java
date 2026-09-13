@@ -2,6 +2,7 @@ package com.atom.chat.diagnostics;
 
 import com.atom.chat.AtomChat;
 import com.atom.chat.config.AtomChatConfig;
+import com.atom.chat.render.SkiaSupport;
 import com.atom.chat.wallpaper.WallpaperStore;
 import org.lwjgl.opengl.GL11C;
 
@@ -46,7 +47,6 @@ public final class EnvironmentSummary {
     private static final String SHADED_LAF = "com.atom.chat.shaded.flatlaf.FlatLightLaf";
     /** 公共包名。别的模组内嵌的 FlatLaf 住在这里 —— 重定位就是为了不再和它撞车。 */
     private static final String PUBLIC_LAF = "com.formdev.flatlaf.FlatLightLaf";
-    private static final String SKIJA_LIBRARY = "io.github.humbleui.skija.impl.Library";
     private static final String SKIJA_OS_ENUM = "io.github.humbleui.skija.impl.OperatingSystem";
     private static final String SKIJA_ARCH_ENUM = "io.github.humbleui.skija.impl.Architecture";
 
@@ -84,6 +84,9 @@ public final class EnvironmentSummary {
             if (IDENTITY_DONE.compareAndSet(false, true)) {
                 AtomChat.LOGGER.info(identityLine(reportedVersion, artifact));
             }
+            // 原生库探一次，**不跟着 debug 走**：拿不到时那一行是玩家与接手 issue 的人唯一的
+            // 解释，而 debug 默认关着 —— 挂在详细块里等于没有。探过之后每次再问都只是读结果。
+            SkiaSupport.probe();
             AtomChatConfig config = AtomChatConfig.get();
             if (config.debug && DEBUG_BLOCK_DONE.compareAndSet(false, true)) {
                 AtomChat.LOGGER.info(debugBlock(reportedVersion, artifact, config, EnvironmentSummary::gpuLine));
@@ -187,51 +190,29 @@ public final class EnvironmentSummary {
     }
 
     /**
-     * Skija 原生库：命中哪一个原生包、以及**真的加载成功没有**。
+     * Skija 原生库那一行：命中了哪一个原生包、以及**真的加载成功没有**。
      *
-     * <p>加载是被主动触发的（{@code Library.staticLoad()}），不是"本来就会发生"——
-     * 原生库平时要到第一次开面板才加载，而排查需要的是"这次启动到底行不行"。
-     * 失败在这里被抓住并降级成一行日志，游戏照常起：和玩家开面板时才失败相比，
-     * 只是把同一件事提前说清楚，没有别的行为变化。
+     * <p>加载结果不在这里探 —— {@link SkiaSupport#probe()} 才是"这台机器能不能用 Skija"的权威，
+     * 也是失败时唯一负责说话的地方（它那一行始终会打，而这一块只在 debug 打开时出现）。
+     * 这里只把结果拼成表格里的一行：同一件事报两遍，读日志的人会以为是两次故障。
      *
-     * <p><strong>先问加载、再写版本</strong>：版本那半句靠加载器的资源枚举找人，而枚举在
-     * 三端并不一致 —— NeoForge 的 jarjar union 文件系统下 {@code getResources} 看不到
-     * 嵌套 jar 里的资源（Forge 的 JarJar 看得到，Fabric 的 {@code include} 会把它摊平）。
-     * 0.2.11 因此在 NeoForge 上打出过一行自相矛盾的日志：前半句 "no native bundled"、
-     * 同一行末尾却是 "natives loaded in 181 ms"（2026-09-13 实测）。
-     * 现在的规矩：**只有加载真的失败了，才许说没打包**；其余情况照实说"版本资源在本加载器下读不到"，
-     * 并尽量从我们自己的产物里把真版本读出来（{@link #nestedNativeVersion}）。
+     * <p><strong>先问加载、再写版本</strong>：版本那半句靠加载器的资源枚举找人，而枚举在三端并不
+     * 一致 —— NeoForge 的 jarjar union 文件系统下 {@code getResources} 看不到嵌套 jar 里的资源
+     * （Forge 的 JarJar 看得到，Fabric 的 {@code include} 会把它摊平）。0.2.11 因此在 NeoForge 上
+     * 打出过一行自相矛盾的日志：前半句 "no native bundled"、同一行末尾却是 "natives loaded in 181 ms"
+     * （2026-09-13 实测）。现在的规矩：**只有加载真的失败了，才许说没打包**；其余情况照实说
+     * "版本资源在本加载器下读不到"，并尽量从我们自己的产物里把真版本读出来
+     * （{@link #nestedNativeVersion}）。
      */
     private static String skijaLine(ClassLoader loader, Path artifact) {
         String dir = skijaResourceDir(loader);
-
-        long startNs = System.nanoTime();
-        boolean loaded = false;
-        Throwable failure = null;
-        try {
-            Class<?> library = Class.forName(SKIJA_LIBRARY, true, loader);
-            library.getMethod("staticLoad").invoke(null);
-            loaded = (Boolean) library.getField("_loaded").get(null);
-        } catch (Throwable t) {
-            failure = t;
-        }
-        long ms = (System.nanoTime() - startNs) / 1_000_000L;
+        SkiaSupport.Probe probe = SkiaSupport.probe();
 
         List<URL> copies = dir == null ? List.of() : allResources(loader, dir + "skija.version");
         // 资源枚举失败时的退路：直接翻我们自己的产物，读嵌套的 skija 原生 jar。
         String[] nested = (dir == null || !copies.isEmpty()) ? null : nestedNativeVersion(artifact, dir);
 
-        if (failure != null) {
-            AtomChat.LOGGER.warn("Skija native library failed to load; the chat panel cannot "
-                    + "render on this platform. The bundled native supports Windows x64 "
-                    + "(Linux / macOS builds are not shipped yet).", failure);
-        } else if (!loaded) {
-            AtomChat.LOGGER.warn("Skija native library did not load; the chat panel cannot "
-                    + "render on this platform. The bundled native supports Windows x64 "
-                    + "(Linux / macOS builds are not shipped yet).");
-        }
-        return skijaSummary(dir, copies, nested, loaded, ms,
-                failure == null ? null : describe(failure));
+        return skijaSummary(dir, copies, nested, probe.available(), probe.millis(), probe.reason());
     }
 
     /**

@@ -101,7 +101,10 @@ public class AtomChatClient implements ClientModInitializer {
             // closed is already gone if you open the panel later than that.
             NotificationBanner.INSTANCE.tick();
             while (OPEN_ATOMCHAT_KEY.wasPressed()) {
-                if (client.currentScreen == null) {
+                // 原生库不在就别开：面板在那些平台上开出来是必崩的（Skija 的失败落在原生层，
+                // try/catch 拦不住）。键位照旧注册，按下去只是什么都不发生 —— 原因在启动时
+                // 由 SkiaSupport 写进日志了。
+                if (client.currentScreen == null && com.atom.chat.render.SkiaSupport.available()) {
                     client.setScreen(new AtomChatScreen("", AtomChatOpenMode.RESTORE));
                 }
             }
