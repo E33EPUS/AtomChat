@@ -1,7 +1,9 @@
 package com.atom.chat.page;
 
+import com.atom.chat.AtomChat;
 import com.atom.chat.chat.ChatMessage;
 import com.atom.chat.chat.Cicodes;
+import com.atom.chat.chat.ImageCode;
 import com.atom.chat.chat.MentionHighlighter;
 import com.atom.chat.chat.MessageGrouping;
 import com.atom.chat.chat.OwnIdentity;
@@ -36,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.text.Text;
 
 /**
@@ -692,6 +695,49 @@ public final class MessageListView {
         messageEnterSettled.removeIf(m -> m.getTimestamp() < cutoff);
     }
 
+    /** How a message is painted. Draw, measure and hit-test all read this one answer. */
+    private enum BubbleKind { SYSTEM, IMAGE, IMAGE_PLACEHOLDER, TEXT }
+
+    /** Once per launch; see {@link #noteImageMessagesDisabled()}. */
+    private static final AtomicBoolean IMAGE_MESSAGES_OFF_NOTED = new AtomicBoolean();
+
+    /**
+     * The single classification of a message. It used to be "extractImageUrl(raw)
+     * != null" in three separate places, which meant a code the extractor could
+     * not read was painted as a TEXT bubble and spilled its raw protocol text
+     * into the chat (with the tail linkedified into a broken URL). A code we
+     * cannot turn into an image now still gets the placeholder.
+     */
+    private static BubbleKind kindOf(ChatMessage msg) {
+        if (msg.isSystem()) {
+            return BubbleKind.SYSTEM;
+        }
+        String raw = msg.getRawText();
+        if (Cicodes.parseImageMeta(raw) != null) {
+            if (!AtomChatConfig.get().imageMessagesEnabled) {
+                noteImageMessagesDisabled();
+                return BubbleKind.IMAGE_PLACEHOLDER;
+            }
+            return BubbleKind.IMAGE;
+        }
+        return ImageCode.contains(raw) ? BubbleKind.IMAGE_PLACEHOLDER : BubbleKind.TEXT;
+    }
+
+    /**
+     * The receive switch being off is a deliberate setting, not a fault — but
+     * the placeholder it produces is the same green [Image] used for a code we
+     * cannot parse, so "every image shows a placeholder" otherwise has no
+     * answer anywhere in the log. Said once per launch, not once per message,
+     * and ASCII only: the log file carries the platform charset, so a
+     * translated placeholder would arrive mangled in a bug report.
+     */
+    private static void noteImageMessagesDisabled() {
+        if (IMAGE_MESSAGES_OFF_NOTED.compareAndSet(false, true)) {
+            AtomChat.LOGGER.warn("Incoming image messages are switched off in AtomChat's settings; "
+                    + "arriving images show the image placeholder and nothing is downloaded");
+        }
+    }
+
     private MessageHit drawMessage(Canvas canvas, ChatMessage msg, float x, float y, float maxWidth, int index,
                                    boolean grouped) {
         if (msg.isSystem()) {
@@ -700,12 +746,13 @@ public final class MessageListView {
         Font font = FontManager.font(UiTokens.FONT_BODY);
         float bubbleMaxWidth = maxWidth - UiTokens.BUBBLE_RETRACT;
         String raw = msg.getRawText();
-        String imageUrl = Cicodes.extractImageUrl(raw);
-        if (imageUrl != null) {
-            if (!AtomChatConfig.get().imageMessagesEnabled) {
-                return drawImagePlaceholderMessage(canvas, msg, x, y, maxWidth, index, grouped);
-            }
-            return drawImageMessage(canvas, msg, raw, imageUrl, x, y, maxWidth, index, grouped);
+        BubbleKind kind = kindOf(msg);
+        if (kind == BubbleKind.IMAGE_PLACEHOLDER) {
+            return drawImagePlaceholderMessage(canvas, msg, x, y, maxWidth, index, grouped);
+        }
+        if (kind == BubbleKind.IMAGE) {
+            return drawImageMessage(canvas, msg, raw, Cicodes.extractImageUrl(raw),
+                    x, y, maxWidth, index, grouped);
         }
         float textMaxWidth = bubbleMaxWidth - UiTokens.BUBBLE_PAD * 2.0F;
         List<RichLine> richLines = wrappedLines(msg, font, textMaxWidth);
@@ -1019,14 +1066,15 @@ public final class MessageListView {
         }
         float quoteH = msg.getQuoteName() != null ? UiTokens.QUOTE_HEIGHT + UiTokens.QUOTE_GAP : 0.0F;
         float band = grouped ? 0.0F : UiTokens.NAME_BAND;
-        Cicodes.ImageMeta imageMeta = Cicodes.parseImageMeta(msg.getRawText());
-        if (imageMeta != null) {
-            if (!AtomChatConfig.get().imageMessagesEnabled) {
-                Font font = FontManager.font(UiTokens.FONT_QUOTE);
-                return band + quoteH
-                        + SkiaFontRenderer.getHeight(font) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
-            }
-            return band + quoteH + Cicodes.imageBubbleSize(imageMeta, maxWidth)[1];
+        BubbleKind kind = kindOf(msg);
+        if (kind == BubbleKind.IMAGE_PLACEHOLDER) {
+            Font font = FontManager.font(UiTokens.FONT_QUOTE);
+            return band + quoteH
+                    + SkiaFontRenderer.getHeight(font) + UiTokens.SYSTEM_BUBBLE_PAD_Y;
+        }
+        if (kind == BubbleKind.IMAGE) {
+            return band + quoteH
+                    + Cicodes.imageBubbleSize(Cicodes.parseImageMeta(msg.getRawText()), maxWidth)[1];
         }
         Font font = FontManager.font(UiTokens.FONT_BODY);
         float lineHeight = SkiaFontRenderer.getHeight(font);
@@ -1040,7 +1088,8 @@ public final class MessageListView {
     public List<MessageTextLine> textLinesForHit(MessageHit hit) {
         List<MessageTextLine> out = new ArrayList<>();
         ChatMessage msg = hit.message();
-        if (Cicodes.extractImageUrl(msg.getRawText()) != null) {
+        BubbleKind kind = kindOf(msg);
+        if (kind == BubbleKind.IMAGE || kind == BubbleKind.IMAGE_PLACEHOLDER) {
             return out;
         }
         Font font = FontManager.font(msg.isSystem() ? UiTokens.FONT_QUOTE : UiTokens.FONT_BODY);

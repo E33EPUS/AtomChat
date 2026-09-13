@@ -48,11 +48,18 @@ class CicodesTest {
     }
 
     @Test
-    void parsesMalformedSizeAndNonCodeTextAsFallback() {
-        // The size groups require digits, so a non-numeric size makes the whole
-        // code unmatchable — the message falls back to the placeholder box.
-        assertNull(Cicodes.parseImageMeta(
-                "[[CICode,url=https://example.com/a.png,name=pic,w=abc,h=def]]"));
+    void malformedSizeStillCountsAsAnImage() {
+        // The old grammar required ",w=digits,h=digits" to match at all, so a
+        // non-numeric size made the whole code unmatchable — the message fell
+        // through to a TEXT bubble and printed its raw protocol text, and the
+        // linkifier turned that text's tail into a clickable URL. A code with a
+        // usable url is an image; only its size is unknown, so the bubble falls
+        // back to the placeholder box.
+        Cicodes.ImageMeta meta = Cicodes.parseImageMeta(
+                "[[CICode,url=https://example.com/a.png,name=pic,w=abc,h=def]]");
+        assertEquals("https://example.com/a.png", meta.url());
+        assertEquals(0, meta.width());
+        assertEquals(0, meta.height());
         assertNull(Cicodes.parseImageMeta("plain message"));
         assertNull(Cicodes.parseImageMeta(null));
     }

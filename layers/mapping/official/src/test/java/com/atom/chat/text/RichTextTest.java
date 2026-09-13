@@ -130,4 +130,26 @@ class RichTextTest {
         assertEquals("bc", rich.splice(-5, 1, RichText.empty()).getString());
         assertEquals(root, rich.splice(0, 1, RichText.literal("z")).rootStyle());
     }
+
+    @Test
+    void linkifyStaysOffAnImageCodeTail() {
+        // A code the panel cannot render used to be drawn as a text bubble, and
+        // the URL pattern swallowed ",name=…,w=…,h=…]]" into the click value:
+        // clicking it threw URISyntaxException.
+        String code = "[[CICode,url=https://h.uguu.se/a.png,name=a.png,w=128,h=128]]";
+        RichText linked = RichText.literal(code).linkifyUrls();
+        assertEquals(code, linked.getString());
+        assertEquals(1, linked.runs().size(), "the code must stay a single unlinked run");
+        assertTrue(linked.runs().stream().allMatch(r -> r.style().getClickEvent() == null));
+    }
+
+    @Test
+    void linkifyStillLinksTextAroundACode() {
+        String text = "look [[CICode,url=https://a.test/a.png,name=a]] at https://b.test now";
+        RichText linked = RichText.literal(text).linkifyUrls();
+        assertEquals(text, linked.getString());
+        assertEquals("https://b.test", linked.runs().stream()
+                .filter(r -> r.style().getClickEvent() != null)
+                .findFirst().orElseThrow().text());
+    }
 }

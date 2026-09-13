@@ -3,19 +3,18 @@ package com.atom.chat.chat;
 import com.atom.chat.render.SkiaFontRenderer;
 import com.atom.chat.ui.UiTokens;
 import io.github.humbleui.skija.Font;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import net.minecraft.text.Text;
 
 /**
  * Static helpers around CICode image messages, shared by the screen and the
  * message list view: URL extraction, metadata parsing, on-screen bubble
  * sizing, the image placeholder marker and width-aware truncation.
+ *
+ * <p>The grammar itself lives in {@link ImageCode}: this class only adapts it to
+ * the Skia/Minecraft side. Keeping one grammar is what stops the panel and the
+ * vanilla-HUD rewrite from disagreeing about whether a message is an image.
  */
 public final class Cicodes {
-
-    private static final Pattern CICODE = Pattern.compile(
-            "\\[\\[CICode,url=([^,\\]]+),name=([^,\\]]*)(?:,w=(\\d+),h=(\\d+))?\\]\\]");
 
     private Cicodes() {
     }
@@ -24,25 +23,11 @@ public final class Cicodes {
     public record ImageMeta(String url, String name, int width, int height) {
     }
 
+    /** The text's image code, or null when it has none — or has one with no usable url. */
     public static ImageMeta parseImageMeta(String text) {
-        if (text == null) {
-            return null;
-        }
-        Matcher m = CICODE.matcher(text);
-        if (!m.find()) {
-            return null;
-        }
-        int w = 0;
-        int h = 0;
-        if (m.group(3) != null) {
-            try {
-                w = Integer.parseInt(m.group(3));
-                h = Integer.parseInt(m.group(4));
-            } catch (NumberFormatException ignored) {
-                // Malformed size: fall back to the placeholder box.
-            }
-        }
-        return new ImageMeta(m.group(1), m.group(2), w, h);
+        ImageCode.Meta meta = ImageCode.parse(text);
+        return meta == null ? null
+                : new ImageMeta(meta.url(), meta.name(), meta.width(), meta.height());
     }
 
     /**
@@ -62,23 +47,10 @@ public final class Cicodes {
         return new float[]{Math.max(1.0F, meta.width() * scale), Math.max(1.0F, meta.height() * scale)};
     }
 
+    /** The image url carried by the text, or null when there is no usable code. */
     public static String extractImageUrl(String text) {
-        int start = text.indexOf("[[CICode,url=");
-        if (start < 0) {
-            start = text.indexOf("[CICode,url=");
-        }
-        if (start < 0) {
-            return null;
-        }
-        int urlStart = text.indexOf("url=", start) + 4;
-        int end = text.indexOf(',', urlStart);
-        if (end < 0) {
-            end = text.indexOf(']', urlStart);
-        }
-        if (end < 0 || end <= urlStart) {
-            return null;
-        }
-        return text.substring(urlStart, end);
+        ImageCode.Meta meta = ImageCode.parse(text);
+        return meta == null ? null : meta.url();
     }
 
     public static boolean isImagePlaceholder(String text) {

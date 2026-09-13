@@ -1,5 +1,6 @@
 package com.atom.chat.text;
 
+import com.atom.chat.chat.ImageCode;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
@@ -8,17 +9,17 @@ import net.minecraft.text.TranslatableTextContent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Rewrites vanilla ChatHud messages into compact placeholders.
  *
  * <p>Two rewrites exist:
  * <ul>
- *   <li>{@code [[CICode,...]]} image codes become a localized green
- *       {@code [图片]}/{@code [Image]} so the vanilla chat does not show a long
- *       raw URL.</li>
+ *   <li>Image codes become a localized green {@code [图片]}/{@code [Image]} so
+ *       the vanilla chat does not show a long raw URL. The grammar comes from
+ *       {@link ImageCode}, the same one the panel uses — the two used to
+ *       disagree, and a message the panel could not recognise as an image was
+ *       still an image here (and printed its raw code in the panel).</li>
  *   <li>Quote replies whose visible text starts with {@code 「引用...」} become
  *       {@code [引用]}/{@code [Quote]} after the sender prefix, matching the
  *       e33chat banner convention.</li>
@@ -28,8 +29,6 @@ import java.util.regex.Pattern;
  * decorations and the surrounding text style survive.
  */
 public final class ChatTextRewriter {
-    private static final Pattern CICODE = Pattern.compile(
-            "\\[\\[CICode,[^\\]]+\\]\\]|\\[CICode,[^\\]]+\\]", Pattern.CASE_INSENSITIVE);
     private static final Style IMAGE_GREEN = Style.EMPTY.withColor(0x55FF55);
     private static final Style QUOTE_BLUE = Style.EMPTY.withColor(0x4A90E2);
 
@@ -113,10 +112,8 @@ public final class ChatTextRewriter {
 
     private static List<Replacement> findReplacements(String full) {
         List<Replacement> out = new ArrayList<>();
-        Matcher matcher = CICODE.matcher(full);
-        while (matcher.find()) {
-            out.add(new Replacement(matcher.start(), matcher.end(),
-                    "atomchat.hud.image", IMAGE_GREEN));
+        for (int[] range : ImageCode.ranges(full)) {
+            out.add(new Replacement(range[0], range[1], "atomchat.hud.image", IMAGE_GREEN));
         }
         Replacement quote = quoteReplacement(full);
         if (quote != null) {

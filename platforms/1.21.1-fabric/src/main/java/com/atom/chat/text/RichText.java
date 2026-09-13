@@ -1,5 +1,6 @@
 package com.atom.chat.text;
 
+import com.atom.chat.chat.ImageCode;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
@@ -178,9 +179,16 @@ public final class RichText {
                 continue;
             }
 
+            // An image code's tail looks exactly like the rest of a URL
+            // (",name=…,w=…,h=…]]"), so linking it produced a bogus OPEN_URL that
+            // threw URISyntaxException when clicked. Stay off the code's own range.
+            List<int[]> codes = ImageCode.ranges(run.text());
             Matcher matcher = URL_PATTERN.matcher(run.text());
             int last = 0;
             while (matcher.find()) {
+                if (ImageCode.covers(codes, matcher.start())) {
+                    continue;
+                }
                 if (matcher.start() > last) {
                     out.add(new RichRun(run.text().substring(last, matcher.start()), run.style()));
                 }
