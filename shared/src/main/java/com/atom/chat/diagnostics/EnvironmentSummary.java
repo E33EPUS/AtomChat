@@ -88,6 +88,9 @@ public final class EnvironmentSummary {
             // 解释，而 debug 默认关着 —— 挂在详细块里等于没有。探过之后每次再问都只是读结果。
             SkiaSupport.probe();
             AtomChatConfig config = AtomChatConfig.get();
+            // 这把是渲染耗时尺子的开关。在这里同步而不是让每个打点处去读配置：整棵树里
+            // 只有这一处本来每帧就握着 debug 开关，而热路径上多一次配置读取是白花的。
+            FrameProfile.setEnabled(config.debug);
             if (config.debug && DEBUG_BLOCK_DONE.compareAndSet(false, true)) {
                 AtomChat.LOGGER.info(debugBlock(reportedVersion, artifact, config, EnvironmentSummary::gpuLine));
             }

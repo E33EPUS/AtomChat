@@ -1,5 +1,6 @@
 package com.atom.chat.render;
 
+import com.atom.chat.diagnostics.FrameProfile;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Font;
@@ -51,6 +52,9 @@ public final class SkiaFontRenderer {
         if (cached != null) {
             return cached;
         }
+        // 只量没命中缓存的那条路：塑形是这里最贵的一段，而缓存命中只值一次哈希查找，
+        // 把它算进"布局耗时"会把这条刻度稀释成没有意义。
+        long startedAt = FrameProfile.start();
         float width = 0.0F;
         for (TextSegment segment : parseColoredText(text)) {
             if (!segment.text.isEmpty()) {
@@ -58,6 +62,7 @@ public final class SkiaFontRenderer {
             }
         }
         WIDTH_CACHE.put(key, width);
+        FrameProfile.layout(startedAt);
         return width;
     }
 

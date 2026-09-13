@@ -1,6 +1,7 @@
 package com.atom.chat.render;
 
 import com.atom.chat.AtomChat;
+import com.atom.chat.diagnostics.FrameProfile;
 import com.mojang.blaze3d.systems.RenderSystem;
 import io.github.humbleui.skija.BackendRenderTarget;
 import io.github.humbleui.skija.Canvas;
@@ -103,6 +104,10 @@ public class SkiaGraphics {
      */
     public void draw(Runnable preUi, float density, java.util.function.BiConsumer<Canvas, Image> renderer) {
         RenderSystem.assertOnRenderThread();
+        // 尺子：整帧计时 + 这一帧在渲染线程上新增的对象分配。开关在 FrameProfile 自己手里，
+        // 关掉时 start() 返回 0，下面两个调用点什么都不做。
+        long profileStart = FrameProfile.start();
+        long allocatedBefore = profileStart == 0L ? -1L : FrameProfile.allocatedBytes();
         if (context == null || surface == null || canvas == null) {
             createSurface();
         }
@@ -153,6 +158,11 @@ public class SkiaGraphics {
         surface.flush();
         GlStateUtil.restore();
         RenderSystem.disableBlend();
+        // 到报告点就打一份分布（六十帧一次，约十秒）。这个类自己不打日志：格式留在 FrameProfile
+        // 里，于是它的每一行都能在单测里拼出来 —— 一个要装全局渲染状态才能测的诊断类没人测。
+        if (FrameProfile.frame(profileStart, allocatedBefore)) {
+            AtomChat.LOGGER.info(FrameProfile.summary());
+        }
     }
 
     /**

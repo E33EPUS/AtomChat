@@ -180,7 +180,12 @@ public final class ImageLoader {
      * instead of the animated path.
      */
     public static Image decodeStatic(byte[] bytes, int maxDim) {
-        return downscale(Image.makeFromEncoded(bytes), maxDim);
+        long startedAt = com.atom.chat.diagnostics.FrameProfile.start();
+        try {
+            return downscale(Image.makeFromEncoded(bytes), maxDim);
+        } finally {
+            com.atom.chat.diagnostics.FrameProfile.decode(startedAt);
+        }
     }
 
     private static byte[] httpFetch(String url) throws Exception {
@@ -275,7 +280,13 @@ public final class ImageLoader {
                 // the player keeps scrolling past must not expire on age alone.
                 touchDiskCache(disk);
             }
-            AnimatedImage animated = GifDecoder.decode(bytes, clock.getAsLong());
+            long gifStarted = com.atom.chat.diagnostics.FrameProfile.start();
+            AnimatedImage animated;
+            try {
+                animated = GifDecoder.decode(bytes, clock.getAsLong());
+            } finally {
+                com.atom.chat.diagnostics.FrameProfile.decode(gifStarted);
+            }
             if (animated != null) {
                 if (disk != null && !fromDisk) {
                     // Keep the original bytes: re-encoding to WebP would flatten
