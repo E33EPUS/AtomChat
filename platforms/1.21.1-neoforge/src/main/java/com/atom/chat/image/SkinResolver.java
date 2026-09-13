@@ -63,7 +63,10 @@ public final class SkinResolver {
         // Online players: read PlayerInfo fresh every frame. The entry kicks off
         // an async skin download on first access; caching that first (default) result
         // would freeze the head on Steve/Alex forever.
-        if (client.getConnection() != null && uuid != null && !uuid.equals(NIL_UUID)) {
+        // No client at all: there is nobody to ask, so fall through to the caches
+        // and the default skin instead of dereferencing it. Every other client
+        // access in the avatar layer already tolerates this.
+        if (client != null && client.getConnection() != null && uuid != null && !uuid.equals(NIL_UUID)) {
             PlayerInfo info = client.getConnection().getPlayerInfo(uuid);
             if (info != null) {
                 ResourceLocation tex = info.getSkin().texture();

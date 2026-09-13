@@ -63,7 +63,10 @@ public final class SkinResolver {
         // Online players: read PlayerListEntry fresh every frame. The entry kicks off
         // an async skin download on first access; caching that first (default) result
         // would freeze the head on Steve/Alex forever.
-        if (client.getNetworkHandler() != null && uuid != null && !uuid.equals(NIL_UUID)) {
+        // No client at all: there is nobody to ask, so fall through to the caches
+        // and the default skin instead of dereferencing it. Every other client
+        // access in the avatar layer already tolerates this.
+        if (client != null && client.getNetworkHandler() != null && uuid != null && !uuid.equals(NIL_UUID)) {
             PlayerListEntry info = client.getNetworkHandler().getPlayerListEntry(uuid);
             if (info != null) {
                 Identifier tex = info.getSkinTextures().texture();
