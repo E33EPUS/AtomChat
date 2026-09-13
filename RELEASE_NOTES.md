@@ -12,6 +12,7 @@
 修复：装了另一个也内嵌 FlatLaf 的模组时，图片选择器崩在 `ClassNotFoundException`——两份副本抢同一个公共包名；现在我们把 FlatLaf 收进私有包名，别人抢不走。
 修复：增量编译偶尔会吃掉 Mixin 的 refmap，打出来的 jar 一启动就报 `No refMap loaded`；现在有构建闸盯着，缺了直接让构建失败。
 修复：模糊渲染出错时每帧重试、每帧刷日志，一个确定的错误把自己埋掉；现在首次失败即熔断，面板退成实色继续用。
+修复：NeoForge 上的环境摘要自相矛盾——那行前半句说"没打包原生库"、末尾却写"原生库已加载 181 ms"；原生库一直是好的，是诊断自己错了（版本号靠加载器的资源枚举去找，而枚举三端不一致）。现在先问加载结果再写版本，只有加载确实失败才说"没打包"，否则直接从我们自己的产物里读出真版本。本版是同名重新上传，两个 0.2.11 用日志里的 `sha256:` 区分。
 
 新增：启动时打一行构建身份（版本 / 加载器 / 实际加载的 jar 名 / 该文件 SHA-256 / 提交号）。文件名可以被改得认不出来，内容哈希不会——这一行就能唯一定位是哪一个构建。
 新增：调试开关打开后打一整块环境摘要：FlatLaf 是从哪个 jar 加载的、Skija 原生库有没有加载成功（花了多少毫秒）、GPU 与驱动、以及关键开关。整块是一条日志记录，连着复制不会被别的模组插断。
@@ -29,6 +30,7 @@ Added a full environment summary under the debug switch: which jar the FlatLaf i
 Added input logging under the debug switch (key, character, click point and the panel coordinates it maps to). The UI is drawn by Skia, so none of the usual widget debugging applies, and this is the only reliable way to chase a button that does nothing.
 Changed the render-state save/restore to cover what Skia moves (blend equation, blend colour, front face and the stencil family); a leak there raises no error at all and shows up as another mod's geometry missing pixels or facing backwards.
 Docs: both troubleshooting pages now explain how to turn debug on and which lines to send.
+Fixed the Skija row of the environment summary contradicting itself on NeoForge: one half said "no native bundled" while the other said "natives loaded in 181 ms". The native was always fine; the diagnostic was wrong, because the version lookup asks the loader to list a resource inside a nested jar, which Forge does, NeoForge does not, and Fabric flattens into place. The load result is now read first, only a real load failure may claim the native is missing, and otherwise the version is read straight out of our own artifact. This is a same-version re-upload; tell the two 0.2.11 builds apart by the sha256 in their log.
 
 ## v0.2.10
 

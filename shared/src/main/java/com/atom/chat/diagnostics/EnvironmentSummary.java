@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 
 /**
  * 启动时的环境摘要：**一行构建身份**永远打，**一整块环境事实**只在 {@code debug=true} 时打。
@@ -121,7 +124,7 @@ public final class EnvironmentSummary {
         rows.put("artifact", artifactLine(artifact, reportedVersion));
         rows.put("runtime", runtimeLine());
         rows.put("laf", lafLine(loader));
-        rows.put("skija", skijaLine(loader));
+        rows.put("skija", skijaLine(loader, artifact));
         rows.put("gpu", gpu.get());
         rows.put("switches", switchesLine(config));
 
@@ -190,46 +193,140 @@ public final class EnvironmentSummary {
      * 原生库平时要到第一次开面板才加载，而排查需要的是"这次启动到底行不行"。
      * 失败在这里被抓住并降级成一行日志，游戏照常起：和玩家开面板时才失败相比，
      * 只是把同一件事提前说清楚，没有别的行为变化。
+     *
+     * <p><strong>先问加载、再写版本</strong>：版本那半句靠加载器的资源枚举找人，而枚举在
+     * 三端并不一致 —— NeoForge 的 jarjar union 文件系统下 {@code getResources} 看不到
+     * 嵌套 jar 里的资源（Forge 的 JarJar 看得到，Fabric 的 {@code include} 会把它摊平）。
+     * 0.2.11 因此在 NeoForge 上打出过一行自相矛盾的日志：前半句 "no native bundled"、
+     * 同一行末尾却是 "natives loaded in 181 ms"（2026-09-13 实测）。
+     * 现在的规矩：**只有加载真的失败了，才许说没打包**；其余情况照实说"版本资源在本加载器下读不到"，
+     * 并尽量从我们自己的产物里把真版本读出来（{@link #nestedNativeVersion}）。
      */
-    private static String skijaLine(ClassLoader loader) {
-        StringBuilder sb = new StringBuilder();
+    private static String skijaLine(ClassLoader loader, Path artifact) {
         String dir = skijaResourceDir(loader);
-        if (dir == null) {
-            sb.append("platform unknown (Skija platform classes not resolvable)");
-        } else {
-            List<URL> copies = allResources(loader, dir + "skija.version");
-            if (copies.isEmpty()) {
-                sb.append("no native bundled for ").append(dir);
-            } else {
-                sb.append(text(readResource(copies.get(0)))).append(' ')
-                        .append(dir.substring(0, dir.length() - 1).replace('/', '.'))
-                        .append(" <- ").append(originOfUrl(copies.get(0)));
-                if (copies.size() > 1) {
-                    sb.append(" (").append(copies.size()).append(" copies on the classpath)");
-                }
-            }
-        }
 
         long startNs = System.nanoTime();
+        boolean loaded = false;
+        Throwable failure = null;
         try {
             Class<?> library = Class.forName(SKIJA_LIBRARY, true, loader);
             library.getMethod("staticLoad").invoke(null);
-            boolean loaded = (Boolean) library.getField("_loaded").get(null);
-            long ms = (System.nanoTime() - startNs) / 1_000_000L;
-            sb.append(" | natives ").append(loaded ? "loaded" : "NOT loaded").append(" in ")
-                    .append(ms).append(" ms");
-            if (!loaded) {
-                AtomChat.LOGGER.warn("Skija native library did not load; the chat panel cannot "
-                        + "render on this platform. The bundled native supports Windows x64 "
-                        + "(Linux / macOS builds are not shipped yet).");
-            }
+            loaded = (Boolean) library.getField("_loaded").get(null);
         } catch (Throwable t) {
-            sb.append(" | natives FAILED: ").append(describe(t));
+            failure = t;
+        }
+        long ms = (System.nanoTime() - startNs) / 1_000_000L;
+
+        List<URL> copies = dir == null ? List.of() : allResources(loader, dir + "skija.version");
+        // 资源枚举失败时的退路：直接翻我们自己的产物，读嵌套的 skija 原生 jar。
+        String[] nested = (dir == null || !copies.isEmpty()) ? null : nestedNativeVersion(artifact, dir);
+
+        if (failure != null) {
             AtomChat.LOGGER.warn("Skija native library failed to load; the chat panel cannot "
                     + "render on this platform. The bundled native supports Windows x64 "
-                    + "(Linux / macOS builds are not shipped yet).", t);
+                    + "(Linux / macOS builds are not shipped yet).", failure);
+        } else if (!loaded) {
+            AtomChat.LOGGER.warn("Skija native library did not load; the chat panel cannot "
+                    + "render on this platform. The bundled native supports Windows x64 "
+                    + "(Linux / macOS builds are not shipped yet).");
+        }
+        return skijaSummary(dir, copies, nested, loaded, ms,
+                failure == null ? null : describe(failure));
+    }
+
+    /**
+     * 拼那一行。**纯函数**：把"加载结果"与"版本来源"当参数收进来，于是每条分支都能在
+     * 单测里喂出来 —— 三端的差异在真机上也未必同时具备，但规矩必须处处成立。
+     *
+     * @param dir             {@code io/github/humbleui/skija/<os>/<arch>/}；null = 平台枚举都解析不到
+     * @param classpathCopies 加载器资源枚举命中的版本文件；可以为空
+     * @param nested          从我们自己的产物里读出的 {版本, 嵌套条目名}；没有就 null
+     * @param loaded          原生库是否真的加载起来了（权威信号）
+     * @param failure         加载失败的描述；成功时 null
+     */
+    static String skijaSummary(String dir, List<URL> classpathCopies, String[] nested,
+                               boolean loaded, long ms, String failure) {
+        StringBuilder sb = new StringBuilder();
+        if (dir == null) {
+            sb.append("platform unknown (Skija platform classes not resolvable)");
+        } else if (!classpathCopies.isEmpty()) {
+            sb.append(text(readResource(classpathCopies.get(0)))).append(' ').append(dotted(dir))
+                    .append(" <- ").append(originOfUrl(classpathCopies.get(0)));
+            if (classpathCopies.size() > 1) {
+                sb.append(" (").append(classpathCopies.size()).append(" copies on the classpath)");
+            }
+        } else if (nested != null) {
+            sb.append(nested[0]).append(' ').append(dotted(dir))
+                    .append(" <- ").append(nested[1])
+                    .append(" (in our own artifact; this loader does not list nested resources)");
+        } else if (loaded) {
+            sb.append(dotted(dir))
+                    .append(" bundled, but its version resource is not readable on this loader");
+        } else {
+            // 这句话只有在加载确实失败时才许出现。
+            sb.append("no native bundled for ").append(dir);
+        }
+
+        if (failure == null) {
+            sb.append(" | natives ").append(loaded ? "loaded" : "NOT loaded").append(" in ")
+                    .append(ms).append(" ms");
+        } else {
+            sb.append(" | natives FAILED: ").append(failure);
         }
         return sb.toString();
+    }
+
+    /**
+     * 从我们自己的产物里直接读嵌套的 skija 原生 jar，取出里面的 {@code skija.version}。
+     *
+     * <p>为什么要有这条退路：加载器的资源枚举不可信 —— 同一份 jar，Forge 的 JarJar 能列出
+     * 嵌套资源、NeoForge 的 jarjar union 列不出来、Fabric 的 {@code include} 干脆把嵌套 jar
+     * 摊平成独立文件。而我们的产物本身就是一个普通 zip，翻它不需要任何加载器配合。
+     *
+     * @return {@code {版本, 嵌套条目名}}；读不到就 null
+     */
+    static String[] nestedNativeVersion(Path artifact, String dir) {
+        if (artifact == null || dir == null) {
+            return null;
+        }
+        try (ZipFile zip = new ZipFile(artifact.toFile())) {
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                if (!isNestedNativeJar(entry.getName())) {
+                    continue;
+                }
+                try (InputStream in = zip.getInputStream(entry);
+                     ZipInputStream nested = new ZipInputStream(in)) {
+                    for (ZipEntry inner = nested.getNextEntry(); inner != null;
+                         inner = nested.getNextEntry()) {
+                        if (inner.getName().equals(dir + "skija.version")) {
+                            // ZipInputStream.read 在条目结束处返回 -1，所以 readAllBytes 只读到本条目。
+                            String version = new String(nested.readAllBytes(),
+                                    java.nio.charset.StandardCharsets.UTF_8).trim();
+                            return new String[]{version, entry.getName()};
+                        }
+                    }
+                } catch (Throwable ignored) {
+                    // 这一个候选读坏了就试下一个，诊断不许把启动带崩
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /** 嵌套的原生包：{@code META-INF/jarjar/skija-windows-x64-0.116.8.jar}（Fabric 侧在 META-INF/jars/ 下）。 */
+    private static boolean isNestedNativeJar(String entryName) {
+        if (!entryName.startsWith("META-INF/") || !entryName.endsWith(".jar")) {
+            return false;
+        }
+        String base = entryName.substring(entryName.lastIndexOf('/') + 1).toLowerCase(Locale.ROOT);
+        return base.startsWith("skija-") && !base.startsWith("skija-shared");
+    }
+
+    private static String dotted(String dir) {
+        return dir.substring(0, dir.length() - 1).replace('/', '.');
     }
 
     /** Skija 自己按 {@code io.github.humbleui.skija.<os>.<arch>/} 找原生库，这里照抄它的规则。 */

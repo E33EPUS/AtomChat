@@ -4,9 +4,13 @@ import com.atom.chat.config.AtomChatConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -147,5 +151,107 @@ class EnvironmentSummaryTest {
         // 没有产物路径时，身份行整行都由我们自己的文本组成。
         assertTrue(EnvironmentSummary.identityLine("0.2.11", null).chars().allMatch(c -> c < 0x80),
                 EnvironmentSummary.identityLine("0.2.11", null));
+    }
+
+    /** Skija 自己按这个目录找原生库；三端算出来的值一样。 */
+    private static final String DIR = "io/github/humbleui/skija/windows/x64/";
+
+    /**
+     * 三端的差异喂不进单测，但**规矩**可以：这一行永远不许自相矛盾。
+     *
+     * <p>现场：0.2.11 在 NeoForge 上打出过同一行里既说 "no native bundled for
+     * io/github/humbleui/skija/windows/x64/"、末尾又写 "natives loaded in 181 ms" ——
+     * 前半句是"加载器的资源枚举没找到"被错写成了"没打包"。玩家把这一块贴进 issue，
+     * 排查方向就被带到"打包坏了"上去，而那辆车上没有零件坏。
+     */
+    @Test
+    void skijaRowNeverClaimsNoNativeWhenTheNativesLoaded() {
+        String line = EnvironmentSummary.skijaSummary(DIR, List.of(), null, true, 51, null);
+        assertFalse(line.contains("no native bundled"), line);
+        assertFalse(line.contains("no native"), "加载成功就不该出现任何'没有原生库'的说法: " + line);
+        assertTrue(line.contains("natives loaded in 51 ms"), line);
+        assertTrue(line.contains("io.github.humbleui.skija.windows.x64"), line);
+    }
+
+    /** 反过来也要立住：这句话只有在加载**确实失败**时才许出现。 */
+    @Test
+    void skijaRowSaysNoNativeOnlyWhenTheLoadFailed() {
+        String line = EnvironmentSummary.skijaSummary(DIR, List.of(), null, false, 12,
+                "UnsatisfiedLinkError: no skija in java.library.path");
+        assertTrue(line.contains("no native bundled for " + DIR), line);
+        assertTrue(line.contains("natives FAILED"), line);
+    }
+
+    /**
+     * 资源枚举看不到嵌套资源时的退路：直接翻我们自己的产物，把真版本读出来。
+     * NeoForge 的 jarjar union 就是这个现场（Forge 的 JarJar 看得到、Fabric 的 include 摊平）。
+     */
+    @Test
+    void skijaRowFallsBackToOurOwnArtifact(@TempDir Path dir) throws Exception {
+        Path artifact = artifactWithNestedSkija(dir, "0.116.8");
+        String[] nested = EnvironmentSummary.nestedNativeVersion(artifact, DIR);
+        assertNotNull(nested, "嵌套的原生包应该被读到");
+        assertEquals("0.116.8", nested[0]);
+        assertEquals("META-INF/jarjar/skija-windows-x64-0.116.8.jar", nested[1]);
+
+        String line = EnvironmentSummary.skijaSummary(DIR, List.of(), nested, true, 181, null);
+        assertTrue(line.contains("0.116.8"), line);
+        assertTrue(line.contains("skija-windows-x64-0.116.8.jar"), line);
+        assertFalse(line.contains("no native"), line);
+        assertFalse(line.contains("not readable"), line);
+    }
+
+    /** 产物里没有嵌套原生包时，不许编一个出来。 */
+    @Test
+    void nestedLookupFindsNothingInAPlainJar(@TempDir Path dir) throws Exception {
+        Path plain = write(dir, "atomchat.jar", "not a zip at all");
+        assertNull(EnvironmentSummary.nestedNativeVersion(plain, DIR));
+        assertNull(EnvironmentSummary.nestedNativeVersion(null, DIR));
+        assertNull(EnvironmentSummary.nestedNativeVersion(plain, null));
+    }
+
+    /** 命中 classpath 上的版本文件时走原来那条路，不再去找嵌套包（Forge / Fabric 的现场）。 */
+    @Test
+    void skijaRowKeepsTheClasspathCopyWhenResolvable(@TempDir Path dir) throws Exception {
+        Path version = write(dir, "skija.version", "0.116.8\n");
+        String line = EnvironmentSummary.skijaSummary(DIR, List.of(version.toUri().toURL()),
+                null, true, 105, null);
+        assertTrue(line.contains("0.116.8"), line);
+        assertTrue(line.contains("skija.version"), line);
+        assertFalse(line.contains("in our own artifact"), line);
+        assertFalse(line.contains("no native"), line);
+    }
+
+    /** 新加的这几句同样必须是纯 ASCII —— 理由见上一个测试。 */
+    @Test
+    void everySkijaVariantIsAsciiOnly() {
+        for (String line : new String[]{
+                EnvironmentSummary.skijaSummary(DIR, List.of(), null, true, 51, null),
+                EnvironmentSummary.skijaSummary(DIR, List.of(), null, false, 12, "UnsatisfiedLinkError"),
+                EnvironmentSummary.skijaSummary(DIR, List.of(),
+                        new String[]{"0.116.8", "META-INF/jarjar/skija-windows-x64-0.116.8.jar"}, true, 9, null),
+                EnvironmentSummary.skijaSummary(null, List.of(), null, false, 3, "no library")}) {
+            assertTrue(line.chars().allMatch(c -> c < 0x80), line);
+        }
+    }
+
+    /** 造一个"像我们产物那样"的 jar：META-INF/jarjar/ 下嵌一个带版本文件的原生包。 */
+    private static Path artifactWithNestedSkija(Path dir, String version) throws Exception {
+        ByteArrayOutputStream nestedBytes = new ByteArrayOutputStream();
+        try (ZipOutputStream nested = new ZipOutputStream(nestedBytes)) {
+            nested.putNextEntry(new ZipEntry(DIR + "skija.version"));
+            nested.write(version.getBytes(StandardCharsets.UTF_8));
+            nested.closeEntry();
+        }
+        Path jar = dir.resolve("atomchat-Forge-1.20.1-0.2.11.jar");
+        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
+            out.write("Manifest-Version: 1.0\n".getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+            out.putNextEntry(new ZipEntry("META-INF/jarjar/skija-windows-x64-" + version + ".jar"));
+            out.write(nestedBytes.toByteArray());
+            out.closeEntry();
+        }
+        return jar;
     }
 }
