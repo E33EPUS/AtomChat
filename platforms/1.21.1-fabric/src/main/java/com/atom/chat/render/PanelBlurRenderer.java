@@ -48,7 +48,8 @@ public final class PanelBlurRenderer {
     private static int lastBlurTex = -1;
     private static boolean nextFullRefresh = true;
     private static boolean recreated = true;
-    private static long blurErrorCount;
+    /** Set once by {@link #disable(String)}; see there for why it never resets. */
+    private static volatile boolean disabled;
 
     private PanelBlurRenderer() {
     }
@@ -69,7 +70,7 @@ public final class PanelBlurRenderer {
         if (alpha <= 0.003F || width <= 0.0F || height <= 0.0F) {
             return false;
         }
-        if (getKawaseShader() == null || getRoundedShader() == null) {
+        if (disabled || getKawaseShader() == null || getRoundedShader() == null) {
             return false;
         }
 
@@ -113,7 +114,7 @@ public final class PanelBlurRenderer {
             // whatever the broken pass wrote.
             int glError = drainGlErrors();
             if (glError != 0) {
-                reportBlurError(glError);
+                disable("GL error 0x" + Integer.toHexString(glError));
                 return false;
             }
             return true;
@@ -143,13 +144,27 @@ public final class PanelBlurRenderer {
         return first;
     }
 
-    /** Throttled: the blur runs every other frame, so a broken state would spam. */
-    private static void reportBlurError(int error) {
-        long seen = ++blurErrorCount;
-        if (seen <= 3 || seen % 200 == 0) {
-            AtomChat.LOGGER.warn("AtomChat panel blur hit GL error 0x{}; using the solid panel background (occurrence {})",
-                    Integer.toHexString(error), seen);
+    /**
+     * Trips the breaker: one failure and the blur is off for the rest of the
+     * session.
+     *
+     * <p>Why permanent instead of retried: a pass that produced a driver error
+     * once will produce it again on the next frame — nothing it depends on has
+     * changed in between. Retrying buys a half-drawn panel and a log flood, and
+     * it buries the one thing worth reading (the first error, and the frame it
+     * happened on). The panel stays fully usable on its solid background, and
+     * the next launch starts from a clean slate.
+     *
+     * <p>Both failure paths come through here — a GL error inside the pass, and
+     * a throwable from the caller's wrapper — so there is exactly one breaker.
+     */
+    public static void disable(String reason) {
+        if (disabled) {
+            return;
         }
+        disabled = true;
+        AtomChat.LOGGER.warn("AtomChat panel blur disabled for this session after the first failure "
+                + "({}); the panel keeps its solid background", reason);
     }
 
     public static void ensureLoaded() {
@@ -158,7 +173,7 @@ public final class PanelBlurRenderer {
     }
 
     public static boolean isAvailable() {
-        return roundedShader != null && kawaseShader != null;
+        return !disabled && roundedShader != null && kawaseShader != null;
     }
 
     public static void resetShader() {

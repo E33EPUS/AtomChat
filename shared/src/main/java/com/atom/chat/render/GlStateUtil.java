@@ -11,6 +11,7 @@ import org.lwjgl.opengl.GL33C;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 /**
@@ -27,6 +28,14 @@ import java.nio.IntBuffer;
  * goes black" report.</p>
  */
 public final class GlStateUtil {
+    /**
+     * The {@code GL_BLEND_COLOR} query enum. LWJGL 3.3.1 exposes
+     * {@code glBlendColor} but not this enum (checked in GL11C / GL14 / GL14C),
+     * so the value is spelled out. It has been 0x8005 since GL 1.4 and is not
+     * going to move.
+     */
+    private static final int GL_BLEND_COLOR = 0x8005;
+
     private static State savedState;
 
     private GlStateUtil() {
@@ -90,13 +99,30 @@ public final class GlStateUtil {
         private final int unpackRowLength;
         private final int unpackSkipPixels;
         private final int unpackSkipRows;
+        // Blaze3D does not track these three, so there is no cache to mirror and
+        // the raw call is the whole restore (same situation as the cull mode
+        // above). Skia's GL backend does move them: Ganesh sets the blend
+        // equation per blend mode, the blend colour for some modes, and flips
+        // the front face when it renders into a flipped render target. A leaked
+        // front face or blend equation shows up as "another mod's model renders
+        // inside out / with the wrong alpha", never as an error.
+        private final int blendEquationRgb;
+        private final int blendEquationAlpha;
+        private final float[] blendColor;
+        private final int frontFace;
+        // The stencil family gets its own holder: it is 15 values that must all
+        // be saved or none of them, and inlining them would double the length of
+        // an already long parameter list.
+        private final Stencil stencil;
 
         private State(boolean blendEnabled, int blendSrcRgb, int blendDstRgb, int blendSrcAlpha, int blendDstAlpha,
                       boolean depthTestEnabled, boolean depthMask, int depthFunc, boolean cullEnabled, int cullFace,
                       int activeTexture, int[] textureBindings2D, int[] samplerBindings, int program, int vaoBinding,
                       boolean colorMaskR, boolean colorMaskG, boolean colorMaskB, boolean colorMaskA,
                       int unpackAlignment, int pixelUnpackBufferBinding, boolean scissorTestEnabled, int[] scissorBox,
-                      int framebuffer, int[] viewport, int unpackRowLength, int unpackSkipPixels, int unpackSkipRows) {
+                      int framebuffer, int[] viewport, int unpackRowLength, int unpackSkipPixels, int unpackSkipRows,
+                      int blendEquationRgb, int blendEquationAlpha, float[] blendColor, int frontFace,
+                      Stencil stencil) {
             this.blendEnabled = blendEnabled;
             this.blendSrcRgb = blendSrcRgb;
             this.blendDstRgb = blendDstRgb;
@@ -125,6 +151,11 @@ public final class GlStateUtil {
             this.unpackRowLength = unpackRowLength;
             this.unpackSkipPixels = unpackSkipPixels;
             this.unpackSkipRows = unpackSkipRows;
+            this.blendEquationRgb = blendEquationRgb;
+            this.blendEquationAlpha = blendEquationAlpha;
+            this.blendColor = blendColor;
+            this.frontFace = frontFace;
+            this.stencil = stencil;
         }
 
         void restore() {
@@ -209,6 +240,17 @@ public final class GlStateUtil {
 
             GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, framebuffer);
             GlStateManager._viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+
+            GL20C.glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha);
+            // Same rule as the texture units below: Blaze3D's setter takes one
+            // mode for both channels, so mirroring a split equation would plant a
+            // value that is wrong for one of them.
+            if (blendEquationRgb == blendEquationAlpha) {
+                GlStateManager._blendEquation(blendEquationRgb);
+            }
+            GL14C.glBlendColor(blendColor[0], blendColor[1], blendColor[2], blendColor[3]);
+            GL11C.glFrontFace(frontFace);
+            stencil.restore();
         }
 
         static State capture() {
@@ -258,6 +300,11 @@ public final class GlStateUtil {
                 int pixelUnpackBufferBinding = GL11C.glGetInteger(GL21C.GL_PIXEL_UNPACK_BUFFER_BINDING);
                 boolean scissorTestEnabled = GL11C.glIsEnabled(GL11C.GL_SCISSOR_TEST);
                 int framebuffer = GL11C.glGetInteger(GL30C.GL_FRAMEBUFFER_BINDING);
+                int blendEquationRgb = GL11C.glGetInteger(GL20C.GL_BLEND_EQUATION_RGB);
+                int blendEquationAlpha = GL11C.glGetInteger(GL20C.GL_BLEND_EQUATION_ALPHA);
+                FloatBuffer blendColor = stack.mallocFloat(4);
+                GL11C.glGetFloatv(GL_BLEND_COLOR, blendColor);
+                int frontFace = GL11C.glGetInteger(GL11C.GL_FRONT_FACE);
 
                 return new State(
                         blendEnabled, blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha,
@@ -267,9 +314,109 @@ public final class GlStateUtil {
                         unpackAlignment, pixelUnpackBufferBinding, scissorTestEnabled,
                         new int[]{scissorBox.get(0), scissorBox.get(1), scissorBox.get(2), scissorBox.get(3)},
                         framebuffer, new int[]{viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3)},
-                        unpackRowLength, unpackSkipPixels, unpackSkipRows
+                        unpackRowLength, unpackSkipPixels, unpackSkipRows,
+                        blendEquationRgb, blendEquationAlpha,
+                        new float[]{blendColor.get(0), blendColor.get(1), blendColor.get(2), blendColor.get(3)},
+                        frontFace, Stencil.capture()
                 );
             }
+        }
+    }
+
+    /**
+     * The stencil buffer's state, saved and restored as one family.
+     *
+     * <p>Why it is worth restoring: Ganesh reaches for the stencil buffer on
+     * clip shapes a scissor rectangle cannot express, and it is not obliged to
+     * hand {@code GL_STENCIL_TEST} back the way it found it. A leak here does
+     * not raise an error — it makes everything drawn afterwards obey someone
+     * else's mask, which in a modded client means ModelEngine/Embeddium passes
+     * losing pixels for no visible reason.
+     *
+     * <p>Why front and back are read separately: GL allows two-sided stencil,
+     * while Blaze3D's setters take a single value. The cache is therefore only
+     * mirrored when both faces agree — the same trade-off {@link #mirrorActiveTexture}
+     * makes for texture units past {@code TEXTURE_COUNT}.
+     */
+    private static final class Stencil {
+        private final boolean enabled;
+        private final int funcFront;
+        private final int refFront;
+        private final int valueMaskFront;
+        private final int writeMaskFront;
+        private final int sfailFront;
+        private final int dpfailFront;
+        private final int dppassFront;
+        private final int funcBack;
+        private final int refBack;
+        private final int valueMaskBack;
+        private final int writeMaskBack;
+        private final int sfailBack;
+        private final int dpfailBack;
+        private final int dppassBack;
+
+        private Stencil(boolean enabled,
+                        int funcFront, int refFront, int valueMaskFront, int writeMaskFront,
+                        int sfailFront, int dpfailFront, int dppassFront,
+                        int funcBack, int refBack, int valueMaskBack, int writeMaskBack,
+                        int sfailBack, int dpfailBack, int dppassBack) {
+            this.enabled = enabled;
+            this.funcFront = funcFront;
+            this.refFront = refFront;
+            this.valueMaskFront = valueMaskFront;
+            this.writeMaskFront = writeMaskFront;
+            this.sfailFront = sfailFront;
+            this.dpfailFront = dpfailFront;
+            this.dppassFront = dppassFront;
+            this.funcBack = funcBack;
+            this.refBack = refBack;
+            this.valueMaskBack = valueMaskBack;
+            this.writeMaskBack = writeMaskBack;
+            this.sfailBack = sfailBack;
+            this.dpfailBack = dpfailBack;
+            this.dppassBack = dppassBack;
+        }
+
+        void restore() {
+            if (enabled) {
+                GL11C.glEnable(GL11C.GL_STENCIL_TEST);
+            } else {
+                GL11C.glDisable(GL11C.GL_STENCIL_TEST);
+            }
+            GL20C.glStencilFuncSeparate(GL11C.GL_FRONT, funcFront, refFront, valueMaskFront);
+            GL20C.glStencilFuncSeparate(GL11C.GL_BACK, funcBack, refBack, valueMaskBack);
+            GL20C.glStencilOpSeparate(GL11C.GL_FRONT, sfailFront, dpfailFront, dppassFront);
+            GL20C.glStencilOpSeparate(GL11C.GL_BACK, sfailBack, dpfailBack, dppassBack);
+            GL20C.glStencilMaskSeparate(GL11C.GL_FRONT, writeMaskFront);
+            GL20C.glStencilMaskSeparate(GL11C.GL_BACK, writeMaskBack);
+            if (funcFront == funcBack && refFront == refBack && valueMaskFront == valueMaskBack) {
+                GlStateManager._stencilFunc(funcFront, refFront, valueMaskFront);
+            }
+            if (sfailFront == sfailBack && dpfailFront == dpfailBack && dppassFront == dppassBack) {
+                GlStateManager._stencilOp(sfailFront, dpfailFront, dppassFront);
+            }
+            if (writeMaskFront == writeMaskBack) {
+                GlStateManager._stencilMask(writeMaskFront);
+            }
+        }
+
+        static Stencil capture() {
+            return new Stencil(
+                    GL11C.glIsEnabled(GL11C.GL_STENCIL_TEST),
+                    GL11C.glGetInteger(GL11C.GL_STENCIL_FUNC),
+                    GL11C.glGetInteger(GL11C.GL_STENCIL_REF),
+                    GL11C.glGetInteger(GL11C.GL_STENCIL_VALUE_MASK),
+                    GL11C.glGetInteger(GL11C.GL_STENCIL_WRITEMASK),
+                    GL11C.glGetInteger(GL11C.GL_STENCIL_FAIL),
+                    GL11C.glGetInteger(GL11C.GL_STENCIL_PASS_DEPTH_FAIL),
+                    GL11C.glGetInteger(GL11C.GL_STENCIL_PASS_DEPTH_PASS),
+                    GL11C.glGetInteger(GL20C.GL_STENCIL_BACK_FUNC),
+                    GL11C.glGetInteger(GL20C.GL_STENCIL_BACK_REF),
+                    GL11C.glGetInteger(GL20C.GL_STENCIL_BACK_VALUE_MASK),
+                    GL11C.glGetInteger(GL20C.GL_STENCIL_BACK_WRITEMASK),
+                    GL11C.glGetInteger(GL20C.GL_STENCIL_BACK_FAIL),
+                    GL11C.glGetInteger(GL20C.GL_STENCIL_BACK_PASS_DEPTH_FAIL),
+                    GL11C.glGetInteger(GL20C.GL_STENCIL_BACK_PASS_DEPTH_PASS));
         }
     }
 }

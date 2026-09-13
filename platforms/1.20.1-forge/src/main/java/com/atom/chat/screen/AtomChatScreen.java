@@ -1050,7 +1050,14 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
                             context.pose().last().pose(),
                             gx, gy, gw, gh, gr, panelProgress);
                 } catch (Throwable t) {
+                    // One line, one stack trace, then the breaker: isAvailable()
+                    // goes false, so the pre-pass is not even built on the next
+                    // frame. Before this, a deterministic failure logged a full
+                    // stack trace every frame for as long as the panel stayed
+                    // open, which is how a real one-line cause turns into an
+                    // unreadable log.
                     AtomChat.LOGGER.warn("AtomChat panel blur pre-pass failed, using solid background", t);
+                    PanelBlurRenderer.disable(t.getClass().getSimpleName());
                     blurDrawnThisFrame = false;
                 }
             };
@@ -2825,6 +2832,16 @@ public final class AtomChatScreen extends ChatScreen implements PageHost {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Completes the input trio next to keyPressed:/charTyped:. The whole UI is
+        // Skia-drawn, so without this line a "the button does nothing" report has
+        // no way to tell "the click never arrived" from "it arrived somewhere
+        // else" — and the virtual pair is what decides which element was under
+        // the pointer. Debug-gated: one line per click is fine to opt into.
+        if (AtomChatConfig.get().debug) {
+            AtomChat.LOGGER.info("click: gui=({}, {}) virtual=({}, {}) button={}",
+                    (int) mouseX, (int) mouseY,
+                    (int) toVirtualX(mouseX), (int) toVirtualY(mouseY), button);
+        }
         if (inputRouter.click(mouseX, mouseY, button)) {
             return true;
         }
