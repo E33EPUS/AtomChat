@@ -4,6 +4,32 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
+## v0.2.11
+
+本版清掉的都是「外部环境」的毛病：别人发来的消息格式、别人内嵌的同名库、别人的光影包，以及"报 bug 时说不清是哪个构建"。四个目标（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1）同步实现。
+
+修复：图片码写法稍有不同（小写 `cicode`、参数顺序颠倒）就整条当普通文字显示——协议原文画进气泡、末尾还被当成链接，点一下报错；现在统一到一份规则，认不出的码显示占位符。
+修复：装了另一个也内嵌 FlatLaf 的模组时，图片选择器崩在 `ClassNotFoundException`——两份副本抢同一个公共包名；现在我们把 FlatLaf 收进私有包名，别人抢不走。
+修复：增量编译偶尔会吃掉 Mixin 的 refmap，打出来的 jar 一启动就报 `No refMap loaded`；现在有构建闸盯着，缺了直接让构建失败。
+修复：模糊渲染出错时每帧重试、每帧刷日志，一个确定的错误把自己埋掉；现在首次失败即熔断，面板退成实色继续用。
+
+新增：启动时打一行构建身份（版本 / 加载器 / 实际加载的 jar 名 / 该文件 SHA-256 / 提交号）。文件名可以被改得认不出来，内容哈希不会——这一行就能唯一定位是哪一个构建。
+新增：调试开关打开后打一整块环境摘要：FlatLaf 是从哪个 jar 加载的、Skija 原生库有没有加载成功（花了多少毫秒）、GPU 与驱动、以及关键开关。整块是一条日志记录，连着复制不会被别的模组插断。
+新增：调试开关下按键、字符、点击都进日志。界面是 Skia 自绘的，原版那套控件调试手段用不上，这是查"这个按钮点了没反应"唯一可靠的办法。
+
+更改：补上 Skia 会改动、而我们此前没有保存的 OpenGL 状态（混合方程、混合常量色、正面朝向、模板）。漏掉它们的表现不是报错，而是别人画的东西少像素或正反面反了。
+更改：排查文档（中英）新增「怎么开调试、该把哪几行交上来」。
+
+Fixed image codes with a different spelling (lower-case tag, reordered parameters) being dumped into chat as raw protocol text with a clickable tail that threw when clicked; one tolerant grammar now covers every spelling, and a code we cannot read shows a placeholder instead of the protocol.
+Fixed the image picker crashing with ClassNotFoundException when another mod bundles FlatLaf under the same public package name; our copy is now packed under a private package and can no longer be shadowed.
+Fixed incremental builds silently losing the Mixin refmap, which produced jars that died at startup with "No refMap loaded"; a build gate now fails the build instead.
+Fixed a failed panel blur retrying and logging on every frame, burying its own cause; the first failure now disables it for the session and the panel keeps its solid background.
+Added a one-line build identity at startup (version, loader, the jar actually loaded, its SHA-256 and the commit it came from), so a single log line pins down which build produced it.
+Added a full environment summary under the debug switch: which jar the FlatLaf in use came from, whether the Skija native library loaded and how long it took, the GPU and driver, and the switches. It is emitted as one log record, so copying it cannot be cut apart by other mods' lines.
+Added input logging under the debug switch (key, character, click point and the panel coordinates it maps to). The UI is drawn by Skia, so none of the usual widget debugging applies, and this is the only reliable way to chase a button that does nothing.
+Changed the render-state save/restore to cover what Skia moves (blend equation, blend colour, front face and the stencil family); a leak there raises no error at all and shows up as another mod's geometry missing pixels or facing backwards.
+Docs: both troubleshooting pages now explain how to turn debug on and which lines to send.
+
 ## v0.2.10
 
 本版是「单分支多目标」重铸后的第一次发版，也是商店线上 0.2.9 之后的第一版。开发期内部号一度写到 0.2.91，但它从未发过版 —— 为了让商店版本号保持递增，这里回到 0.2.10：下面既包含那批修复，也包含此后落到 main 的修复。三个目标（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1）现在由同一份源码产出。
