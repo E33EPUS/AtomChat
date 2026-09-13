@@ -107,6 +107,11 @@ public class AtomChatClient {
 
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
+        // First tick only (self-guarded): identity always, the detailed block
+        // when debug is on. It lives here rather than in client setup because
+        // the GPU rows need a current GL context, which only the render thread
+        // has — and the tick runs on it.
+        com.atom.chat.diagnostics.EnvironmentSummary.logOnce(AtomChat.version(), AtomChat.artifactPath());
         com.atom.chat.history.ChatHistory.tick(client);
         com.atom.chat.net.MediaCompanionClient.tick();
         com.atom.chat.net.PackSyncClient.tick();

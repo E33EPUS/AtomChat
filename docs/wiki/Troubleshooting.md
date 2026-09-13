@@ -38,9 +38,37 @@ Before 0.2.8, opening the panel on Forge 1.20.1 could turn the whole screen blac
 - **Quark:** the emote menu does not appear when Quark is installed; compatibility work is in progress.
 - **Other MC versions / loaders:** currently Fabric and NeoForge 1.21.1, plus Forge 1.20.1.
 
+## Turning on debug, and which lines to send
+
+**One line you always get** (no switch involved). Search for `AtomChat build`:
+
+```
+AtomChat build 0.2.11 | Forge 47.4.10 / minecraft 1.20.1 | atomchat-Forge-1.20.1-0.2.11.jar | sha256:de20503c1a2b | git 56122d9
+```
+
+Mod version, loader and its version, MC version, **the jar file that was actually loaded**, **the hash of that file's contents**, and the commit it was built from.
+The last two are the point: players rename jars all the time, so when the file name disagrees with everything else, the version plus the content hash still pin down exactly which build it is.
+
+**A full environment block** (`debug` needed). In game, `Settings → About`; or set `"debug": true` in `config/atomchat/atomchat-client.json` and restart. Search for `AtomChat environment summary`:
+
+```
+AtomChat environment summary (debug) — paste this whole block into a bug report
+  build    0.2.11 | Forge 47.4.10 / minecraft 1.20.1 | git 56122d9
+  artifact ...\mods\atomchat-Forge-1.20.1-0.2.11.jar | ... | loader reports 0.2.11
+  runtime  Java 17.0.9 (Eclipse Adoptium) | Windows 11 10.0 | amd64
+  laf      com.atom.chat.shaded.flatlaf.FlatLightLaf <- ...\mods\atomchat-....jar | ...
+  skija    0.116.8 windows/x64 <- ...\skija-windows-x64-0.116.8.jar | natives loaded in 132 ms
+  gpu      NVIDIA GeForce RTX 3060 | 4.6.0 NVIDIA 552.22 | NVIDIA Corporation
+  switches blur=on (opacity 0.93) | wallpaper=none | imageMessages=on | animations=on | panel=440x780 @1.0x
+```
+
+It answers the things that get asked most and are hardest to work out from a log: **which jar the FlatLaf in use came from** (that is where the old registry collision happened), **whether the Skija native library actually loaded**, **the GPU and driver**, and the switches as they stood. The whole block is **one** log record with embedded line breaks, so copy it as a unit — other mods' lines cannot land in the middle of it.
+
+With `debug` on, input is logged line by line too: which key went down, which character was typed, and which point on screen was clicked together with the panel coordinates that point maps to. The UI is drawn by Skia, so none of the usual vanilla-widget debugging applies, and "this button does nothing" is decided entirely by those lines — did the click arrive, and what was under it. Search for `click:`, `keyPressed:`, `charTyped:`.
+
 ## What to include in a bug report
 
-1. The mod version (e.g. `v0.2.10`), your loader and its version, and your MC version;
+1. the `AtomChat build` line above (or the whole environment block) — it carries the mod version, loader and MC version in one go, which beats typing them out;
 2. whether this is **single-player / a LAN host / a dedicated server**, and whether the server also runs AtomChat;
 3. reproduction steps — shorter is better: what you did → what you expected → what happened;
 4. `.minecraft/logs/latest.log` (or a report from `crash-reports/`);

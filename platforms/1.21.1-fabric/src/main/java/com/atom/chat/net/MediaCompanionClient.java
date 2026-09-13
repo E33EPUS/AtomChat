@@ -58,7 +58,7 @@ public final class MediaCompanionClient {
     public static void init() {
         ClientPlayNetworking.registerGlobalReceiver(MediaPayloads.MediaState.ID,
                 (payload, context) -> context.client().execute(
-                        () -> state = new State(payload.enabled(), payload.maxBytes())));
+                        () -> onState(payload.enabled(), payload.maxBytes())));
         ClientPlayNetworking.registerGlobalReceiver(MediaPayloads.UploadResult.ID,
                 (payload, context) -> context.client().execute(() -> onUploadResult(payload)));
         ClientPlayNetworking.registerGlobalReceiver(MediaPayloads.Data.ID,
@@ -167,6 +167,21 @@ public final class MediaCompanionClient {
             }
             ClientPlayNetworking.send(new MediaPayloads.UploadFinish(uploadId));
         });
+    }
+
+    /** S2C receiver body; already on the client thread. */
+    static void onState(boolean enabled, int maxBytes) {
+        State previous = state;
+        state = new State(enabled, maxBytes);
+        // Degradation, logged once per join: with hosting off every upload goes
+        // to the public image host instead. The player only ever sees "my image
+        // ended up on some website", so the reason has to be in the log. The
+        // previous-state comparison keeps a repeated state packet from spamming.
+        if (!enabled && (previous == null || previous.enabled())) {
+            com.atom.chat.AtomChat.LOGGER.warn("This server has AtomChat media hosting switched off "
+                    + "(hostingEnabled=false in its atomchat-server.json); images you send will be "
+                    + "uploaded to the public image host instead of being stored on the server");
+        }
     }
 
     private static void onUploadResult(MediaPayloads.UploadResult payload) {

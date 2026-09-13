@@ -88,6 +88,11 @@ public class AtomChatClient implements ClientModInitializer {
         });
         NotificationController.registerSound();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // First tick only (self-guarded): identity always, the detailed
+            // block when debug is on. It lives here rather than in client init
+            // because the GPU rows need a current GL context, which only the
+            // render thread has — and the tick runs on it.
+            com.atom.chat.diagnostics.EnvironmentSummary.logOnce(AtomChat.version(), AtomChat.artifactPath());
             com.atom.chat.history.ChatHistory.tick(client);
             com.atom.chat.net.MediaCompanionClient.tick();
         com.atom.chat.net.PackSyncClient.tick();

@@ -75,4 +75,26 @@ public class AtomChat implements ModInitializer {
             return "unknown";
         }
     }
+
+    /**
+     * The jar this build was loaded from, asked of the loader rather than
+     * derived from our own code source: Fabric runs mods off its own class
+     * path, so a protection-domain lookup can name something other than the
+     * file the player installed. The environment summary prints this next to
+     * its content hash — a jar can be renamed to anything, a hash cannot (see
+     * the "file says 0.2.8, metadata says 0.2.7" report that motivated it).
+     * Null outside a real launch, and in a dev run, where the origin is a
+     * directory rather than a jar.
+     */
+    public static java.nio.file.Path artifactPath() {
+        try {
+            return FabricLoader.getInstance().getModContainer(MOD_ID)
+                    .flatMap(container -> container.getOrigin().getPaths().stream()
+                            .filter(java.nio.file.Files::isRegularFile)
+                            .findFirst())
+                    .orElse(null);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
 }

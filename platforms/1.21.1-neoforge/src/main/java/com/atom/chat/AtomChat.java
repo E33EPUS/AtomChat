@@ -75,4 +75,25 @@ public class AtomChat {
     public static String version() {
         return version;
     }
+
+    /**
+     * The jar this build was loaded from, asked of the loader rather than
+     * derived from our own code source: NeoForge runs mods off a transformed
+     * class path, so a protection-domain lookup can name something other than
+     * the file the player installed. The environment summary prints this next
+     * to its content hash — a jar can be renamed to anything, a hash cannot
+     * (see the "file says 0.2.8, metadata says 0.2.7" report that motivated it).
+     * Null outside a real launch.
+     */
+    public static java.nio.file.Path artifactPath() {
+        try {
+            return net.neoforged.fml.ModList.get()
+                    .getModContainerById(MOD_ID)
+                    .map(container -> container.getModInfo().getOwningFile())
+                    .map(file -> file.getFile().getFilePath())
+                    .orElse(null);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
 }
