@@ -4,6 +4,23 @@
 用「新增 / 修复 / 更改」等常规分类组织，写法自由，不要拿语言名当标题。
 仓库 GitHub Release 正文取整段；Modrinth / CurseForge 的 changelog 取段尾英文块（英文内部不要空行）。
 
+## v0.2.12
+
+本版是「加固」版：没有新界面、也不改玩法。三件事 —— 让诊断不再说假话、让渲染这一层出问题时构建会红而不是靠人看、以及给性能装一把尺子。四个目标（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1）同步。
+
+修复：每个从 CI 出来的 jar，构建身份那行都写着 `git <提交号>+dirty`，而它其实来自干净的检出——三个 `gradlew` 在索引里没有可执行位，工作流那句 `chmod +x` 在 Linux 上就成了"已跟踪文件被改动"；本机是 Windows，所以只有下载产物的人看得到这个假标记。现在索引带上可执行位，身份行说的是真话，而且 CI 每次构建都自己断言这一条。
+修复：非 Windows 上打开面板会把游戏带走——打包的原生库只有 Windows x64 一份，别的平台第一次绘制就落在原生层，那不是异常而是 JVM 直接死。现在启动时正面探测一次（真的去加载），拿不到就不开面板：原版聊天照常，日志里留一行说明平台与原因。本版不承诺非 Windows 可用，只承诺不崩。
+
+新增：调试开关下，面板开着时约每十秒打一份渲染分布——整帧耗时与每帧对象分配、图片解码、文字塑形，都是 p50/p95/max/均值。本版只交付基线，不做优化。
+
+更改：渲染这一层有了回归网——整个面板画在离屏光栅面上跑，任何"释放了原生句柄还去用"都会让测试进程直接死、构建变红，而不是等玩家来报。三端单测 569 项（上一版 542）。CI 增加产物级断言：看 jar 里面的重定位 FlatLaf、公共包引用与两个 Skija 嵌套库。
+
+Fixed every CI-built jar claiming to come from uncommitted source: the build identity line said "git <sha>+dirty" while the checkout it came from was pristine, because the gradlew wrappers had no executable bit in the index and the workflow's chmod +x therefore counted as a change to a tracked file. Windows never shows it, so only whoever downloaded the artifact ever saw the false flag. The bit is in the index now, and CI asserts the stamp on every build.
+Fixed opening the panel on a non-Windows platform taking the game down: the bundled native is Windows x64 only, and the first draw on any other platform lands in the native layer, where the JVM dies rather than throwing. The native is now probed once at startup by actually loading it, and without it the panel stays closed: vanilla chat is untouched and one log line names the platform and the reason. This release does not claim non-Windows support; it claims it will not crash.
+Added a render profile under the debug switch: while the panel is open it reports frame time and per-frame object allocation, image decode time and text shaping time, as p50/p95/max/mean every ten seconds or so. This release ships the baseline only and optimises nothing.
+Changed the draw layer to have a regression net: the whole panel now renders onto an offscreen raster surface in tests, so a native handle used after release kills the test process and turns the build red instead of waiting for a player to report it. 569 unit tests across the three targets, up from 542.
+Added artifact-level assertions to CI: the relocated FlatLaf inside the jar, references to the public package, and both nested Skija libraries.
+
 ## v0.2.11
 
 本版清掉的都是「外部环境」的毛病：别人发来的消息格式、别人内嵌的同名库、别人的光影包，以及"报 bug 时说不清是哪个构建"。四个目标（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1）同步实现。

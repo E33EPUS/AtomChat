@@ -111,6 +111,10 @@ jobs:
             exit 1
           fi
 
+      # 发出去的字节更要查这一层：单测跑的是类路径，看不出打包时少塞了一个嵌套 jar。
+      - name: 断言产物内容
+        run: python3 tools/verify_jars.py "${{ matrix.project }}"
+
       - name: 取产物（-slim 与 sources 一律不要）
         working-directory: ${{ matrix.project }}
         run: |
