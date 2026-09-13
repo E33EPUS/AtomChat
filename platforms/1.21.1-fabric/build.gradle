@@ -32,8 +32,11 @@ dependencies {
     include(implementation("io.github.humbleui:skija-windows-x64:${project.skija_version}"))
 
     // FlatLaf gives the Swing image picker a modern flat look instead of the
-    // dated default Metal one. Bundled so the look and feel works offline.
-    include(implementation("com.formdev:flatlaf:${project.flatlaf_version}"))
+    // dated default Metal one. Bundled as a RELOCATED copy (private package, see
+    // third_party/ and gradle/atomchat-layers.gradle): another mod shipping
+    // com.formdev.flatlaf.* used to win the class loading race, and our picker
+    // then ran on that copy. Regenerate with tools/relocate-flatlaf.sh.
+    include(implementation(project.atomchatBundledFlatLaf))
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'

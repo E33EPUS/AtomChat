@@ -39,6 +39,8 @@ ext.maven_group = repoProps.getProperty('mod_group_id')   // Fabric 侧一直叫
     }
 }
 ext.atomchatRepoRoot = repoRoot
+// 构建戳（3c）与末尾的打印都用它，所以在配置期取一次。
+def repoVersion = repoProps.getProperty('mod_version')
 
 // ---- 2. 本目标是哪一个 ----
 def targetsFile = new File(repoRoot, 'versions/targets.json')
@@ -154,10 +156,124 @@ sourceSets.main.resources.srcDirs += mainRes
 sourceSets.test.java.srcDirs += testJava
 sourceSets.test.resources.srcDirs += testRes
 
+// ---- 3b. 内嵌的 FlatLaf（重定位产物，随仓库分发） ----
+//
+// 【为什么不用公共 Maven 坐标】FlatLaf 住在全局包名 com.formdev.flatlaf 下。别的 mod
+// 也内嵌同一份时，谁先被类加载器解析到谁赢 —— 实测发生过（一个叫 Mcpatch 的 mod
+// 赢了，我们的图片选择器跑在它的副本上，Forge 的类转换器随即在一个它没有的类上报错）。
+// 重定位到私有包名之后这种竞争就不存在了。
+//
+// 【为什么随仓库分发、不在构建期重定位】构建期重定位要把 ASM 挂上构建脚本类路径、
+// 再和 include/jarJar 的取件时机对齐，三端各一套；入库一份产物则离线、确定、不碰
+// 构建管线。代价是仓库多一个约 1 MB 的二进制（与既有 bundled.otf 3.89 MB 同量级）。
+//
+// 【为什么是本地 Maven 目录而不是裸 jar 文件】裸文件依赖两边都不收：Fabric 的
+// `include` 会拒绝"not a module component and has no capabilities"的产物，Forge 的
+// JarJar 要求产物有明确模块名（由 Relocate 写进 manifest 的 Automatic-Module-Name）。
+// 目录仓库给出真正的坐标，两端都当普通模块处理。
+//
+// 重新生成：tools/relocate-flatlaf.sh <path-to-flatlaf.jar> [version]
+def bundledGroup = 'com.atom.chat.bundled'
+def bundledArtifact = 'flatlaf-atomchat'
+def bundledVersion = project.flatlaf_version
+def bundledRepoDir = new File(repoRoot, 'third_party/maven')
+def bundledJar = new File(bundledRepoDir,
+        "${bundledGroup.replace('.', '/')}/$bundledArtifact/$bundledVersion/$bundledArtifact-${bundledVersion}.jar")
+if (!bundledJar.isFile()) {
+    throw new GradleException(
+        "找不到内嵌的 FlatLaf 重定位产物：${bundledJar.path}\n" +
+        "各平台 gradle.properties 里 flatlaf_version=${bundledVersion}，third_party/maven 下没有对应产物。\n" +
+        "重新生成：tools/relocate-flatlaf.sh <path-to-flatlaf.jar> ${bundledVersion}")
+}
+repositories {
+    maven {
+        name = 'atomchatBundled'
+        url = uri(bundledRepoDir)
+    }
+}
+ext.atomchatBundledFlatLaf = "${bundledGroup}:${bundledArtifact}:${bundledVersion}"
+
+// Forge's JarJar rejects a plain version ("The given version specification is
+// invalid: 3.7.2 ... convert this to a maven compatible format") — what it
+// records in jarjar metadata is a RANGE. Derive "3.7.2" -> "[3.7.2,3.8)" so the
+// upper bound follows the version instead of being hardcoded somewhere.
+def vParts = bundledVersion.tokenize('.')
+def vUpper = vParts.size() >= 2
+        ? "${vParts[0]}.${(vParts[1] as int) + 1}"
+        : "${bundledVersion}-"
+ext.atomchatBundledFlatLafRange = "${bundledGroup}:${bundledArtifact}:[${bundledVersion},${vUpper})"
+
+// ---- 3c. 构建戳（运行期环境摘要要能唯一定位构建） ----
+//
+// 【为什么要有它】玩家报 bug 时给的是日志，日志里只有 "v0.2.11" —— 而那个版本号
+// 可能来自任何一次构建。实测发生过「jar 文件名是 0.2.8、里面的版本号是 0.2.7」这样
+// 对不上的情况，光看日志无从判断交上来的到底是哪一个产物。这里把【构建那一刻】的
+// 仓库事实写进 jar，运行期再配上加载器报的版本号与产物 sha256，三者互相印证。
+//
+// 【为什么不放一份带占位符的模板资源】那等于维护两份真相（模板 + 展开值），而且
+// IDE 直接跑测试时会读到没展开的那份，日志里就会出现字面的 "${version}"。
+// 生成任务的产物只进 build/，仓库里一个字节都不用留。
+//
+// 【为什么 git 在 doLast 里读，而不是配置期算好当一个输入】NeoForge 目标开着配置
+// 缓存，配置期跑外部进程会被直接判为不支持（configuration cache entry discarded）——
+// 第一版就是那么写的，NeoForge 当场红。而 git 事实又没法让 Gradle 跟踪（它读的是工作区），
+// 所以这个任务用 upToDateWhen { false } 永不跳过：两次 git 调用加一个小文件，
+// 代价远低于"构建戳落后于提交号"。
+def loaderVersionValue = targetDef.loader_version == null ? 'unknown' : targetDef.loader_version.toString()
+def buildStampDir = layout.buildDirectory.dir('generated/atomchatBuildStamp')
+def generateBuildStamp = tasks.register('generateAtomchatBuildStamp') {
+    group = 'atomchat'
+    description = '写出构建戳资源（版本 / 目标 / 提交号），供运行期环境摘要唯一定位构建'
+    outputs.dir(buildStampDir)
+    outputs.upToDateWhen { false }
+    inputs.property('mod_version', repoVersion)
+    inputs.property('target', targetName)
+    inputs.property('minecraft', targetDef.minecraft.toString())
+    inputs.property('loader', targetDef.loader.toString())
+    inputs.property('loader_version', loaderVersionValue)
+    def outDir = buildStampDir
+    def repoPath = repoRoot.path
+    def mcValue = targetDef.minecraft.toString()
+    def loaderValue = targetDef.loader.toString()
+    doLast {
+        def git = { List<String> command ->
+            try {
+                def stdout = new ByteArrayOutputStream()
+                def process = new ProcessBuilder(command).redirectErrorStream(true).start()
+                process.inputStream.transferTo(stdout)
+                if (!process.waitFor(20, java.util.concurrent.TimeUnit.SECONDS) || process.exitValue() != 0) {
+                    return 'unknown'
+                }
+                return stdout.toString('UTF-8').trim()
+            } catch (Throwable ignored) {
+                return 'unknown'
+            }
+        }
+        def commit = git(['git', '-C', repoPath, 'rev-parse', '--short=7', 'HEAD'])
+        def status = git(['git', '-C', repoPath, 'status', '--porcelain', '--untracked-files=no'])
+        def dirty = status != 'unknown' && !status.isEmpty()
+        def stamp = outDir.get().file('atomchat-build.properties').asFile
+        stamp.parentFile.mkdirs()
+        stamp.setText([
+                '# Generated at build time by gradle/atomchat-layers.gradle (section 3c).',
+                '# Do not edit, do not commit. ASCII only: Properties.load() reads the',
+                '# stream as ISO-8859-1, so a non-ASCII value would arrive mangled.',
+                "version=${repoVersion}",
+                "target=${targetName}",
+                "minecraft=${mcValue}",
+                "loader=${loaderValue}",
+                "loader_version=${loaderVersionValue}",
+                "git_commit=${commit}",
+                "git_dirty=${dirty}",
+                ''
+        ].join('\n'), 'UTF-8')
+    }
+}
+sourceSets.main.resources.srcDir(generateBuildStamp)
+
 // ---- 4. 打印（算出来的，不手写） ----
 // 这些值在【配置期】取好：doLast 里碰 project / sourceSets 会让配置缓存失效
 // （NeoForge 目标开着 org.gradle.configuration-cache=true）。
-def repoVersion = repoProps.getProperty('mod_version')
 def targetLabel = "${targetDef.minecraft} / ${targetDef.loader} ${targetDef.loader_version}".toString()
 def mountedList = mounted.collect { it.toString() }
 def mainJavaList = mainJava.collect { it.toString() }

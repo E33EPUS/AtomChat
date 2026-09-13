@@ -1,7 +1,6 @@
 package com.atom.chat.util;
 
 import com.atom.chat.AtomChat;
-import com.formdev.flatlaf.FlatLightLaf;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -10,6 +9,7 @@ import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.LookAndFeel;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.filechooser.FileFilter;
@@ -266,8 +266,18 @@ public final class FilePicker {
         }
         lookAndFeelInstalled = true;
         try {
-            UIManager.setLookAndFeel(new FlatLightLaf());
-            AtomChat.LOGGER.info("Image picker look and feel: FlatLaf");
+            // Loaded by name on purpose: our FlatLaf is bundled under a private
+            // package (gradle/atomchat-layers.gradle), so a plain import would
+            // name a class this jar does not contain — and a mod shipping the
+            // public com.formdev.flatlaf.* would silently win the race instead.
+            Class<?> lafClass = Class.forName("com.atom.chat.shaded.flatlaf.FlatLightLaf");
+            LookAndFeel laf = (LookAndFeel) lafClass.getDeclaredConstructor().newInstance();
+            UIManager.setLookAndFeel(laf);
+            // The source jar is part of the line on purpose: the relocation only
+            // earns its keep if the class really comes from our own bundle, and
+            // that is exactly the claim that used to be false (another mod's
+            // copy won the race). One line answers it at the moment of truth.
+            AtomChat.LOGGER.info("Image picker look and feel: {} <- {}", lafClass.getName(), origin(lafClass));
         } catch (Throwable t) {
             AtomChat.LOGGER.warn("FlatLaf unavailable, falling back to the system look and feel", t);
             try {
@@ -276,6 +286,19 @@ public final class FilePicker {
                 AtomChat.LOGGER.warn("System look and feel unavailable too, keeping the Swing default", t2);
             }
         }
+    }
+
+    /** Where a loaded class came from; {@code unknown} beats a stack trace here. */
+    private static String origin(Class<?> type) {
+        try {
+            java.security.CodeSource source = type.getProtectionDomain().getCodeSource();
+            if (source != null && source.getLocation() != null) {
+                return source.getLocation().toString();
+            }
+        } catch (Throwable ignored) {
+        }
+        ClassLoader loader = type.getClassLoader();
+        return loader == null ? "bootstrap" : String.valueOf(loader);
     }
 
     /** Starts in the folder people actually keep pictures in. */

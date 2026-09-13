@@ -106,8 +106,11 @@ dependencies {
     jarJar(implementation("io.github.humbleui:skija-windows-x64:[${project.skija_version},0.117)"))
 
     // FlatLaf gives the Swing image picker a modern flat look instead of the
-    // dated default Metal one. Bundled so the look and feel works offline.
-    jarJar(implementation("com.formdev:flatlaf:[${project.flatlaf_version},3.8)"))
+    // dated default Metal one. Bundled as a RELOCATED copy (private package, see
+    // third_party/ and gradle/atomchat-layers.gradle): another mod shipping
+    // com.formdev.flatlaf.* used to win the class loading race, and our picker
+    // then ran on that copy. Regenerate with tools/relocate-flatlaf.sh.
+    jarJar(implementation(project.atomchatBundledFlatLafRange))
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -164,10 +167,33 @@ tasks.withType(JavaCompile).configureEach {
 
 // The mixin annotation processor writes the refmap into build/tmp/compileJava,
 // so copy it into the resources output where Mixin looks for it.
+//
+// An incremental compile can wipe build/tmp/compileJava without re-running the
+// AP, and the refmap then disappears silently: the shipped jar dies at startup
+// with "No refMap loaded" for every mixin (this really happened). The guard for
+// that lives in verifyRefmap, NOT here — a Copy whose source is missing is
+// reported as NO-SOURCE and Gradle then skips every action on the task, so a
+// doFirst check in this task would never run in exactly the case it must catch.
 tasks.register('copyRefmap', Copy) {
     from "${buildDir}/tmp/compileJava"
     into "${buildDir}/resources/main"
     include 'mixins.atomchat.refmap.json'
+}
+
+// Runs unconditionally (no declared outputs, so it can never be up to date) and
+// fails the build when the refmap did not make it into the resources output.
+tasks.register('verifyRefmap') {
+    dependsOn 'copyRefmap'
+    doLast {
+        def refmap = file("${buildDir}/resources/main/mixins.atomchat.refmap.json")
+        if (!refmap.isFile()) {
+            throw new GradleException(
+                "打出来的 jar 里没有 mixins.atomchat.refmap.json（${refmap.path} 不存在）。\n" +
+                "Mixin 注解处理器没有产出它 —— 增量编译会清掉 build/tmp/compileJava 而不重跑 AP。\n" +
+                "这样的 jar 启动时会以 'No refMap loaded' 崩掉，所以在这里直接失败。\n" +
+                "解决：./gradlew clean build")
+        }
+    }
 }
 compileJava.finalizedBy 'copyRefmap'
 
@@ -182,11 +208,11 @@ tasks.register('writeDevManifest') {
     }
 }
 processResources.finalizedBy 'writeDevManifest'
-jar.dependsOn copyRefmap
+jar.dependsOn 'verifyRefmap'
 // The JarJar jar is the shippable artifact: it carries the embedded Skija and
 // FlatLaf jars as nested jars.
-tasks.named('jarJar') { dependsOn copyRefmap }
-compileTestJava.dependsOn copyRefmap
+tasks.named('jarJar') { dependsOn 'verifyRefmap' }
+compileTestJava.dependsOn 'copyRefmap'
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()

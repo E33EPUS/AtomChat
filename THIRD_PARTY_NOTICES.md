@@ -20,6 +20,16 @@ Skija, HumbleUI types, and FlatLaf.
 
 Copyright (c) their respective authors and contributors.
 
+**FlatLaf is redistributed in a modified form** (Apache-2.0 section 4(b): changes
+must be stated). Its classes are renamed from `com.formdev.flatlaf.*` into the
+private package `com.atom.chat.shaded.flatlaf` by a bytecode rename performed at
+packaging time; nothing else about the library is touched. The rename exists
+because several mods bundle the upstream package name, and whichever copy the
+class loader resolves first silently wins — our picker then ran on someone
+else's copy and broke when that copy was a different version. The relocated
+artifact, its Maven coordinates and the tool that produces it live under
+`third_party/` and `tools/relocate-flatlaf.sh` in this repository.
+
 Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
